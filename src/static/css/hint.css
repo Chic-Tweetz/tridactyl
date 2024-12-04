@@ -64,7 +64,7 @@ span.TridactylHintUppercase {
 
 div.TridactylHintHost,
 div.TridactylHintHighlightHost,
-div.TridactylHintOutlineHost, {
+div.TridactylHintOutlineHost {
 	left: 0 !important;
 	top: 0 !important;
     position: absolute !important;
