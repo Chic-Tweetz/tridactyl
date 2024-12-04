@@ -56,6 +56,11 @@ span.TridactylHintUppercase {
     text-transform: uppercase !important;
 }
 
+div.TridactylHintHighlightActive,
+div.TridactylHintOutlineActive {
+	z-index: 1 !important;
+}
+
 .TridactylHintElem,
 .TridactylHintActive {
     animation: none !important;

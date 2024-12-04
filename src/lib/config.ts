@@ -1339,10 +1339,10 @@ export class default_config {
      *  Which css styles to add for hint elements.
      **/
     hintstyles: { [key: string]: "all" | "active" | "none" } = {
-        fg: "none",
+        fg: "active",
         bg: "none",
         outline: "none",
-		overlay: "active",
+		overlay: "all",
 		overlayoutline: "all",
     }
 }
