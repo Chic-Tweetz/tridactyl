@@ -1,0 +1,28 @@
+:root {
+	--tritheme-red: rgb(217,16,70);
+
+	--tridactyl-hintspan-fg: black;
+	--tridactyl-hintspan-bg: linear-gradient(0, rgb(255, 197, 66) 0, rgb(255,247,133) 100%);
+
+	--tridactyl-hintspan-active-fg: white;
+	--tridactyl-hintspan-active-bg: linear-gradient(0, rgb(180,8,50) 0, var(--tritheme-red) 100%);
+	--tridactyl-hintspan-active-border-color: rgb(190,0,25);
+	--tridactyl-hintspan-active-border-width: 1px;
+
+	--tridactyl-hint-fg: black;
+	--tridactyl-hint-bg: rgb(255, 236, 118);
+	--tridactyl-hint-outline: 1px solid #ecc44a;
+
+	--tridactyl-hint-active-fg: var(--tritheme-red);
+	--tridactyl-hint-active-bg: rgb(98, 11, 34);
+	--tridactyl-hint-active-outline: 1px solid var(--tritheme-red);
+
+	--tridactyl-hint-overlay-highlight: rgb(255, 236, 118);
+	--tridactyl-hint-overlay-active-highlight: var(--tritheme-red);
+}
+
+span.TridactylHint {
+	box-shadow: rgba(0,0,0,0.3) 0 3px 7px 0 !important;
+	padding: 1px 3px 0 !important;
+	border-radius: 3px !important;
+}
