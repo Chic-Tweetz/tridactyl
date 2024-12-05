@@ -718,6 +718,11 @@ export class default_config {
         tabclosealltoright: "tabcloseallto right",
         tabclosealltoleft: "tabcloseallto left",
         reibadailty: "jumble",
+        hints_nohl: "js for(const k in tri.config.get('hintstyles'))tri.config.set('hintstyles',k,'none')",
+        hints_overlays: "js ['bg','outline'].forEach(k=>tri.config.set('hintstyles',k,'none'));['overlay','overlayoutline'].forEach(k=>tri.config.set('hintstyles',k,'all'))",
+        hints_direct: "js ['bg','outline'].forEach(k=>tri.config.set('hintstyles',k,'all'));['overlay','overlayoutline'].forEach(k=>tri.config.set('hintstyles',k,'none'))",
+        vimium: "composite hints_nohl; colours vimium",
+        tokyonight: "composite hints_overlays; set hintstyles.fg active; colours tokyonight",
     }
 
     /**
