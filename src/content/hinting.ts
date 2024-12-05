@@ -73,8 +73,23 @@ class HintState {
         public rapid: boolean,
     ) {
         this.hintHost.classList.add("TridactylHintHost", "cleanslate")
-		this.highlightHost.classList.add("TridactylHintHighlightHost", "cleanslate")
-		this.outlineHost.classList.add("TridactylHintOutlineHost", "cleanslate")
+        this.highlightHost.classList.add("TridactylHintHighlightHost", "cleanslate")
+        this.outlineHost.classList.add("TridactylHintOutlineHost", "cleanslate")
+
+        // hinthost alignment (eg: bsky.app has a 15px offset for some reason)
+        let docElRect = document.documentElement.getBoundingClientRect()
+        this.hintHost.style.cssText = `
+        top: ${-scrollY -docElRect.y}px !important;
+        left: ${-scrollX -docElRect.x}px !important;
+        `
+        this.highlightHost.style.cssText = `
+        top: ${-docElRect.y}px !important;
+        left: ${-docElRect.x}px !important;
+        `
+        this.outlineHost.style.cssText = `
+        top: ${-docElRect.y}px !important;
+        left: ${-docElRect.x}px !important;
+        `
     }
 
     get activeHints() {
@@ -872,8 +887,8 @@ class Hint {
         `
 		
 		this.highlight.style.cssText = `
-        top: ${this._y}px !important;
-        left: ${this._x}px !important;
+        top: ${this.rect.top}px !important;
+        left: ${this.rect.left}px !important;
         height: ${this.rect.height}px !important;
         width: ${this.rect.width}px !important;
         `
