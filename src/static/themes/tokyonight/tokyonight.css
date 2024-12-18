@@ -119,6 +119,9 @@
 
 	--tritheme-hintspan-padding: 0.5px;
 
+	--tridactyl-hintspan-active-fg: var(--tridactyl-hintspan-bg);
+	--tridactyl-hintspan-active-bg: var(--tritheme-moon-yellow);
+
 	/* Element highlights */
 	--tridactyl-hint-overlay-opacity: 0.25;
 	--tridactyl-hint-overlay-highlight: var(--tritheme-moon-blue1);
