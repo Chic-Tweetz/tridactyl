@@ -5380,7 +5380,7 @@ export async function hint(...args: string[]): Promise<any> {
                           return elem.textContent
                   }
 
-                  if (elem.href) {
+                  if (elem.href && elem.href !== "javascript:void(0)") {
                       elem.focus()
 
                       switch (config.openMode) {
