@@ -12,6 +12,23 @@ function bump_version(versionstr, component = 2) {
     return versionarr.join(".")
 }
 
+async function add_paris(versionstr) {
+    await fs.promises.mkdir(".build_cache", {recursive: true})
+    try {
+        await fs.promises.access(".git")
+        await new Promise((resolve, err) => {
+            exec("git rev-list --count HEAD > .build_cache/count", (execerr, stdout, stderr) => {
+                if (execerr) err(execerr)
+                resolve(stdout.trim())
+            })
+        })
+    }
+    catch {
+        ; // Not in a git directory - don't do anything
+    }
+    return versionstr + "paris" + (await fs.promises.readFile(".build_cache/count", {encoding: "utf8"})).trim()
+}
+
 async function add_beta(versionstr) {
     await fs.promises.mkdir(".build_cache", {recursive: true})
     try {
@@ -121,6 +138,16 @@ async function main() {
             } catch(e) {
                 console.warn("Unless you're the buildbot, ignore this error: " + e)
             }
+
+            // Save manifest.json
+            save_manifest(filename, manifest)
+            break
+        case "paris":
+            filename = "./build/manifest.json"
+            manifest = require("." + filename)
+            manifest.version = await add_paris(manifest.version)
+            manifest.version_name = manifest.version + "-" + (await get_hash())
+			manifest.applications.gecko.id = "{863dfbc1-34d6-43d5-9004-8e0f67abfb6c}"
 
             // Save manifest.json
             save_manifest(filename, manifest)

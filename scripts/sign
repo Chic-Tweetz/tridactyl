@@ -7,6 +7,14 @@ sign_and_submit() {
     (source AMOKEYS && (yarn run web-ext sign -s build --api-key "$AMOKEY" --api-secret "$AMOSECRET" "$@" || true))
 }
 
+publish_paris() {
+    yarn run clean
+    yarn run build --no-native
+    scripts/version.js paris
+    sed 's/"name": "Tridactyl"/"name": "Tridactyl: Paris"/' -i build/manifest.json
+    sign_and_submit --channel=unlisted
+}
+
 publish_beta_nonewtab() {
     yarn run clean
     yarn run build --no-native
@@ -58,6 +66,7 @@ publish_stable() {
 }
 
 case $1 in
+	paris) publish_paris;;
     stable) publish_stable;;
     nosignstable) build_no_sign_stable;;
     nosignbeta) build_no_sign_beta;;
