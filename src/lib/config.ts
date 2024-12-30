@@ -96,10 +96,10 @@ export class default_config {
             },
         },
         "^https://teams.microsoft.com": { // #5054
-            superignore: "true",
+            modeindicator: "false",
         },
         "^https://teams.live.com": { // #5054
-            superignore: "true",
+            modeindicator: "false",
         },
     }
 
@@ -1341,8 +1341,14 @@ export class default_config {
     readerurlintitle: "true" | "false" = "false"
 
     /**
-     *  Which css styles to add for hint elements.
-     **/
+     * Which css styles to add for hint elements.
+     *
+     * Use `hintstyles.fg` for text color, `hintstyles.bg` for background color, `hintstyles.outline` for outlines.
+     * Values may be set to "all" to enable the style for all hints, "active" to enable the style only for the currently selected hint, or "none" to disable the style completely.
+     *
+     * For example, run
+     *`:set hintstyles.bg none` and reload the page to remove background colors from all hints.
+     */
     hintstyles: { [key: string]: "all" | "active" | "none" } = {
         fg: "active",
         bg: "none",
