@@ -901,7 +901,7 @@ type HintBuilder = (
 
 /** @hidden */
 function buildHintsSimple(
-    hintables: Hintables[],
+    hintablesArray: Hintables[],
     onSelect: HintSelectedCallback,
 ) {
     const hintablesfiltered = hintablesArray.map(h => ({ elements: h.elements.filter(el => Hint.isHintable(el)), hintclasses: h.hintclasses }))
@@ -955,7 +955,7 @@ export const vimpHelper = {
 
 /** @hidden */
 function buildHintsVimperator(
-    hintables: Hintables[],
+    hintablesArray: Hintables[],
     onSelect: HintSelectedCallback,
 ) {
     const hintablesfiltered = hintablesArray.map(h => ({ elements: h.elements.filter(el => Hint.isHintable(el)), hintclasses: h.hintclasses }))
