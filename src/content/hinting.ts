@@ -61,10 +61,15 @@ class HintState {
     readonly hintHost = document.createElement("div")
 	readonly highlightHost = document.createElement("div")
 	readonly outlineHost = document.createElement("div")
-    readonly hints: Hint[] = []
+    readonly hintsBase: Hint[] = []
+
+    private filteredHints: Hint[] = []
     public selectedHints: Hint[] = []
     public filter = ""
+    public textfilter = [""]
     public hintchars = ""
+    
+    public filterMode = "tags"
 
     constructor(
         public filterFunc: HintFilter,
@@ -91,9 +96,25 @@ class HintState {
         left: ${-docElRect.x}px !important;
         `
     }
+    
+    get hints() {
+        return this.filteredHints
+    }
+
+    removeHiddenHints() {
+        this.filteredHints = this.activeHints
+    }
+    
+    hideFlags() {
+        this.hintHost.style.setProperty("display","none","important")
+    }
+
+    showFlags() {
+        this.hintHost.style.removeProperty("display")
+    }
 
     get activeHints() {
-        return this.hints.filter(h => !h.flag.hidden)
+        return this.filteredHints.filter(h => !h.flag.hidden)
     }
 
     /**
@@ -109,6 +130,16 @@ class HintState {
         this.hintHost.remove()
 		this.highlightHost.remove()
 		this.outlineHost.remove()
+
+        if (modeState.filterMode === "text") {
+            browser.runtime.sendMessage({
+                type: "controller_background",
+                command: "acceptExCmd",
+                args: [
+                    "hidecmdline",
+                ],
+            })
+        }
     }
 
     resolveHinting() {
@@ -891,6 +922,7 @@ class Hint {
         
         this.outline.style.cssText = this.highlight.style.cssText
     }
+    
 }
 
 /** @hidden */
@@ -1128,21 +1160,81 @@ function reset() {
 }
 
 function popKey() {
-    modeState.filter = modeState.filter.slice(0, -1)
-    modeState.filterFunc(modeState.filter)
+    switch (modeState.filterMode) {
+        case "text": {
+            let findex = modeState.textfilter.length - 1
+            if (modeState.textfilter[findex].length) {
+                modeState.textfilter[findex] = modeState.textfilter[findex].slice(0,-1)
+            } else if (modeState.textfilter.length > 1) {
+                modeState.textfilter.pop()
+            } else {
+                modeState.textfilter = [""]    
+            }
+
+            filterByText(modeState.textfilter)
+
+            browser.runtime.sendMessage({
+                type: "controller_background",
+                command: "acceptExCmd",
+                args: [
+                    "fillcmdline_nofocus hint/" + modeState.textfilter.join("/"),
+                ],
+            })
+
+            break;
+        }
+        default: {
+            modeState.filter = modeState.filter.slice(0, -1)
+            modeState.filterFunc(modeState.filter)
+        }
+    }
 }
 
 /** Add key to filtstr and filter */
 function pushKey(key) {
-    // The new key can be used to filter the hints
-    const originalFilter = modeState.filter
-    modeState.filter += key
-    modeState.filterFunc(modeState.filter)
+    switch (modeState.filterMode) {
+        case "text": {
+            const originalFilter = modeState.textfilter.map(s=>s)
 
-    if (modeState && !modeState.activeHints.length) {
-        // There are no more active hints, undo the change to the filter
-        modeState.filter = originalFilter
-        modeState.filterFunc(modeState.filter)
+            let findex = modeState.textfilter.length - 1
+            modeState.textfilter[findex] += key
+
+            filterByText(modeState.textfilter)
+
+            if (modeState && !modeState.activeHints.length) {
+                if (modeState.textfilter[findex].length) {
+                    modeState.textfilter = originalFilter.concat([key])
+                    filterByText(modeState.textfilter)
+                }
+            }
+
+            if (modeState && !modeState.activeHints.length) {
+                modeState.textfilter = originalFilter
+                filterByText(originalFilter)
+            }
+
+            browser.runtime.sendMessage({
+                type: "controller_background",
+                command: "acceptExCmd",
+                args: [
+                    "fillcmdline_nofocus hint/" + modeState.textfilter.join("/"),
+                ],
+            })
+
+            break;
+        }
+        default: {
+            // The new key can be used to filter the hints
+            const originalFilter = modeState.filter
+            modeState.filter += key
+            modeState.filterFunc(modeState.filter)
+        
+            if (modeState && !modeState.activeHints.length) {
+                // There are no more active hints, undo the change to the filter
+                modeState.filter = originalFilter
+                modeState.filterFunc(modeState.filter)
+            }
+        }
     }
 }
 
@@ -1264,6 +1356,75 @@ export function hintByText(match: string | RegExp) {
     ])
 }
 
+function filterByText(match?: string[] | undefined) {
+    if (modeState.filterMode !== "text") {
+        modeState.filterMode = "text"
+        modeState.textfilter = match || [""]
+
+        modeState.activeHints.forEach(h => {
+            if (!DOM.isVisible(h.target)) h.hidden = true
+        })
+        
+        if (!modeState.activeHints.length) {
+            reset()
+            return
+        }
+
+        modeState.removeHiddenHints()
+
+        if (!modeState.hints.includes(modeState.focusedHint)) {
+            // Unfocus the currently focused hint
+            modeState.focusedHint.focused = false
+    
+            // Focus the next hint
+            modeState.focusedHint = modeState.hints[0]
+            modeState.focusedHint.focused = true
+        }
+        hideFlags()
+
+        browser.runtime.sendMessage({
+            type: "controller_background",
+            command: "acceptExCmd",
+            args: [
+                "fillcmdline_nofocus hint/" + modeState.textfilter.join("/"),
+            ],
+        })
+    }
+
+    if (!match) return
+
+    const active = []
+    let shortestText = Number.MAX_SAFE_INTEGER
+    let focus = modeState.focusedHint
+
+    for (const hint of modeState.hints) {
+        let el = hint.target
+        let text
+        if (el instanceof HTMLInputElement) {
+            text = el.value
+        } else {
+            text = el.textContent
+        }
+
+        if (!text || text === "") {
+            hint.hidden = true
+        } else if (match.every(str => text.toUpperCase().includes(str.toUpperCase()))) {
+            hint.hidden = false
+            active.push(hint)
+            if (shortestText > text.length) {
+                shortestText = text.length
+                focus = hint
+            }
+        } else {
+            hint.hidden = true
+        }
+    }
+
+    modeState.focusedHint.focused = false
+    modeState.focusedHint = focus
+    modeState.focusedHint.focused = true
+}
+
 /** Return a predicate that checks whether an element matches a given text hinting filter
  * @hidden
  */
@@ -1317,6 +1478,11 @@ function selectFocusedHint(delay = false) {
     }
     if (delay) setTimeout(selectFocusedHintInternal, config.get("hintdelay"))
     else selectFocusedHintInternal()
+}
+
+function pushSpaceOrSelectFocusedHint() {
+    if (modeState.filterMode === "text") pushSpace()
+    else selectFocusedHint()
 }
 
 function focusNextHint() {
@@ -1380,6 +1546,46 @@ export function parser(keys: keyseq.MinimalKey[]) {
     return { exstr, value: exstr, isMatch: true }
 }
 
+function getHints(): { target: Element, flag: Element }[] {
+    return modeState.hints.map(h => ({ target: h.target, flag: h.flag }))
+}
+
+function hideFlags() {
+    modeState.hideFlags()
+}
+
+function showFlags() {
+    modeState.showFlags()
+}
+
+/**
+* it'd be kinda tricky to stop hint chars working for hidden elements
+* so this is more of a show hints that satisfy the predicate function
+* point being: hints hidden due to this will still be selectable
+*/
+function filterHints(predicate: (el: Element) => boolean, autoSelect: boolean): void {
+    const hints = modeState.hints
+    const active: Hint[] = []
+    
+    for (const h of hints) {
+        if (!predicate(h.target)) h.hidden = true
+        else {
+            h.hidden = false
+            active.push(h)
+        }
+    }
+    
+    if (active.length > 0) {
+        modeState.focusedHint.focused = false
+        modeState.focusedHint = active[0]
+        modeState.focusedHint.focused = true
+    }
+    
+    if (active.length === 1 && autoSelect === true) {
+        selectFocusedHint()
+    }
+}
+
 /** @hidden*/
 export function getHintCommands() {
     return {
@@ -1393,7 +1599,13 @@ export function getHintCommands() {
         selectFocusedHint,
         pushKey,
         pushSpace,
+        pushSpaceOrSelectFocusedHint,
         pushKeyCodePoint,
         popKey,
+        getHints,
+        filterHints,
+        filterByText,
+        hideFlags,
+        showFlags,
     }
 }

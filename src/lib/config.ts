@@ -424,7 +424,8 @@ export class default_config {
         "<ArrowLeft>": "hint.focusLeftHint",
         "<ArrowRight>": "hint.focusRightHint",
         "<Enter>": "hint.selectFocusedHint",
-        "<Space>": "hint.selectFocusedHint",
+        "<Space>": "hint.pushSpaceOrSelectFocusedHint",
+        "/": "hint.filterByText"
     }
 
     /**
