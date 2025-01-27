@@ -2,6 +2,10 @@
     font-family: "Aldrich";
     font-style: normal;
     font-weight: 400;
-    src: local("Aldrich Regular"), local("Aldrich-Regular"),
-        url("aldrich.ttf") format("truetype");
+    src:
+        local("Aldrich Regular"),
+        local("Aldrich-Regular"),
+        url("aldrich.ttf") format("truetype"),
+        url("https://fonts.gstatic.com/s/aldrich/v21/MCoTzAn-1s3IGyJMVacY37H6D_A.woff2")
+            format("woff2");
 }

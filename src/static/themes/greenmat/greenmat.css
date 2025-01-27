@@ -1,9 +1,11 @@
+@import "aldrich-ff.css";
+
 :root {
     --tridactyl-fg: #00eb00;
     --tridactyl-bg: #001500;
     --tridactyl-cmdl-fg: #00eb00;
     --tridactyl-cmdl-bg: #001500;
-    --tridactyl-font-family: "Aldrich";
+    --tridactyl-font-family: "Aldrich", sans-serif;
 
     --tridactyl-scrollbar-color: var(--tridactyl-bg) var(--tridactyl-fg);
 
@@ -11,7 +13,7 @@
     --tridactyl-header-second-bg: #003500;
     --tridactyl-header-third-bg: black;
 
-    --tridactyl-cmplt-font-family: "Aldrich";
+    --tridactyl-cmplt-font-family: var(--tridactyl-font-family);
     --tridactyl-cmplt-fg: var(--tridactyl-cmdl-fg);
     --tridactyl-cmplt-bg: rgba(0, 0, 0, 0.9);
     --tridactyl-cmplt-border-top: 1px solid var(--tridactyl-cmdl-bg);
@@ -31,7 +33,7 @@
 
     --tridactyl-hintspan-fg: #88ff00;
     --tridactyl-hintspan-bg: black;
-    --tridactyl-hintspan-font-family: "Aldrich";
+    --tridactyl-hintspan-font-family: var(--tridactyl-font-family);
 
     --tridactyl-hint-active-fg: #333;
     --tridactyl-hint-active-bg: #88ff00;
