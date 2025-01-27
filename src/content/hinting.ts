@@ -906,10 +906,11 @@ function buildHintsSimple(
 ) {
     const hintablesfiltered = hintablesArray.map(h => ({ elements: h.elements.filter(el => Hint.isHintable(el)), hintclasses: h.hintclasses }))
     const totalhints = hintablesfiltered.reduce((n, h) => n + h.elements.length, 0)
+    const allnames = Array.from(
+        hintnames(totalhints + modeState.hints.length),
+    ).slice(modeState.hints.length)
     for (const hintables of hintablesfiltered) {
-        const names = Array.from(
-            hintnames(totalhints + modeState.hints.length),
-        ).slice(modeState.hints.length)
+        const names = allnames.slice(modeState.hints.length)
         for (const [el, name] of izip(hintables.elements, names)) {
             logger.debug({ el, name })
             modeState.hintchars += name
@@ -960,10 +961,11 @@ function buildHintsVimperator(
 ) {
     const hintablesfiltered = hintablesArray.map(h => ({ elements: h.elements.filter(el => Hint.isHintable(el)), hintclasses: h.hintclasses }))
     const totalhints = hintablesfiltered.reduce((n, h) => n + h.elements.length, 0)
+    const allnames = Array.from(
+        hintnames(totalhints + modeState.hints.length),
+    ).slice(modeState.hints.length)
     for (const hintables of hintablesfiltered) {
-        const names = Array.from(
-            hintnames(totalhints + modeState.hints.length),
-        ).slice(modeState.hints.length)
+        const names = allnames.slice(modeState.hints.length)
         for (const [el, name] of izip(hintables.elements, names)) {
             let ft = elementFilterableText(el)
             ft = vimpHelper.sanitiseHintText(ft)
