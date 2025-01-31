@@ -81,6 +81,7 @@
 	--tritheme-moon-magenta2: rgb(255, 0, 124);
 	--tritheme-moon-blue1: rgb(101, 188, 255);
 	--tritheme-moon-green: rgb(195, 232, 141);
+	--tritheme-moon-hlbg: rgb(49, 63, 114);
 
 	/* rgba colours */
 	--tritheme-cyan-alphalow: rgba(var( --tritheme-cyan-rgb), 0.3);
@@ -129,8 +130,10 @@
 	--tridactyl-hint-overlay-outline: 1px solid var(--tritheme-purple);
 	--tridactyl-hint-overlay-active-outline: 1px solid var( --tritheme-moon-yellow);
 
+	--tridactyl-hint-fg: var(--tritheme-cyan);
+	--tridactyl-hint-bg: var(--tritheme-moon-hlbg);
 	--tridactyl-hint-outline: var(--tridactyl-hint-overlay-outline);
-	--tridactyl-hint-active-fg: var(--tritheme-yellow);
+	--tridactyl-hint-active-fg: black;
 	--tridactyl-hint-active-bg: var(--tritheme-moon-orange-bg);
 	--tridactyl-hint-active-outline: var(--tridactyl-hint-overlay-outline);
 
