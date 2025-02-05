@@ -10,6 +10,14 @@ export function setExCmds(excmds: any) {
     stored_excmds = excmds
 }
 
+export function getExCmds() {
+    return stored_excmds
+}
+
+export function setExcmdsForNamespace(namespace: string, excmds: any) {
+    stored_excmds[namespace] = excmds
+}
+
 /** Parse and execute ExCmds */
 export async function acceptExCmd(exstr: string): Promise<any> {
     // TODO: Errors should go to CommandLine.
