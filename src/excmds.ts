@@ -98,6 +98,7 @@ import { OpenMode } from "@src/lib/hint_util"
 import * as Proxy from "@src/lib/proxy"
 import * as arg from "@src/lib/arg_util"
 import * as R from "ramda"
+import * as treestyletab from "@src/interop/tst"
 
 /**
  * This is used to drive some excmd handling in `composite`.
@@ -2859,8 +2860,8 @@ export async function tabopen_helper({ addressarr = [], waitForDom = false }): P
         // and browser.search.search() seems to fix that problem.
         // See https://github.com/tridactyl/tridactyl/pull/4791.
         return openInNewTab(null, args, waitForDom)
-                   .then(tab => browser.tabs.get(tab.id))
-                   .then(tab => browser.search.search({tabId: tab.id, ...maybeURL}))
+            .then(tab => browser.tabs.get(tab.id))
+            .then(tab => browser.search.search({ tabId: tab.id, ...maybeURL }))
     }
 
     // Fall back to about:newtab
@@ -3055,7 +3056,7 @@ export async function tabcloseallto(side: string) {
 export async function tabdiscard(index: string) {
     let id: number
     if (index === "--all") {
-        return browser.tabs.query({}).then(ts => browser.tabs.discard(ts.map(t=>t.id)))
+        return browser.tabs.query({}).then(ts => browser.tabs.discard(ts.map(t => t.id)))
     } else if (index === undefined) {
         id = (await activeTab()).id
     } else {
@@ -3123,6 +3124,14 @@ export async function undo(item = "recent"): Promise<number> {
 //#background
 export async function tabmove(index = "$") {
     const aTab = await activeTab()
+    if (index === "#") {
+        const previousTab = await prevActiveTab()
+        if (previousTab.index - aTab.index === 1) {
+            // current tab is already right before the previously active tab
+            return []
+        }
+        return browser.tabs.move(aTab.id, { index: previousTab.index })
+    }
     const windowTabs = await browser.tabs.query({ currentWindow: true })
     const windowPinnedTabs = await browser.tabs.query({ currentWindow: true, pinned: true })
     const maxPinnedIndex = windowPinnedTabs.length - 1
@@ -3367,12 +3376,12 @@ export async function qall() {
  *
  * Not all schemas are supported, such as `about:*` and Firefox's built-in search engines. Tridactyl's searchurls and jsurls work fine - `:set searchengine google` will be sufficient for most users.
  *
- * If you try to open the command line in the sidebar things will break.
+ * If you try to open the command line in the sidebar things will break. `:hint -W sidebaropen` will open hints in the sidebar (potentially in the background if [[sidebartoggle]] has not been run).
  */
 //#background
 export async function sidebaropen(...urllike: string[]) {
     const url = await queryAndURLwrangler(urllike)
-    if (typeof url === "string") return browser.sidebarAction.setPanel({panel: url})
+    if (typeof url === "string") return browser.sidebarAction.setPanel({ panel: url })
     throw new Error("Unsupported URL for sidebar. If it was a search term try `:set searchengine google` first")
 }
 
@@ -3382,7 +3391,7 @@ export async function sidebaropen(...urllike: string[]) {
  * `:bind --mode=browser <C-.> jsua browser.sidebarAction.open(); tri.excmds.sidebaropen("https://mail.google.com/mail/mu")`
  */
 //#background
-export async function jsua(){
+export async function jsua() {
     throw new Error(":jsua can only be called through `bind --mode=browser` binds, see `:help jsua`")
 }
 
@@ -3392,7 +3401,7 @@ export async function jsua(){
  * `:bind --mode=browser <C-.> sidebartoggle`
  */
 //#background
-export async function sidebartoggle(){
+export async function sidebartoggle() {
     throw new Error(":sidebartoggle can only be called through `bind --mode=browser` binds, see `:help sidebartoggle`")
 }
 
@@ -3819,7 +3828,7 @@ async function getnexttabs(tabid: number, n?: number) {
 
     This re-executes the last *exstr*, not the last *excmd*. Some excmds operate internally by constructing and evaluating exstrs, others by directly invoking excmds without going through the exstr parser. For example, aucmds and keybindings evaluate exstrs and are repeatable, while commands like `:bmarks` directly invoke `:tabopen` and you'll repeat the `:bmarks` rather than the internal `:tabopen`.
 
-    It's difficult to execute this in the background script (`:jsb`, `:run_excmd`, `:autocmd TriStart`, `:source`), but if you you do, it will re-execute the last exstr that was executed in the background script. What this may have been is unpredictable and not precisely encouraged.
+    It's difficult to execute this in the background script (`:jsb`, `:run_excmd`, `:autocmd TriStart`, `:source`), but if you do, it will re-execute the last exstr that was executed in the background script. What this may have been is unpredictable and not precisely encouraged.
 
 */
 //#background
@@ -3947,7 +3956,7 @@ export function fillcmdline(...strarr: string[]) {
     const str = strarr.join(" ")
     showcmdline(false)
     logger.debug("excmds fillcmdline sending fillcmdline to commandline_frame")
-    return Messaging.messageOwnTab("commandline_frame", "fillcmdline", [str, true/*trailspace*/, true/*focus*/])
+    return Messaging.messageOwnTab("commandline_frame", "fillcmdline", [str, true /*trailspace*/, true /*focus*/])
 }
 
 /** Set the current value of the commandline to string *without* a trailing space */
@@ -3955,7 +3964,7 @@ export function fillcmdline(...strarr: string[]) {
 export function fillcmdline_notrail(...strarr: string[]) {
     const str = strarr.join(" ")
     showcmdline(false)
-    return Messaging.messageOwnTab("commandline_frame", "fillcmdline", [str, false/*trailspace*/, true/*focus*/])
+    return Messaging.messageOwnTab("commandline_frame", "fillcmdline", [str, false /*trailspace*/, true /*focus*/])
 }
 
 /** Show and fill the command line without focusing it */
@@ -4995,8 +5004,8 @@ export async function sanitise(...args: string[]) {
 
 /** Bind a quickmark for the current URL or space-separated list of URLs to a key on the keyboard.
 
-    Afterwards use go[key], gn[key], or gw[key] to [[open]], [[tabopen]], or
-    [[winopen]] the URL respectively.
+    Afterwards use go[key], gn[key], gw[ley], or gp[key] to [[open]], [[tabopen]], [[winopen]],
+    or [[winopen]] privately the URL respectively.
 
     Example:
     - `quickmark m https://mail.google.com/mail/u/0/#inbox`
@@ -5017,14 +5026,19 @@ export async function quickmark(key: string, ...addressarr: string[]) {
         await bind("go" + key, "open", address)
         await sleep(50)
         await bind("gw" + key, "winopen", address)
+        await sleep(50)
+        await bind("gp" + key, "winopen -private", address)
     } else {
         const compstring = addressarr.join("; tabopen ")
         const compstringwin = addressarr.join("; winopen ")
+        const compstringwinp = addressarr.join("; winopen -private ")
         await bind("gn" + key, "composite tabopen", compstring)
         await sleep(50)
         await bind("go" + key, "composite open", compstring)
         await sleep(50)
         await bind("gw" + key, "composite winopen", compstringwin)
+        await sleep(50)
+        await bind("gp" + key, "composite winopen -private", compstringwinp)
     }
 }
 
@@ -6208,3 +6222,34 @@ export async function elementunhide() {
     elem.className = elem.className.replace("TridactylKilledElem", "")
 }
 // vim: tabstop=4 shiftwidth=4 expandtab
+
+/**
+ * Move the current [Tree Style Tab](https://github.com/piroor/treestyletab) tree to be just in front of the tab specified. If TST is not installed, no error is raised and no action is taken.
+ */
+//#background
+export async function tstmove(index: string) {
+    const tabId = await idFromIndex(index)
+    treestyletab.moveTreeBefore(tabId)
+}
+
+/**
+ * Move the current TST tree to be right after the tab specified.
+ *
+ * See also: [[tstmove]]
+ */
+//#background
+export async function tstmoveafter(index: string) {
+    const tabId = await idFromIndex(index)
+    treestyletab.moveTreeAfter(tabId)
+}
+
+/**
+ * Attach current tree as a child to the selected parent.
+ *
+ * See also: [[tstmove]]
+ */
+//#background
+export async function tstattach(index: string) {
+    const tabId = await idFromIndex(index)
+    treestyletab.attachTree(tabId)
+}
