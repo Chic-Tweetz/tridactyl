@@ -57,7 +57,7 @@ span.TridactylHintA {
     z-index: 2147483647 !important;
 }
 
-span.TridactylHintUppercase {
+span.TridactylHintUppercase>span {
     text-transform: uppercase !important;
 }
 
