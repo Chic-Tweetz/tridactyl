@@ -1404,7 +1404,7 @@ export function hintByText(match: string | RegExp) {
  */
 function addTypedCharClass(hint: Hint, charCount: number) {
     for (let i = 0; i < charCount; ++i) {
-        hint.flag.children[i].className = "TridactylHintSpanCharTyped"
+        hint.flag.children[i].className = "TridactylHintCharTyped"
     }
     for (let i = charCount; i < hint.flag.children.length; ++i) {
         hint.flag.children[i].className = ""

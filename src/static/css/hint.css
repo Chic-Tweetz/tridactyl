@@ -24,6 +24,11 @@ span.TridactylHint.TridactylHintSpanActive {
 	border-color: var(--tridactyl-hintspan-active-border-color) !important;
 }
 
+span.TridactylHintCharTyped {
+    color: var(--tridactyl-hintspan-typed-fg) !important;
+    -webkit-text-fill-color: var(--tridactyl-hintspan-typed-fg) !important;
+}
+
 div.TridactylHintHighlight,
 div.TridactylHintHighlightActive,
 div.TridactylHintOutline,

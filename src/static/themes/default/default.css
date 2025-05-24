@@ -33,6 +33,8 @@
     --tridactyl-hintspan-border-style: solid;
     --tridactyl-hintspan-js-background: hsla(0, 0%, 65%);
 
+    --tridactyl-hintspan-typed-fg: grey;
+
 	--tridactyl-hintspan-active-fg: var(--tridactyl-hintspan-fg);
     --tridactyl-hintspan-active-bg: var(--tridactyl-hintspan-bg);
 	--tridactyl-hintspan-active-border-color: var(--tridactyl-hintspan-border-color);
