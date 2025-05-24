@@ -822,7 +822,15 @@ class Hint {
             height: rect.height,
         }
 
-        this.flag.textContent = name
+        // multiple spans per span
+        // this.flag.textContent = name
+        // instead, we'll give each char a span and a class so they can be styled later
+        for (const ch of name) {
+            const charspan = document.createElement("span")
+            charspan.textContent = ch
+            this.flag.appendChild(charspan)
+        }
+
         this.flag.className = "TridactylHint"
         if (config.get("hintuppercase") === "true") {
             this.flag.classList.add("TridactylHintUppercase")
@@ -956,8 +964,14 @@ function buildHintsSimple(
     hintablesArray: Hintables[],
     onSelect: HintSelectedCallback,
 ) {
-    const hintablesfiltered = hintablesArray.map(h => ({ elements: h.elements.filter(el => Hint.isHintable(el)), hintclasses: h.hintclasses }))
-    const totalhints = hintablesfiltered.reduce((n, h) => n + h.elements.length, 0)
+    const hintablesfiltered = hintablesArray.map(h => ({
+        elements: h.elements.filter(el => Hint.isHintable(el)),
+        hintclasses: h.hintclasses,
+    }))
+    const totalhints = hintablesfiltered.reduce(
+        (n, h) => n + h.elements.length,
+        0,
+    )
     const allnames = Array.from(
         hintnames(totalhints + modeState.hints.length),
     ).slice(modeState.hints.length)
@@ -1011,8 +1025,14 @@ function buildHintsVimperator(
     hintablesArray: Hintables[],
     onSelect: HintSelectedCallback,
 ) {
-    const hintablesfiltered = hintablesArray.map(h => ({ elements: h.elements.filter(el => Hint.isHintable(el)), hintclasses: h.hintclasses }))
-    const totalhints = hintablesfiltered.reduce((n, h) => n + h.elements.length, 0)
+    const hintablesfiltered = hintablesArray.map(h => ({
+        elements: h.elements.filter(el => Hint.isHintable(el)),
+        hintclasses: h.hintclasses,
+    }))
+    const totalhints = hintablesfiltered.reduce(
+        (n, h) => n + h.elements.length,
+        0,
+    )
     const allnames = Array.from(
         hintnames(totalhints + modeState.hints.length),
     ).slice(modeState.hints.length)
@@ -1071,6 +1091,8 @@ function filterHintsSimple(fstr) {
                 modeState.focusedHint = h
                 foundMatch = true
             }
+            // style the typed characters
+            addTypedCharClass(h, fstr.length)
             h.hidden = false
             active.push(h)
         }
@@ -1375,6 +1397,18 @@ export function hintByText(match: string | RegExp) {
         DOM.isVisible,
         hintByTextFilter(match),
     ])
+}
+
+/** Add class to typed hint chars so they can be styled however.
+ *  @hidden
+ */
+function addTypedCharClass(hint: Hint, charCount: number) {
+    for (let i = 0; i < charCount; ++i) {
+        hint.flag.children[i].className = "TridactylHintSpanCharTyped"
+    }
+    for (let i = charCount; i < hint.flag.children.length; ++i) {
+        hint.flag.children[i].className = ""
+    }
 }
 
 /** As I've added filterByText, I need a way to move back to hint char selection
