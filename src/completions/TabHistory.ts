@@ -6,7 +6,10 @@ class TabHistoryCompletionOption
     implements Completions.CompletionOptionFuse {
     public fuseKeys = []
 
-    constructor(public value: string, tab) {
+    constructor(
+        public value: string,
+        tab,
+    ) {
         super()
         this.fuseKeys.push(this.value, tab.title)
 
@@ -107,7 +110,7 @@ export class TabHistoryCompletionSource extends Completions.CompletionSourceFuse
             for (let i = 0; i <= parentCount; ++i) {
                 if (i === parentCount - 1) {
                     string += "┌─"
-                } else if ( i < parentCount ) {
+                } else if (i < parentCount) {
                     string += "  " // NB: non-breaking space
                 } else {
                     string += "· "
@@ -127,7 +130,9 @@ export class TabHistoryCompletionSource extends Completions.CompletionSourceFuse
         let history = await browserBg.sessions.getTabValue(tab[0].id, "history")
         if (!history) history = { list: [] }
         const tree = this.makeTree(history["list"])
-        history["list"] = this.flattenTree(tree[0]).reverse()
+        if (tree.length > 0) {
+            history["list"] = this.flattenTree(tree[0]).reverse()
+        }
         this.addIndicies(history["list"])
         this.addFormatTimeSpan(history["list"])
 

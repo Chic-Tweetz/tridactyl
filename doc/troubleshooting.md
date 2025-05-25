@@ -2,11 +2,13 @@
 
 If changing one of these settings fixes your bug, please visit the corresponding Github issue and let us know you encountered the bug.
 
--   `:seturl $URL_OF_THE_WEBSITE noiframe true` and then reload the page. This disables the Tridactyl commandline on a specific url. [#639](https://github.com/tridactyl/tridactyl/issues/639)
--   `:set allowautofocus true` and then reload the page. This allows website to use the javascript `focus()` function. [#550](https://github.com/tridactyl/tridactyl/issues/550)
--   `:set modeindicator false` and then reload the page. This disables the mode indicator. [#821](https://github.com/tridactyl/tridactyl/issues/821)
+- `:seturl $URL_OF_THE_WEBSITE noiframe true` and then reload the page. This disables the Tridactyl commandline on a specific url. [#639](https://github.com/tridactyl/tridactyl/issues/639)
+- `:set allowautofocus true` and then reload the page. This allows website to use the javascript `focus()` function. [#550](https://github.com/tridactyl/tridactyl/issues/550)
+- `:set modeindicator false` and then reload the page. This disables the mode indicator. [#821](https://github.com/tridactyl/tridactyl/issues/821)
 
--   `:seturl $URL_OF_THE_WEBSITE superignore true` and then reload the page. This totally disables Tridactyl from loading on the page. No specific issue, please make a new one: https://github.com/tridactyl/tridactyl/issues/821
+- `:seturl $URL_OF_THE_WEBSITE superignore true` and then reload the page. This totally disables Tridactyl from loading on the page. No specific issue, please make a new one: https://github.com/tridactyl/tridactyl/issues/821
+
+- "i can't open the commandline :((" `:seturl [the website you're on] commmandlineterriblewebsitefix true`. No need to file an issue with us, but maybe consider telling the website owner that they should [make their website less bad](https://infrequently.org/2024/11/if-not-react-then-what/). Our relevant issue is [#5050](https://github.com/tridactyl/tridactyl/issues/5050)
 
 # Firefox settings that can break Tridactyl
 
@@ -24,14 +26,14 @@ If you're on Unix, running `printf '%c\0\0\0{"cmd": "run", "command": "echo $PAT
 
 Tridactyl can selectively display logs for certain components. These components are the following:
 
--   messaging
--   cmdline
--   controller
--   containers
--   hinting
--   state
--   styling
--   excmds
+- messaging
+- cmdline
+- controller
+- containers
+- hinting
+- state
+- styling
+- excmds
 
 In order to activate logging for a component, you can use the following command: `:set logging.$COMPONENT debug`. Then, to get the logs, click the hamburger menu in the top right of Firefox, click "Web Developer", then click "Browser Console". Open the menu again and click "Web Console" in the same place.
 

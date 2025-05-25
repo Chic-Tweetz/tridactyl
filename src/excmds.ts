@@ -98,6 +98,7 @@ import { OpenMode } from "@src/lib/hint_util"
 import * as Proxy from "@src/lib/proxy"
 import * as arg from "@src/lib/arg_util"
 import * as R from "ramda"
+import * as treestyletab from "@src/interop/tst"
 
 /**
  * This is used to drive some excmd handling in `composite`.
@@ -327,6 +328,11 @@ import { getEditor } from "editor-adapter"
  * The editorcmd needs to accept a filename, stay in the foreground while it's edited, save the file and exit. By default the filename is added to the end of editorcmd, if you require control over the position of that argument, the first occurrence of %f in editorcmd is replaced with the filename. %l, if it exists, is replaced with the line number of the cursor and %c with the column number. For example:
  * ```
  * set editorcmd terminator -u -e "vim %f '+normal!%lGzv%c|'"
+ * ```
+ *
+ * Your editor of choice may need to run in a terminal. For example, this command opens neovim with kitty and exits after closing the editor:
+ * ```vim
+ * set editorcmd kitty nvim
  * ```
  *
  * You're probably better off using the default insert mode bind of `<C-i>` (Ctrl-i) to access this.
@@ -2859,8 +2865,8 @@ export async function tabopen_helper({ addressarr = [], waitForDom = false }): P
         // and browser.search.search() seems to fix that problem.
         // See https://github.com/tridactyl/tridactyl/pull/4791.
         return openInNewTab(null, args, waitForDom)
-                   .then(tab => browser.tabs.get(tab.id))
-                   .then(tab => browser.search.search({tabId: tab.id, ...maybeURL}))
+            .then(tab => browser.tabs.get(tab.id))
+            .then(tab => browser.search.search({ tabId: tab.id, ...maybeURL }))
     }
 
     // Fall back to about:newtab
@@ -3055,7 +3061,7 @@ export async function tabcloseallto(side: string) {
 export async function tabdiscard(index: string) {
     let id: number
     if (index === "--all") {
-        return browser.tabs.query({}).then(ts => browser.tabs.discard(ts.map(t=>t.id)))
+        return browser.tabs.query({}).then(ts => browser.tabs.discard(ts.map(t => t.id)))
     } else if (index === undefined) {
         id = (await activeTab()).id
     } else {
@@ -3088,16 +3094,16 @@ export async function undo(item = "recent"): Promise<number> {
         item === "recent"
             ? s => s.window || (s.tab && s.tab.windowId === current_win_id)
             : item === "tab"
-            ? s => s.tab
-            : item === "tab_strict"
-            ? s => s.tab && s.tab.windowId === current_win_id
-            : item === "window"
-            ? s => s.window
-            : !isNaN(parseInt(item, 10))
-            ? s => (s.tab || s.window).sessionId === item
-            : () => {
-                  throw new Error(`[undo] Invalid argument: ${item}. Must be one of "recent, "tab", "tab_strict", "window" or a sessionId (by selecting a session using the undo completion).`)
-              } // this won't throw an error if there isn't anything in the session list, but I don't think that matters
+              ? s => s.tab
+              : item === "tab_strict"
+                ? s => s.tab && s.tab.windowId === current_win_id
+                : item === "window"
+                  ? s => s.window
+                  : !isNaN(parseInt(item, 10))
+                    ? s => (s.tab || s.window).sessionId === item
+                    : () => {
+                          throw new Error(`[undo] Invalid argument: ${item}. Must be one of "recent, "tab", "tab_strict", "window" or a sessionId (by selecting a session using the undo completion).`)
+                      } // this won't throw an error if there isn't anything in the session list, but I don't think that matters
     const session = sessions.find(predicate)
 
     if (session) {
@@ -3123,6 +3129,14 @@ export async function undo(item = "recent"): Promise<number> {
 //#background
 export async function tabmove(index = "$") {
     const aTab = await activeTab()
+    if (index === "#") {
+        const previousTab = await prevActiveTab()
+        if (previousTab.index - aTab.index === 1) {
+            // current tab is already right before the previously active tab
+            return []
+        }
+        return browser.tabs.move(aTab.id, { index: previousTab.index })
+    }
     const windowTabs = await browser.tabs.query({ currentWindow: true })
     const windowPinnedTabs = await browser.tabs.query({ currentWindow: true, pinned: true })
     const maxPinnedIndex = windowPinnedTabs.length - 1
@@ -3367,12 +3381,12 @@ export async function qall() {
  *
  * Not all schemas are supported, such as `about:*` and Firefox's built-in search engines. Tridactyl's searchurls and jsurls work fine - `:set searchengine google` will be sufficient for most users.
  *
- * If you try to open the command line in the sidebar things will break.
+ * If you try to open the command line in the sidebar things will break. `:hint -W sidebaropen` will open hints in the sidebar (potentially in the background if [[sidebartoggle]] has not been run).
  */
 //#background
 export async function sidebaropen(...urllike: string[]) {
     const url = await queryAndURLwrangler(urllike)
-    if (typeof url === "string") return browser.sidebarAction.setPanel({panel: url})
+    if (typeof url === "string") return browser.sidebarAction.setPanel({ panel: url })
     throw new Error("Unsupported URL for sidebar. If it was a search term try `:set searchengine google` first")
 }
 
@@ -3382,7 +3396,7 @@ export async function sidebaropen(...urllike: string[]) {
  * `:bind --mode=browser <C-.> jsua browser.sidebarAction.open(); tri.excmds.sidebaropen("https://mail.google.com/mail/mu")`
  */
 //#background
-export async function jsua(){
+export async function jsua() {
     throw new Error(":jsua can only be called through `bind --mode=browser` binds, see `:help jsua`")
 }
 
@@ -3392,7 +3406,7 @@ export async function jsua(){
  * `:bind --mode=browser <C-.> sidebartoggle`
  */
 //#background
-export async function sidebartoggle(){
+export async function sidebartoggle() {
     throw new Error(":sidebartoggle can only be called through `bind --mode=browser` binds, see `:help sidebartoggle`")
 }
 
@@ -3819,7 +3833,7 @@ async function getnexttabs(tabid: number, n?: number) {
 
     This re-executes the last *exstr*, not the last *excmd*. Some excmds operate internally by constructing and evaluating exstrs, others by directly invoking excmds without going through the exstr parser. For example, aucmds and keybindings evaluate exstrs and are repeatable, while commands like `:bmarks` directly invoke `:tabopen` and you'll repeat the `:bmarks` rather than the internal `:tabopen`.
 
-    It's difficult to execute this in the background script (`:jsb`, `:run_excmd`, `:autocmd TriStart`, `:source`), but if you you do, it will re-execute the last exstr that was executed in the background script. What this may have been is unpredictable and not precisely encouraged.
+    It's difficult to execute this in the background script (`:jsb`, `:run_excmd`, `:autocmd TriStart`, `:source`), but if you do, it will re-execute the last exstr that was executed in the background script. What this may have been is unpredictable and not precisely encouraged.
 
 */
 //#background
@@ -3947,7 +3961,7 @@ export function fillcmdline(...strarr: string[]) {
     const str = strarr.join(" ")
     showcmdline(false)
     logger.debug("excmds fillcmdline sending fillcmdline to commandline_frame")
-    return Messaging.messageOwnTab("commandline_frame", "fillcmdline", [str, true/*trailspace*/, true/*focus*/])
+    return Messaging.messageOwnTab("commandline_frame", "fillcmdline", [str, true /*trailspace*/, true /*focus*/])
 }
 
 /** Set the current value of the commandline to string *without* a trailing space */
@@ -3955,7 +3969,7 @@ export function fillcmdline(...strarr: string[]) {
 export function fillcmdline_notrail(...strarr: string[]) {
     const str = strarr.join(" ")
     showcmdline(false)
-    return Messaging.messageOwnTab("commandline_frame", "fillcmdline", [str, false/*trailspace*/, true/*focus*/])
+    return Messaging.messageOwnTab("commandline_frame", "fillcmdline", [str, false /*trailspace*/, true /*focus*/])
 }
 
 /** Show and fill the command line without focusing it */
@@ -4995,8 +5009,8 @@ export async function sanitise(...args: string[]) {
 
 /** Bind a quickmark for the current URL or space-separated list of URLs to a key on the keyboard.
 
-    Afterwards use go[key], gn[key], or gw[key] to [[open]], [[tabopen]], or
-    [[winopen]] the URL respectively.
+    Afterwards use go[key], gn[key], gw[ley], or gp[key] to [[open]], [[tabopen]], [[winopen]],
+    or [[winopen]] privately the URL respectively.
 
     Example:
     - `quickmark m https://mail.google.com/mail/u/0/#inbox`
@@ -5017,14 +5031,19 @@ export async function quickmark(key: string, ...addressarr: string[]) {
         await bind("go" + key, "open", address)
         await sleep(50)
         await bind("gw" + key, "winopen", address)
+        await sleep(50)
+        await bind("gp" + key, "winopen -private", address)
     } else {
         const compstring = addressarr.join("; tabopen ")
         const compstringwin = addressarr.join("; winopen ")
+        const compstringwinp = addressarr.join("; winopen -private ")
         await bind("gn" + key, "composite tabopen", compstring)
         await sleep(50)
         await bind("go" + key, "composite open", compstring)
         await sleep(50)
         await bind("gw" + key, "composite winopen", compstringwin)
+        await sleep(50)
+        await bind("gp" + key, "composite winopen -private", compstringwinp)
     }
 }
 
@@ -5382,7 +5401,6 @@ export async function hint(...args: string[]): Promise<any> {
 
                   if (elem.href && elem.href !== "javascript:void(0)") {
                       elem.focus()
-
                       switch (config.openMode) {
                           case OpenMode.Default:
                               DOM.simulateClick(elem)
@@ -5854,7 +5872,7 @@ async function js_helper(str: string[]) {
     }
 
     if (doSource) {
-        let sourcePath = jsContent
+        let sourcePath = jsContent.trim()
         if (fromRC) {
             const sep = "/"
             const rcPath = (await Native.getrcpath("unix")).split(sep).slice(0, -1)
@@ -5877,22 +5895,34 @@ async function js_helper(str: string[]) {
  *
  * Usage:
  *
- *        `js [-p] javascript code ... [arg]`
+ *     `js javascript code ...`
  *
- *        `js [-s|-r|-p] javascript_filename [arg]`
+ *     `js -p javascript code ... arg`
+ *
+ *     `js [-s|-r] javascript_filename`
+ *
+ *     `js -p [-s|-r] javascript_filename arg`
+ *
+ *     `js -d³ [-s|-r] javascript_filename³ arg1 arg2 ...`
+ *     (where `³` is any char  that you can guarantee won't appear in your JS code)
  *
  *   - options
- *     - -p pass an argument to js for use with `composite`. The argument is passed as the last space-separated argument of `js`, i.e. `str[str.length-1]` and stored in the magic variable JS_ARG - see below for example usage.
- *    -d[delimiter character] to take a space-separated array of arguments after the delimiter, stored in the magic variable `JS_ARGS` (which is an array).
- *     - -s load the js source from a Javascript file.
- *     - -r load the js source from a Javascript file relative to your RC file. (NB: will throw an error if no RC file exists)
+ *     - `-p` pass an argument to js for use with `composite`. The argument is passed as the last space-separated argument of `js`, i.e. `str[str.length-1]` and stored in the magic variable `JS_ARG` (string) - see below for example usage.
+ *     - `-d[delimiter character]` to take a space-separated array of arguments after the delimiter, stored in the magic variable `JS_ARGS` (array) - see below for example usage.
+ *     - `-s` load the js source from a Javascript file.
+ *     - `-r` load the js source from a Javascript file relative to your RC file. (NB: will throw an error if no RC file exists)
  *
  * Some of Tridactyl's functions are accessible here via the `tri` object. Just do `console.log(tri)` in the web console on the new tab page to see what's available.
  * `tri.bg` is an object enabling access to the background script's context. It works similarly to the `tri.tabs` objects documented in the [[jsb]] documentation.
  *
- * If you want to pipe an argument to `js`, you need to use the "-p" flag or "-d" flag with an argument and then use the JS_ARG global variable, e.g:
+ * If you want to pipe an argument to `js`, you need to use the `-p` flag or `-d` flag with an argument and then use the JS_ARG global variable, e.g:
  *
  *     `composite get_current_url | js -p alert(JS_ARG)`
+ *
+ * You can also use `-p` to make simple single-argument ex-commands:
+ *
+ *     `command alert_msg js -p window.alert(new Date().toISOFormat() + " " + JS_ARG)
+ *     And use it like: `alert_msg HeyYou`
  *
  * To run JavaScript from a source file:
  *
@@ -5910,6 +5940,9 @@ async function js_helper(str: string[]) {
  *  You can use `-d` to make your own ex-commands:
  *
  *      `command loudecho js -d€ window.alert(JS_ARGS.join(" "))€`
+ *      And use it like: `loudecho this is a message!`
+ *
+ *      Everything after `€` will be available in `JS_ARGS`, starting at index 1 (the first item is usually an empty string).
  *
  */
 /* tslint:disable:no-identical-functions */
@@ -5930,7 +5963,7 @@ export async function js(...str: string[]) {
  * - Run `alert()` in a tab whose id is 9:
  *   `:jsb tri.tabs[9].alert()`
  *
- * You can also directly access the corresonding property in all tabs by using
+ * You can also directly access the corresponding property in all tabs by using
  * the "tabs" object itself, e.g.
  *
  * - Build a string containing the id of the active element of each tab:
@@ -5943,6 +5976,10 @@ export async function js(...str: string[]) {
  * When fetching a value or running a function in a tab through the `tabs` property, the returned value is a Promise and must be awaited.
  * Setting values through the `tab` property is asynchronous too and there is no way to await this operation.
  * If you need to ensure that the value has been set before performing another action, use tri.tabs[tab.id].tri.excmds.js to set the value instead and await the result.
+ *
+ * NOTE: Using plain `console.log` with `jsb`:
+ * Since the code is being executed in the background context, logs are sent to the Browser Console instead of the usual Web Console.
+ * To open the extension-specific console, open `about:debugging`, click `This Firefox`, locate Tridactyl then click `Inspect`.
  */
 /* tslint:disable:no-identical-functions */
 //#background
@@ -6208,3 +6245,34 @@ export async function elementunhide() {
     elem.className = elem.className.replace("TridactylKilledElem", "")
 }
 // vim: tabstop=4 shiftwidth=4 expandtab
+
+/**
+ * Move the current [Tree Style Tab](https://github.com/piroor/treestyletab) tree to be just in front of the tab specified. If TST is not installed, no error is raised and no action is taken.
+ */
+//#background
+export async function tstmove(index: string) {
+    const tabId = await idFromIndex(index)
+    treestyletab.moveTreeBefore(tabId)
+}
+
+/**
+ * Move the current TST tree to be right after the tab specified.
+ *
+ * See also: [[tstmove]]
+ */
+//#background
+export async function tstmoveafter(index: string) {
+    const tabId = await idFromIndex(index)
+    treestyletab.moveTreeAfter(tabId)
+}
+
+/**
+ * Attach current tree as a child to the selected parent.
+ *
+ * See also: [[tstmove]]
+ */
+//#background
+export async function tstattach(index: string) {
+    const tabId = await idFromIndex(index)
+    treestyletab.attachTree(tabId)
+}

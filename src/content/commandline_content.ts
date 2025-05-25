@@ -39,6 +39,12 @@ let enabled = false
 async function init() {
     const noiframe = await config.getAsync("noiframe")
     const notridactyl = await config.getAsync("superignore")
+
+    if (document.contentType.includes("xml")) {
+        logger.info("Content type is xml; aborting iframe injection.")
+        return
+    }
+
     if (noiframe === "false" && notridactyl !== "true" && !enabled) {
         hide()
         document.documentElement.appendChild(cmdline_iframe)
@@ -47,25 +53,39 @@ async function init() {
         await theme(window.document.querySelector(":root"))
 
         // Fix #5050: reinsert iframe after React throws a tantrum
-        new MutationObserver(changes =>
-            changes.find(change => {
-                for (const addedNode of change.addedNodes) {
-                    // detect React server-side render failure by added <link rel='modulepreload'>
-                    if (addedNode instanceof HTMLLinkElement && addedNode.rel === "modulepreload") {
-                        reactIsCrap()
-                    }
-                }
-            })
-        ).observe(cmdline_iframe.parentNode, { childList: true, subtree: true })
+        config.getAsync("commandlineterriblewebsitefix").then(enabled => {
+            if (enabled == "true") {
+                reactIsCrap()
+            } else {
+                new MutationObserver(changes =>
+                    changes.find(change => {
+                        for (const addedNode of change.addedNodes) {
+                            // detect React server-side render failure by added <link rel='modulepreload'>
+                            if (
+                                addedNode instanceof HTMLLinkElement &&
+                                addedNode.rel === "modulepreload"
+                            ) {
+                                reactIsCrap()
+                            }
+                        }
+                    }),
+                ).observe(cmdline_iframe.parentNode, {
+                    childList: true,
+                    subtree: true,
+                })
+            }
+        })
     }
 }
 
 let hammering_react = false
-export async function reactIsCrap(){
+export async function reactIsCrap() {
     if (hammering_react) return
     hammering_react = true
-    cmdline_logger.warning("Possible react server-side render failure detected, starting iframe protection loop")
-    while(true){
+    cmdline_logger.warning(
+        "Possible react server-side render failure detected, starting iframe protection loop",
+    )
+    while (true) {
         if (cmdline_iframe.contentWindow == null) {
             makeIframe()
             document.documentElement.appendChild(cmdline_iframe)

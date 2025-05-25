@@ -35,24 +35,28 @@
 
     --tridactyl-hintspan-typed-fg: grey;
 
-	--tridactyl-hintspan-active-fg: var(--tridactyl-hintspan-fg);
+    --tridactyl-hintspan-active-fg: var(--tridactyl-hintspan-fg);
     --tridactyl-hintspan-active-bg: var(--tridactyl-hintspan-bg);
-	--tridactyl-hintspan-active-border-color: var(--tridactyl-hintspan-border-color);
+    --tridactyl-hintspan-active-border-color: var(
+        --tridactyl-hintspan-border-color
+    );
 
     /* Element highlights */
     --tridactyl-hint-active-fg: var(--tridactyl-fg);
     --tridactyl-hint-active-bg: #88ff00;
     --tridactyl-hint-active-outline: 1px solid #cc0000;
 
-	--tridactyl-hint-fg: var(--tridactyl-fg);
+    --tridactyl-hint-fg: var(--tridactyl-fg);
     --tridactyl-hint-bg: rgba(255, 255, 0, 0.25);
     --tridactyl-hint-outline: 1px solid #8f5902;
-	
-	--tridactyl-hint-overlay-highlight-opacity: 0.25;
-	--tridactyl-hint-overlay-highlight: var(--tridactyl-hint-bg);
-	--tridactyl-hint-overlay-outline: var(--tridactyl-hint-outline);
-	--tridactyl-hint-overlay-active-highlight: var(--tridactyl-hint-active-bg);
-	--tridactyl-hint-overlay-active-outline: var(--tridactyl-hint-active-outline);
+
+    --tridactyl-hint-overlay-highlight-opacity: 0.25;
+    --tridactyl-hint-overlay-highlight: var(--tridactyl-hint-bg);
+    --tridactyl-hint-overlay-outline: var(--tridactyl-hint-outline);
+    --tridactyl-hint-overlay-active-highlight: var(--tridactyl-hint-active-bg);
+    --tridactyl-hint-overlay-active-outline: var(
+        --tridactyl-hint-active-outline
+    );
 
     /* :viewsource */
     --tridactyl-vs-bg: var(--tridactyl-bg);
@@ -72,7 +76,7 @@
     --tridactyl-cmplt-option-height: 1.4em;
     --tridactyl-cmplt-fg: var(--tridactyl-fg);
     --tridactyl-cmplt-bg: var(--tridactyl-bg);
-    --tridactyl-cmplt-font-size: calc(var(--tridactyl-font-size) * 10/12);
+    --tridactyl-cmplt-font-size: calc(var(--tridactyl-font-size) * 9 / 12);
     --tridactyl-cmplt-font-family: monospace;
     /* i don't think 0.5px is redered */
     --tridactyl-cmplt-border-top: 1px solid grey;
