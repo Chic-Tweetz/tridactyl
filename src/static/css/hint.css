@@ -6,7 +6,7 @@ span.TridactylHint {
     font-size: var(--tridactyl-hintspan-font-size) !important;
     font-weight: var(--tridactyl-hintspan-font-weight) !important;
     color: var(--tridactyl-hintspan-fg) !important;
-	-webkit-text-fill-color: var(--tridactyl-hintspan-fg) !important;
+    -webkit-text-fill-color: var(--tridactyl-hintspan-fg) !important;
     background: var(--tridactyl-hintspan-bg) !important;
     border-color: var(--tridactyl-hintspan-border-color) !important;
     border-width: var(--tridactyl-hintspan-border-width) !important;
@@ -18,10 +18,10 @@ span.TridactylHint {
 }
 
 span.TridactylHint.TridactylHintSpanActive {
-	background: var(--tridactyl-hintspan-active-bg) !important;
-	color: var(--tridactyl-hintspan-active-fg) !important;
-	-webkit-text-fill-color: var(--tridactyl-hintspan-active-fg) !important;
-	border-color: var(--tridactyl-hintspan-active-border-color) !important;
+    background: var(--tridactyl-hintspan-active-bg) !important;
+    color: var(--tridactyl-hintspan-active-fg) !important;
+    -webkit-text-fill-color: var(--tridactyl-hintspan-active-fg) !important;
+    border-color: var(--tridactyl-hintspan-active-border-color) !important;
 }
 
 span.TridactylHintCharTyped {
@@ -33,37 +33,37 @@ div.TridactylHintHighlight,
 div.TridactylHintHighlightActive,
 div.TridactylHintOutline,
 div.TridactylHintOutlineActive {
-	position: absolute !important;
+    position: absolute !important;
 }
 
 div.TridactylHintHighlightHost {
-	opacity: var(--tridactyl-hint-overlay-highlight-opacity) !important;
+    opacity: var(--tridactyl-hint-overlay-highlight-opacity) !important;
 }
 
 div.TridactylHintHighlight {
-	background: var(--tridactyl-hint-overlay-highlight) !important;
+    background: var(--tridactyl-hint-overlay-highlight) !important;
 }
 div.TridactylHintHighlightActive {
-	background: var(--tridactyl-hint-overlay-active-highlight) !important;
+    background: var(--tridactyl-hint-overlay-active-highlight) !important;
 }
 div.TridactylHintOutline {
-	outline: var(--tridactyl-hint-overlay-outline) !important;
+    outline: var(--tridactyl-hint-overlay-outline) !important;
 }
 div.TridactylHintOutlineActive {
-	outline: var(--tridactyl-hint-overlay-active-outline) !important;
+    outline: var(--tridactyl-hint-overlay-active-outline) !important;
 }
 
 span.TridactylHintA {
     z-index: 2147483647 !important;
 }
 
-span.TridactylHintUppercase>span {
+span.TridactylHintUppercase > span {
     text-transform: uppercase !important;
 }
 
 div.TridactylHintHighlightActive,
 div.TridactylHintOutlineActive {
-	z-index: 1 !important;
+    z-index: 1 !important;
 }
 
 .TridactylHintElem,
@@ -75,11 +75,11 @@ div.TridactylHintOutlineActive {
 div.TridactylHintHost,
 div.TridactylHintHighlightHost,
 div.TridactylHintOutlineHost {
-	left: 0 !important;
-	top: 0 !important;
+    left: 0 !important;
+    top: 0 !important;
     position: absolute !important;
-	contain: layout style !important;
-	z-index: 2147483647 !important;
+    contain: layout style !important;
+    z-index: 2147483647 !important;
 }
 
 span.TridactylJSHint {
