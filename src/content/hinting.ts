@@ -565,6 +565,7 @@ export function hintPage(
             ) {
                 modeState.shiftHints()
             }
+            removeFilteredCharClass()
         })
     }
 
@@ -822,9 +823,7 @@ class Hint {
             height: rect.height,
         }
 
-        // multiple spans per span
-        // this.flag.textContent = name
-        // instead, we'll give each char a span and a class so they can be styled later
+        // A span for each char so typed chars can be styled differently
         for (const ch of name) {
             const charspan = document.createElement("span")
             charspan.textContent = ch
@@ -858,7 +857,12 @@ class Hint {
 
     setName(n: string) {
         this.name = n
-        this.flag.textContent = this.name
+        this.flag.textContent = ""
+        for (const ch of n) {
+            const charspan = document.createElement("span")
+            charspan.textContent = ch
+            this.flag.appendChild(charspan)
+        }
     }
 
     // These styles would be better with pseudo selectors. Can we do custom ones?
@@ -1067,6 +1071,25 @@ function elementFilterableText(el: Element): string {
     return text.slice(0, 2048).toLowerCase() || ""
 }
 
+/** Apply a class to hint tag chars that have been typed so they can be styled.
+@hidden */
+function addFilteredCharClass(hint: Hint, fstr: string) {
+    for (let i = 0; i < fstr.length; ++i) {
+        hint.flag.children[i].className = "TridactylHintCharPressed"
+    }
+    for (let i = fstr.length; i < hint.flag.children.length; ++i) {
+        hint.flag.children[i].className = ""
+    }
+}
+
+/** Remove the filtered char class from all hints - for resetting the style when rapid hinting
+@hidden */
+function removeFilteredCharClass() {
+    document
+        .querySelectorAll(".TridactylHintCharPressed")
+        .forEach(el => el.classList.remove("TridactylHintCharPressed"))
+}
+
 /** @hidden */
 type HintFilter = (s: string) => void
 
@@ -1094,6 +1117,7 @@ function filterHintsSimple(fstr) {
             // style the typed characters
             addTypedCharClass(h, fstr.length)
             h.hidden = false
+            addFilteredCharClass(h, fstr)
             active.push(h)
         }
     }
@@ -1139,6 +1163,12 @@ function filterHintsVimperator(query: string, reflow = false) {
         const names = hintnames(hints.length)
         for (const [hint, name] of izip(hints, names)) {
             hint.name = name
+            hint.flag.textContent = ""
+            for (const ch of hint.name) {
+                const charspan = document.createElement("span")
+                charspan.textContent = ch
+                hint.flag.appendChild(charspan)
+            }
         }
     }
 
@@ -1150,6 +1180,7 @@ function filterHintsVimperator(query: string, reflow = false) {
         if (run.isHintChar) {
             // Filter by label
             active = active.filter(hint => hint.name.startsWith(run.str))
+            active.forEach(hint => addFilteredCharClass(hint, run.str))
         } else {
             // By text
             active = active.filter(hint =>
@@ -1171,7 +1202,6 @@ function filterHintsVimperator(query: string, reflow = false) {
     for (const hint of modeState.hints) {
         if (active.includes(hint)) {
             hint.hidden = false
-            hint.flag.textContent = hint.name
         } else {
             hint.hidden = true
         }

@@ -24,9 +24,9 @@ span.TridactylHint.TridactylHintSpanActive {
     border-color: var(--tridactyl-hintspan-active-border-color) !important;
 }
 
-span.TridactylHintCharTyped {
-    color: var(--tridactyl-hintspan-typed-fg) !important;
-    -webkit-text-fill-color: var(--tridactyl-hintspan-typed-fg) !important;
+span.TridactylHintCharPressed {
+    color: var(--tridactyl-hintspan-pressed-fg) !important;
+    -webkit-text-fill-color: var(--tridactyl-hintspan-pressed-fg) !important;
 }
 
 div.TridactylHintHighlight,
@@ -57,6 +57,7 @@ span.TridactylHintA {
     z-index: 2147483647 !important;
 }
 
+span.TridactylHintUppercase,
 span.TridactylHintUppercase > span {
     text-transform: uppercase !important;
 }
