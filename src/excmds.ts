@@ -362,8 +362,9 @@ export async function editor() {
     window.addEventListener("beforeunload", beforeUnloadListener)
 
     let ans
+    const useHtml = await config.getAsync("editorusehtml") == "true"
     try {
-        const editor = getEditor(elem, { preferHTML: true })
+        const editor = getEditor(elem, { preferHTML: useHtml })
         const text = await editor.getContent()
         const pos = await editor.getCursor()
 
@@ -766,7 +767,7 @@ export async function nativeinstall() {
     return done
 }
 
-/** Writes current config to a file.
+/** Writes current config to a file. By default, the config file is "~/.tridactylrc".
 
     NB: an RC file is not required for your settings to persist: all settings are stored in a local Firefox storage database by default as soon as you set them.
 
@@ -2742,7 +2743,9 @@ export async function tabgrab(id: string) {
 
     The special flag "--focus-address-bar" should focus the Firefox address bar after opening if no URL is provided.
 
-    These three can be combined in any order, but need to be placed as the first arguments.
+    The `--discard` flag opens a tab in the background without attempting to load it.
+
+    These can be combined in any order, but need to be placed as the first arguments.
 
     Unlike Firefox's Ctrl-t shortcut, this opens tabs immediately after the
     currently active tab rather than at the end of the tab list because that is
