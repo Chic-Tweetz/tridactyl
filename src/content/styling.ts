@@ -48,6 +48,13 @@ export async function theme(element) {
     }
     // DEPRECATION ENDS
 
+    if (insertedCSS) {
+        // Typescript doesn't seem to be aware than remove/insertCSS's tabid
+        // argument is optional
+        await browserBg.tabs.removeCSS(await ownTabId(), customCss)
+        insertedCSS = false
+    }
+
     // Insert hint CSS rules according to config - copying how themes are inserted
     if (insertedHintElemCSS) {
         await browserBg.tabs.removeCSS(await ownTabId(), hintElemCss)
@@ -55,48 +62,26 @@ export async function theme(element) {
     }
 
     const hintElemOptions = await config.getAsync("hintstyles")
+    const insertExtraRules = !Object.values(hintElemOptions).every(
+        conf => conf === "none",
+    )
 
-    const hintElemRules =
-        (hintElemOptions.fg === "all"
-            ? "    color: var(--tridactyl-hint-active-fg) !important;\n"
-            : "") +
-        (hintElemOptions.bg === "all"
-            ? "    background: var(--tridactyl-hint-bg) !important;\n"
-            : "") +
-        (hintElemOptions.outline === "all"
-            ? "    outline: var(--tridactyl-hint-outline) !important;\n"
-            : "")
-
-    const activeElemRules =
-        (hintElemOptions.fg !== "none"
-            ? "    color: var(--tridactyl-hint-active-fg) !important;\n"
-            : "") +
-        (hintElemOptions.bg !== "none"
-            ? "    background: var(--tridactyl-hint-active-bg) !important;\n"
-            : "") +
-        (hintElemOptions.outline !== "none"
-            ? "    outline: var(--tridactyl-hint-active-outline) !important;\n"
-            : "")
-
-    hintElemCss.code =
-        (hintElemRules !== ""
-            ? ".TridactylHintElem {\n" + hintElemRules + "}\n"
-            : "") +
-        (activeElemRules !== ""
-            ? ".TridactylHintActive {\n" + activeElemRules + "}\n"
-            : "")
-
-    if (hintElemCss.code !== "") {
-        await browserBg.tabs.insertCSS(await ownTabId(), hintElemCss)
-        insertedHintElemCSS = true
-    }
-
-    if (insertedCSS) {
-        // Typescript doesn't seem to be aware than remove/insertCSS's tabid
-        // argument is optional
-        await browserBg.tabs.removeCSS(await ownTabId(), customCss)
-        insertedCSS = false
-    }
+    // Build optional css string for hint elems according to config
+    hintElemCss.code = insertExtraRules
+        ? [
+              ["fg", "color"],
+              ["bg", "background"],
+              ["outline", "outline"],
+          ]
+              .reduce(
+                  ([hintElems, activeElems], cur) => [
+                      `${hintElems}${hintElemOptions[cur[0]] === "all" ? cur[1] + ": var(--tridactyl-hint-" + cur[0] + ") !important;" : ""}`,
+                      `${activeElems}${hintElemOptions[cur[0]] !== "none" ? cur[1] + ": var(--tridactyl-hint-active-" + cur[0] + ") !important;" : ""}`,
+                  ],
+                  ["\n.TridactylHintElem {", ".TridactylHintActive {"],
+              )
+              .join("}") + "}\n"
+        : ""
 
     const newTheme = await config.getAsync("theme")
 
@@ -113,6 +98,11 @@ export async function theme(element) {
     // DEPRECATION ENDS
 
     // Insert custom css if needed
+    if (hintElemCss.code !== "") {
+        await browserBg.tabs.insertCSS(await ownTabId(), hintElemCss)
+        insertedHintElemCSS = true
+    }
+
     if (newTheme !== "default") {
         customCss.code = THEMES.includes(newTheme)
             ? "@import url('" +
@@ -152,6 +142,7 @@ function retheme() {
 }
 
 config.addChangeListener("theme", retheme)
+config.addChangeListener("hintstyles", retheme)
 
 /**
  * DEPRECATED
