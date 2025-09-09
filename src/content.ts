@@ -242,9 +242,97 @@ config.getAsync("preventautofocusjackhammer").then(allowautofocus => {
 
 logger.info("Loaded commandline content?", commandline_content)
 
+const addVisualModeListeners = () => {
+    document.addEventListener("selectionchange", () => {
+        const selection = document.getSelection()
+        if (
+            contentState.mode == "visual" &&
+            config.get("visualexitauto") == "true" &&
+            selection.isCollapsed
+        ) {
+            contentState.mode = "normal"
+            return
+        }
+        if (
+            contentState.mode !== "normal" ||
+            config.get("visualenterauto") == "false"
+        )
+            return
+        if (!selection.isCollapsed) {
+            contentState.mode = "visual"
+        }
+    })
+}
+
+/**
+* Hook document.open/write/writeln to dispatch an event before they're called
+* Calls to these functions replace the document object, losing all elements and listeners
+* eg: htmlpreview.github.io sites like https://htmlpreview.github.io/?https://github.com/FiloSottile/age/blob/main/doc/age.1.html
+*/
+const hijackDocumentDestroyingFunctions = () => {
+    const docfns = ["open","write","writeln"]
+
+    // Wrap the original functions with a "document_destroyed" event dispatch before they're called
+    window.eval(docfns.reduce((acc,cur) => `${acc}
+        Document.prototype.${cur} = ((realFn) => {
+            return function (...args) {
+                window.dispatchEvent(new Event("document_destroyed"));
+                return realFn.apply(this, args)
+            }
+        })(Document.prototype.${cur});`, ""))
+
+    const documentDestroyedHandler = () => {
+        // Get references to Tridactyl elems so they can be readded after document.close is called
+        const cmdln = document.querySelector("#cmdline_iframe")
+        const indicator = document.querySelector(".TridactylStatusIndicator")
+
+        // Re-register listeners and add cmdline & status indicator back
+        const restore = () => {
+            if (cmdln) document.documentElement.appendChild(cmdln)
+            if (indicator) document.body.appendChild(indicator)
+            listen(window)
+
+            // All styles are lost so can be reinserted here
+            webext.ownTabId().then(tabId => {
+                ["cleanslate","content","hint","viewsource"].forEach(file =>
+                    webext.browserBg.tabs.insertCSS(tabId, {
+                        file: browser.runtime.getURL("static/css/" + file + ".css")
+                    }))
+            })
+
+            // Custom themes can be added back in after static/css/ files
+            styling.theme(document.documentElement)
+
+            dom.setupFocusHandler()
+            dom.hijackPageListenerFunctions()
+
+            // All listeners are lost, re-add listeners for this function too
+            window.addEventListener("document_destroyed", documentDestroyedHandler)
+            addVisualModeListeners()
+        }
+
+        // Set timeout so original document.write/open is executed before waiting for the new document to be ready
+        setTimeout(() => {
+            if (document.readyState === "complete") {
+                restore()
+            } else {
+                document.addEventListener("readystatechange", ()=> {
+                    if (document.readyState === "complete") {
+                        restore()
+                    }
+                })
+            }
+        }, 10);
+    }
+
+    // Listen for calls to those functions, replace everything when document.close is called
+    window.addEventListener("document_destroyed", documentDestroyedHandler)
+}
+
 try {
     dom.setupFocusHandler()
     dom.hijackPageListenerFunctions()
+    hijackDocumentDestroyingFunctions()
 } catch (e) {
     logger.warning("Could not hijack due to CSP:", e)
 }
@@ -448,25 +536,7 @@ window.addEventListener("load", () => {
     phoneHome()
 })
 
-document.addEventListener("selectionchange", () => {
-    const selection = document.getSelection()
-    if (
-        contentState.mode == "visual" &&
-        config.get("visualexitauto") == "true" &&
-        selection.isCollapsed
-    ) {
-        contentState.mode = "normal"
-        return
-    }
-    if (
-        contentState.mode !== "normal" ||
-        config.get("visualenterauto") == "false"
-    )
-        return
-    if (!selection.isCollapsed) {
-        contentState.mode = "visual"
-    }
-})
+addVisualModeListeners()
 
 // Listen for statistics from each content script and send them to the
 // background for collection. Attach the observer to the window object
