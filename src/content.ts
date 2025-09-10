@@ -355,6 +355,7 @@ if (
 }
 
 // Really bad status indicator
+let statusIndicator
 config.getAsync("modeindicator").then(mode => {
     if (mode !== "true") return
 
@@ -372,7 +373,7 @@ config.getAsync("modeindicator").then(mode => {
         }
     }`
 
-    const statusIndicator = document.createElement("span")
+    statusIndicator = document.createElement("span")
     const privateMode = browser.extension.inIncognitoContext
         ? "TridactylPrivate"
         : ""
@@ -537,6 +538,20 @@ window.addEventListener("load", () => {
 })
 
 addVisualModeListeners()
+
+// Try to catch the iframe/status indicator being removed by a script (React again)
+const checkElemsSurvived = () => {
+    if (document.readyState === "complete") {
+        commandline_content.ensureIframeExists()
+
+        if (statusIndicator !== undefined)
+            document.body.appendChild(statusIndicator)
+
+        // We only want to check the iframe survived between "interactive" and "complete"
+        document.removeEventListener("readystatechange", checkElemsSurvived)
+    }
+}
+document.addEventListener("readystatechange", checkElemsSurvived)
 
 // Listen for statistics from each content script and send them to the
 // background for collection. Attach the observer to the window object
