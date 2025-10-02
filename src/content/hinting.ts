@@ -58,6 +58,8 @@ function distance(l1: number, r1: number, l2: number, r2: number): number {
  * */
 class HintState {
     public focusedHint: Hint
+    readonly hintHostsCrop = document.createElement("div")
+    readonly hintHostsParent = document.createElement("div")
     readonly hintHost = document.createElement("div")
     readonly highlightHost = document.createElement("div")
     readonly outlineHost = document.createElement("div")
@@ -77,6 +79,8 @@ class HintState {
         public reject: (x) => void,
         public rapid: boolean,
     ) {
+        this.hintHostsCrop.classList.add("TridactylHud")
+        this.hintHostsParent.classList.add("TridactylHintHostsTranslate")
         this.hintHost.classList.add("TridactylHintHost", "cleanslate")
         this.highlightHost.classList.add(
             "TridactylHintHighlightHost",
@@ -86,17 +90,10 @@ class HintState {
 
         // hinthost alignment (eg: bsky.app has a 15px offset for some reason)
         const docElRect = document.documentElement.getBoundingClientRect()
-        this.hintHost.style.cssText = `
+
+        this.hintHostsParent.style.cssText = `
         top: ${-scrollY - docElRect.y}px !important;
         left: ${-scrollX - docElRect.x}px !important;
-        `
-        this.highlightHost.style.cssText = `
-        top: ${-docElRect.y}px !important;
-        left: ${-docElRect.x}px !important;
-        `
-        this.outlineHost.style.cssText = `
-        top: ${-docElRect.y}px !important;
-        left: ${-docElRect.x}px !important;
         `
     }
 
@@ -130,9 +127,7 @@ class HintState {
         }
 
         // Remove all hints from the DOM.
-        this.hintHost.remove()
-        this.highlightHost.remove()
-        this.outlineHost.remove()
+        this.hintHostsCrop.remove()
 
         if (modeState.filterMode === "text") hidecmdline()
     }
@@ -617,11 +612,28 @@ export function hintPage(
     modeState.focusedHint = modeState.hints[0]
     modeState.focusedHint.focused = true
 
-    document.documentElement.appendChild(modeState.highlightHost)
-    document.documentElement.appendChild(modeState.outlineHost)
-    document.documentElement.appendChild(modeState.hintHost)
+    if (config.get("hintstyles", "overlay") !== "none")
+        modeState.hintHostsParent.appendChild(modeState.highlightHost)
+    if (config.get("hintstyles", "overlayoutline") !== "none")
+        modeState.hintHostsParent.appendChild(modeState.outlineHost)
+    modeState.hintHostsParent.appendChild(modeState.hintHost)
+    modeState.hintHostsCrop.appendChild(modeState.hintHostsParent)
+    document.documentElement.appendChild(modeState.hintHostsCrop)
+
+    hostTranslationElement = modeState.hintHostsParent
+    onScrollHostsPosition()
+    window.removeEventListener("scroll", onScrollHostsPosition)
+    window.addEventListener("scroll", onScrollHostsPosition)
 
     modeState.deOverlap()
+}
+
+// You may want to be able to scroll while hinting after all, it's allowed. No one will stop you.
+let hostTranslationElement = null
+function onScrollHostsPosition() {
+    if (!hostTranslationElement) return
+    // Performance concerns? IDK it's probably fine. Could only every n milliseconds instead
+    hostTranslationElement.style.translate = `${-window.scrollX}px ${-window.scrollY}px`
 }
 
 /** @hidden */
@@ -815,10 +827,10 @@ class Hint {
         }
 
         this.rect = {
-            top: rect.top + offsetTop,
-            bottom: rect.bottom + offsetTop,
-            left: rect.left + offsetLeft,
-            right: rect.right + offsetLeft,
+            top: rect.top + offsetTop + window.scrollY,
+            bottom: rect.bottom + offsetTop + window.scrollY,
+            left: rect.left + offsetLeft + window.scrollX,
+            right: rect.right + offsetLeft + window.scrollX,
             width: rect.width,
             height: rect.height,
         }
@@ -840,10 +852,15 @@ class Hint {
         this.highlight.classList.add("TridactylHintHighlight")
         this.outline.classList.add("TridactylHintOutline")
 
-        const top = rect.top > 0 ? this.rect.top : offsetTop + pad
-        const left = rect.left > 0 ? this.rect.left : offsetLeft + pad
-        this.x = window.scrollX + left
-        this.y = window.scrollY + top
+        const top = rect.top > 0 ? this.rect.top : offsetTop + pad + window.scrollY
+        const left = rect.left > 0 ? this.rect.left : offsetLeft + pad + window.scrollX
+        this.x = left
+        this.y = top
+
+        // I just want highlights to be positioned the same way hint tags are
+        // this didn'e help
+        // this.rect.top += window.scrollY
+        // this.rect.left += window.scrollX
 
         modeState.highlightHost.appendChild(this.highlight)
         modeState.outlineHost.appendChild(this.outline)
@@ -946,6 +963,7 @@ class Hint {
         left: ${this._x}px !important;
         `
 
+        // flags can be moved to not overlap with each other, but highlights should stay put
         this.highlight.style.cssText = `
         top: ${this.rect.top}px !important;
         left: ${this.rect.left}px !important;
@@ -1226,6 +1244,7 @@ function reset() {
     if (modeState) {
         modeState.cleanUpHints()
         modeState.resolveHinting()
+        window.removeEventListener("scroll", onScrollHostsPosition)
     }
     modeState = undefined
     contentState.mode = "normal"

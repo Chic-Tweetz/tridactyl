@@ -29,6 +29,24 @@ span.TridactylHintCharPressed {
     -webkit-text-fill-color: var(--tridactyl-hintspan-pressed-fg) !important;
 }
 
+div.TridactylHud {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow: clip !important;
+    z-index: 2147483647 !important;
+    pointer-events: none;
+}
+
+div.TridactylHud > * {
+    pointer-events: all;
+}
+
+div.TridactylHintHostsTranslate {
+    position: absolute !important;
+}
+
 div.TridactylHintHighlight,
 div.TridactylHintHighlightActive,
 div.TridactylHintOutline,
@@ -76,11 +94,8 @@ div.TridactylHintOutlineActive {
 div.TridactylHintHost,
 div.TridactylHintHighlightHost,
 div.TridactylHintOutlineHost {
-    left: 0 !important;
-    top: 0 !important;
+    inset: 0 !important;
     position: absolute !important;
-    contain: layout style !important;
-    z-index: 2147483647 !important;
 }
 
 span.TridactylJSHint {
