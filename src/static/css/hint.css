@@ -19,7 +19,6 @@ span.TridactylHint {
 
 span.TridactylHint.TridactylHintSpanActive {
     background: var(--tridactyl-hintspan-active-bg) !important;
-    color: var(--tridactyl-hintspan-active-fg) !important;
     -webkit-text-fill-color: var(--tridactyl-hintspan-active-fg) !important;
     border-color: var(--tridactyl-hintspan-active-border-color) !important;
 }
@@ -43,32 +42,41 @@ div.TridactylHud > * {
     pointer-events: all;
 }
 
-div.TridactylHintHostsTranslate {
+div.TridactylHudTranslation {
     position: absolute !important;
 }
 
 div.TridactylHintHighlight,
-div.TridactylHintHighlightActive,
 div.TridactylHintOutline,
+div.TridactylHintHighlightActive,
 div.TridactylHintOutlineActive {
     position: absolute !important;
 }
 
-div.TridactylHintHighlightHost {
-    opacity: var(--tridactyl-hint-overlay-highlight-opacity) !important;
+div.TridactylHintHighlight {
+    background: var(--tridactyl-hint-highlight-bg) !important;
 }
 
-div.TridactylHintHighlight {
-    background: var(--tridactyl-hint-overlay-highlight) !important;
-}
 div.TridactylHintHighlightActive {
-    background: var(--tridactyl-hint-overlay-active-highlight) !important;
+    background: var(--tridactyl-hint-highlight-active-bg) !important;
 }
+
 div.TridactylHintOutline {
-    outline: var(--tridactyl-hint-overlay-outline) !important;
+    outline: var(--tridactyl-hint-highlight-outline) !important;
 }
+
 div.TridactylHintOutlineActive {
-    outline: var(--tridactyl-hint-overlay-active-outline) !important;
+    outline: var(--tridactyl-hint-highlight-active-outline) !important;
+}
+
+div.TridactylHintHighlight *, div.TridactylHintOutline * {
+    position: absolute !important;
+    background: inherit !important;
+    outline: inherit !important;
+}
+
+div.TridactylHintHighlightHost {
+    opacity: var(--tridactyl-hint-highlight-opacity) !important;
 }
 
 span.TridactylHintA {
@@ -80,22 +88,10 @@ span.TridactylHintUppercase > span {
     text-transform: uppercase !important;
 }
 
-div.TridactylHintHighlightActive,
-div.TridactylHintOutlineActive {
-    z-index: 1 !important;
-}
-
 .TridactylHintElem,
 .TridactylHintActive {
     animation: none !important;
     transition: unset !important;
-}
-
-div.TridactylHintHost,
-div.TridactylHintHighlightHost,
-div.TridactylHintOutlineHost {
-    inset: 0 !important;
-    position: absolute !important;
 }
 
 span.TridactylJSHint {

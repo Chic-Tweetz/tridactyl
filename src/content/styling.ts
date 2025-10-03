@@ -56,11 +56,9 @@ export async function theme(element) {
 
     const hintElemOptions = await config.getAsync("hintstyles")
 
-	// -webkit-text-fill-color takes precedence over color
     const hintElemRules =
         (hintElemOptions.fg === "all"
-            ? ("    color: var(--tridactyl-hint-fg) !important;\n"
-			+  "    -webkit-text-fill-color: var(--tridactyl-hint-fg) !important;\n")
+            ? "    -webkit-text-fill-color: var(--tridactyl-hint-fg) !important;\n"
             : "") +
         (hintElemOptions.bg === "all"
             ? "    background: var(--tridactyl-hint-bg) !important;\n"
@@ -71,8 +69,7 @@ export async function theme(element) {
 
     const activeElemRules =
         (hintElemOptions.fg !== "none"
-            ? ("    color: var(--tridactyl-hint-active-fg) !important;\n"
-			+  "    -webkit-text-fill-color: var(--tridactyl-hint-active-fg) !important;\n")
+            ? "    -webkit-text-fill-color: var(--tridactyl-hint-active-fg) !important;\n"
             : "") +
         (hintElemOptions.bg !== "none"
             ? "    background: var(--tridactyl-hint-active-bg) !important;\n"
@@ -81,24 +78,23 @@ export async function theme(element) {
             ? "    outline: var(--tridactyl-hint-active-outline) !important;\n"
             : "")
 
+    // If these are set to "none" they won't be added to the page at all so only need to handle active
+    const activeOverlayRules =
+        (hintElemOptions.overlay === "active"
+            ? ".TridactylHintHighlight { display:none; } .TridactylHintHighlightActive { display: block !important; }"
+            : "") +
+        (hintElemOptions.overlayoutline === "active"
+            ? ".TridactylHintOutline { display:none; } .TridactylHintOutlineActive { display: block !important; }"
+            : "")
+
     hintElemCss.code =
         (hintElemRules !== ""
             ? ".TridactylHintElem {\n" + hintElemRules + "}\n"
             : "") +
         (activeElemRules !== ""
             ? ".TridactylHintActive {\n" + activeElemRules + "}\n"
-            : "")
-
-	// overlays are simpler because they don't affect the original page styling
-	if (hintElemOptions.overlay === "none")
-        hintElemCss.code += "div.TridactylHintHighlightHost {\n    display: none !important;\n}"
-    else if (hintElemOptions.overlay === "active")
-        hintElemCss.code += "div.TridactylHintHighlight {\n    display: none !important;\n}"
-
-	if (hintElemOptions.overlayoutline === "none")
-        hintElemCss.code += "div.TridactylHintOutlineHost {\n    display: none !important;\n}"
-    else if (hintElemOptions.overlayoutline === "active")
-        hintElemCss.code += "div.TridactylHintOutline {\n    display: none !important;\n}"
+            : "") +
+            activeOverlayRules
 
     if (hintElemCss.code !== "") {
         await browserBg.tabs.insertCSS(await ownTabId(), hintElemCss)
@@ -171,6 +167,7 @@ function retheme() {
 }
 
 config.addChangeListener("theme", retheme)
+config.addChangeListener("hintstyles", retheme)
 
 /**
  * DEPRECATED

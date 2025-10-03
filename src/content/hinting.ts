@@ -58,11 +58,11 @@ function distance(l1: number, r1: number, l2: number, r2: number): number {
  * */
 class HintState {
     public focusedHint: Hint
-    readonly hintHostsCrop = document.createElement("div")
-    readonly hintHostsParent = document.createElement("div")
+    readonly hud = document.createElement("div")
+    readonly hudTranslate = document.createElement("div")
     readonly hintHost = document.createElement("div")
-    readonly highlightHost = document.createElement("div")
-    readonly outlineHost = document.createElement("div")
+    readonly highlightHost: Element | null = null
+    readonly outlineHost: Element | null = null
     readonly hintsBase: Hint[] = []
 
     public selectedHints: Hint[] = []
@@ -79,22 +79,22 @@ class HintState {
         public reject: (x) => void,
         public rapid: boolean,
     ) {
-        this.hintHostsCrop.classList.add("TridactylHud")
-        this.hintHostsParent.classList.add("TridactylHintHostsTranslate")
         this.hintHost.classList.add("TridactylHintHost", "cleanslate")
-        this.highlightHost.classList.add(
-            "TridactylHintHighlightHost",
-            "cleanslate",
-        )
-        this.outlineHost.classList.add("TridactylHintOutlineHost", "cleanslate")
+        this.hud.classList.add("TridactylHud", "cleanslate")
+        this.hudTranslate.classList.add("TridactylHudTranslation")
+        this.hintHost.classList.add("TridactylHintHost")
 
-        // hinthost alignment (eg: bsky.app has a 15px offset for some reason)
-        const docElRect = document.documentElement.getBoundingClientRect()
+        const { overlay, overlayoutline } = config.get("hintstyles")
+        if (overlay !== "none") {
+            this.highlightHost = document.createElement("div")
+            this.highlightHost.classList.add("TridactylHintHighlightHost")
+        }
+        if (overlayoutline !== "none") {
+            this.outlineHost = document.createElement("div")
+            this.outlineHost.classList.add("TridactylHintOutlineHost")
+        }
 
-        this.hintHostsParent.style.cssText = `
-        top: ${-scrollY - docElRect.y}px !important;
-        left: ${-scrollX - docElRect.x}px !important;
-        `
+        this.hudTranslate.style.translate = `${-window.scrollX}px ${-window.scrollY}px`
     }
 
     get hints() {
@@ -127,7 +127,7 @@ class HintState {
         }
 
         // Remove all hints from the DOM.
-        this.hintHostsCrop.remove()
+        this.hud.remove()
 
         if (modeState.filterMode === "text") hidecmdline()
     }
@@ -612,28 +612,20 @@ export function hintPage(
     modeState.focusedHint = modeState.hints[0]
     modeState.focusedHint.focused = true
 
-    if (config.get("hintstyles", "overlay") !== "none")
-        modeState.hintHostsParent.appendChild(modeState.highlightHost)
-    if (config.get("hintstyles", "overlayoutline") !== "none")
-        modeState.hintHostsParent.appendChild(modeState.outlineHost)
-    modeState.hintHostsParent.appendChild(modeState.hintHost)
-    modeState.hintHostsCrop.appendChild(modeState.hintHostsParent)
-    document.documentElement.appendChild(modeState.hintHostsCrop)
-
-    hostTranslationElement = modeState.hintHostsParent
-    onScrollHostsPosition()
-    window.removeEventListener("scroll", onScrollHostsPosition)
-    window.addEventListener("scroll", onScrollHostsPosition)
-
+    if (modeState.highlightHost)
+        modeState.hudTranslate.appendChild(modeState.highlightHost)
+    if (modeState.outlineHost)
+        modeState.hudTranslate.appendChild(modeState.outlineHost)
+    modeState.hudTranslate.appendChild(modeState.hintHost)
+    modeState.hud.appendChild(modeState.hudTranslate)
+    document.documentElement.appendChild(modeState.hud)
     modeState.deOverlap()
+    window.removeEventListener("scroll", updateHudOffset)
+    window.addEventListener("scroll", updateHudOffset)
 }
 
-// You may want to be able to scroll while hinting after all, it's allowed. No one will stop you.
-let hostTranslationElement = null
-function onScrollHostsPosition() {
-    if (!hostTranslationElement) return
-    // Performance concerns? IDK it's probably fine. Could only every n milliseconds instead
-    hostTranslationElement.style.translate = `${-window.scrollX}px ${-window.scrollY}px`
+function updateHudOffset() {
+    modeState.hudTranslate.style.translate = `${-window.scrollX}px ${-window.scrollY}px`
 }
 
 /** @hidden */
@@ -765,8 +757,8 @@ type HintSelectedCallback = (x: any) => any
 @hidden */
 class Hint {
     public readonly flag = document.createElement("span")
-    public readonly highlight = document.createElement("div")
-    public readonly outline = document.createElement("div")
+    public readonly highlight: HTMLElement | null = null
+    public readonly outline: HTMLElement | null = null
     public readonly rect: ClientRect = null
     public result: any = null
 
@@ -805,27 +797,6 @@ class Hint {
             }
         }
 
-        // Overlays for multiple client rects
-        for (const recti of clientRects) {
-            if (recti === rect) continue
-
-            const extraRect = document.createElement("div")
-
-            extraRect.style.cssText = `
-                position: absolute !important;
-                background: inherit !important;
-                outline: inherit !important;
-
-                top: ${recti.top - rect.top}px !important;
-                left: ${recti.left - rect.left}px !important;
-                width: ${recti.width}px !important;
-                height: ${recti.height}px !important;
-            `
-
-            this.highlight.appendChild(extraRect)
-            this.outline.appendChild(extraRect.cloneNode(true))
-        }
-
         this.rect = {
             top: rect.top + offsetTop + window.scrollY,
             bottom: rect.bottom + offsetTop + window.scrollY,
@@ -849,21 +820,52 @@ class Hint {
         this.flag.classList.add("TridactylHint" + target.tagName)
         classes?.forEach(f => this.flag.classList.add(f))
 
-        this.highlight.classList.add("TridactylHintHighlight")
-        this.outline.classList.add("TridactylHintOutline")
+
+        // Optional add overlays
+        if (modeState.highlightHost  || modeState.outlineHost) {
+            const mainRect = document.createElement("div")
+            // Add all rectangles for highlights / outlines
+            for (const recti of clientRects) {
+                if (recti !== rect) {
+                    const extraRect = document.createElement("div")
+                    extraRect.style.cssText = `
+                        inset: ${recti.top - rect.top}px ${recti.left - rect.left}px !important;
+                        width: ${recti.width}px !important;
+                        height: ${recti.height}px !important;
+                    `
+                    mainRect.appendChild(extraRect)
+                } else {
+                    mainRect.style.top = `${recti.top + window.scrollY}px`
+                    mainRect.style.left = `${recti.left + window.scrollX}px`
+                    mainRect.style.cssText = `
+                        inset: ${rect.top + window.scrollY}px ${rect.left + window.scrollX}px !important;
+                        width: ${rect.width}px !important;
+                        height: ${rect.height}px !important;
+                        `
+                }
+            }
+
+            if (modeState.highlightHost) {
+                this.highlight = mainRect
+                modeState.highlightHost.appendChild(this.highlight)
+                if (modeState.outlineHost) {
+                    this.outline = mainRect.cloneNode(true) as HTMLElement
+                    this.outline.classList.add("TridactylHintOutline")
+                    modeState.outlineHost.appendChild(this.outline)
+                }
+                this.highlight.classList.add("TridactylHintHighlight")
+            } else {
+                this.outline = mainRect
+                this.outline.classList.add("TridactylHintOutline")
+                modeState.outlineHost.appendChild(this.outline)
+            }
+        }
 
         const top = rect.top > 0 ? this.rect.top : offsetTop + pad + window.scrollY
         const left = rect.left > 0 ? this.rect.left : offsetLeft + pad + window.scrollX
-        this.x = left
-        this.y = top
+        this.x = window.scrollX + left
+        this.y = window.scrollY + top
 
-        // I just want highlights to be positioned the same way hint tags are
-        // this didn'e help
-        // this.rect.top += window.scrollY
-        // this.rect.left += window.scrollX
-
-        modeState.highlightHost.appendChild(this.highlight)
-        modeState.outlineHost.appendChild(this.outline)
         modeState.hintHost.appendChild(this.flag)
         this.hidden = false
     }
@@ -889,12 +891,12 @@ class Hint {
         if (hide) {
             this.focused = false
             this.target.classList.remove("TridactylHintElem")
-            this.highlight.setAttribute("hidden", "")
-            this.outline.setAttribute("hidden", "")
+            this.highlight?.setAttribute("hidden", "")
+            this.outline?.setAttribute("hidden", "")
         } else {
             this.target.classList.add("TridactylHintElem")
-            this.highlight.removeAttribute("hidden")
-            this.outline.removeAttribute("hidden")
+            this.highlight?.removeAttribute("hidden")
+            this.outline?.removeAttribute("hidden")
         }
     }
 
@@ -903,20 +905,22 @@ class Hint {
             this.target.classList.add("TridactylHintActive")
             this.target.classList.remove("TridactylHintElem")
 
-            this.highlight.classList.add("TridactylHintHighlightActive")
-            this.highlight.classList.remove("TridactylHintHighlight")
-            this.outline.classList.add("TridactylHintOutlineActive")
-            this.outline.classList.remove("TridactylHintOutline")
+            if (this.highlight)
+                this.highlight.classList.add("TridactylHintHighlightActive")
+
+            if (this.outline)
+                this.outline.classList.add("TridactylHintOutlineActive")
 
             this.flag.classList.add("TridactylHintSpanActive")
         } else {
             this.target.classList.add("TridactylHintElem")
             this.target.classList.remove("TridactylHintActive")
 
-            this.highlight.classList.add("TridactylHintHighlight")
-            this.highlight.classList.remove("TridactylHintHighlightActive")
-            this.outline.classList.add("TridactylHintOutline")
-            this.outline.classList.remove("TridactylHintOutlineActive")
+            if (this.highlight)
+                this.highlight.classList.remove("TridactylHintHighlightActive")
+
+            if (this.outline)
+                this.outline.classList.remove("TridactylHintOutlineActive")
 
             this.flag.classList.remove("TridactylHintSpanActive")
         }
@@ -1244,10 +1248,10 @@ function reset() {
     if (modeState) {
         modeState.cleanUpHints()
         modeState.resolveHinting()
-        window.removeEventListener("scroll", onScrollHostsPosition)
     }
     modeState = undefined
     contentState.mode = "normal"
+    window.removeEventListener("scroll", updateHudOffset)
 }
 
 function popKey() {

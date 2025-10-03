@@ -9,20 +9,26 @@
 	--tridactyl-hintspan-active-border-color: rgb(190,0,25);
 	--tridactyl-hintspan-active-border-width: 1px;
 
-	--tridactyl-hint-fg: black;
-	--tridactyl-hint-bg: rgb(255, 236, 118);
+  --tridactyl-hintspan-pressed-fg: rgb(212, 172, 58);
+
+	--tridactyl-hint-fg: var(--tritheme-red);
+	--tridactyl-hint-bg: rgba(255, 236, 118, 0.8);
 	--tridactyl-hint-outline: 1px solid #ecc44a;
 
 	--tridactyl-hint-active-fg: var(--tritheme-red);
-	--tridactyl-hint-active-bg: rgb(98, 11, 34);
+	--tridactyl-hint-active-bg: rgba(180, 16, 60, 0.8);
 	--tridactyl-hint-active-outline: 1px solid var(--tritheme-red);
 
-	--tridactyl-hint-overlay-highlight: rgb(255, 236, 118);
-	--tridactyl-hint-overlay-active-highlight: var(--tritheme-red);
+	--tridactyl-hint-highlight-bg: rgb(255, 236, 118);
+	--tridactyl-hint-highlight-active-bg: var(--tritheme-red);
 }
 
 span.TridactylHint {
 	box-shadow: rgba(0,0,0,0.3) 0 3px 7px 0 !important;
 	padding: 1px 3px 0 !important;
 	border-radius: 3px !important;
+}
+
+span.TridactylHintSpanActive > span.TridactylHintCharPressed {
+  color: rgb(120, 20, 20) !important;
 }
