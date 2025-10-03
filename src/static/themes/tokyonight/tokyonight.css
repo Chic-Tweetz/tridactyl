@@ -53,7 +53,8 @@
     --tritheme-moon-magenta-rgb: 192, 153, 255;
     --tritheme-moon-blue2_bg-rgb: 32, 51, 70;
     --tritheme-fg_gutter-rgb: 59, 66, 97;
-    --tritheme-hlbg: rgb(62, 104, 215);
+    --tritheme-moon-hlbg-rgb: 62, 104, 215;
+    --tritheme-moon-orange-bg-rgb: 56, 52, 61;
 
     --tritheme-docs-rgb: 99, 109, 166;
 
@@ -82,12 +83,12 @@
     --tritheme-moon-magenta: rgb(var(--tritheme-moon-magenta-rgb));
     --tritheme-moon-blue2_bg: rgb(var(--tritheme-moon-blue2_bg-rgb));
     --tritheme-fg_gutter: rgb(var(--tritheme-fg_gutter-rgb));
-    --tritheme-moon-orange-bg: rgb(56, 52, 61);
+    --tritheme-moon-orange-bg: rgb(var(--tritheme-moon-orange-bg-rgb));
     --tritheme-moon-yellow: rgb(255, 199, 119);
     --tritheme-moon-magenta2: rgb(255, 0, 124);
     --tritheme-moon-blue1: rgb(101, 188, 255);
     --tritheme-moon-green: rgb(195, 232, 141);
-    --tritheme-moon-hlbg: rgb(49, 63, 114);
+    --tritheme-moon-hlbg: rgb(var(--tritheme-moon-hlbg-rgb));
 
     /* rgba colours */
     --tritheme-cyan-alphalow: rgba(var(--tritheme-cyan-rgb), 0.3);
@@ -132,18 +133,17 @@
     --tridactyl-hintspan-pressed-fg: grey;
 
     /* Element highlights */
-    --tridactyl-hint-overlay-opacity: 0.25;
-    --tridactyl-hint-overlay-highlight: var(--tritheme-moon-blue1);
-    --tridactyl-hint-overlay-active-highlight: var(--tritheme-orange);
-    --tridactyl-hint-overlay-outline: 1px solid var(--tritheme-purple);
-    --tridactyl-hint-overlay-active-outline: 1px solid
-        var(--tritheme-moon-yellow);
+    --tridactyl-hint-highlight-opacity: 0.25;
+    --tridactyl-hint-highlight-bg: var(--tritheme-moon-blue1);
+    --tridactyl-hint-highlight-active-bg: var(--tritheme-orange);
+    --tridactyl-hint-highlight-outline: 1px solid var(--tritheme-purple);
+    --tridactyl-hint-highlight-active-outline: 1px solid var(--tritheme-moon-yellow);
 
     --tridactyl-hint-fg: var(--tritheme-cyan);
-    --tridactyl-hint-bg: var(--tritheme-moon-hlbg);
+    --tridactyl-hint-bg: rgba(var(--tritheme-moon-hlbg-rgb), 0.5);
     --tridactyl-hint-outline: var(--tridactyl-hint-overlay-outline);
-    --tridactyl-hint-active-fg: black;
-    --tridactyl-hint-active-bg: var(--tritheme-moon-orange-bg);
+    --tridactyl-hint-active-fg: var(--tritheme-yellow);
+    --tridactyl-hint-active-bg: rgba(var(--tritheme-moon-orange-bg-rgb), 0.75);
     --tridactyl-hint-active-outline: var(--tridactyl-hint-overlay-outline);
 
     /* Commandline */
