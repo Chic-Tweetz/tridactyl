@@ -798,10 +798,10 @@ class Hint {
         }
 
         this.rect = {
-            top: rect.top + offsetTop + window.scrollY,
-            bottom: rect.bottom + offsetTop + window.scrollY,
-            left: rect.left + offsetLeft + window.scrollX,
-            right: rect.right + offsetLeft + window.scrollX,
+            top: rect.top + offsetTop,
+            bottom: rect.bottom + offsetTop,
+            left: rect.left + offsetLeft,
+            right: rect.right + offsetLeft,
             width: rect.width,
             height: rect.height,
         }
@@ -861,8 +861,8 @@ class Hint {
             }
         }
 
-        const top = rect.top > 0 ? this.rect.top : offsetTop + pad + window.scrollY
-        const left = rect.left > 0 ? this.rect.left : offsetLeft + pad + window.scrollX
+        const top = rect.top > 0 ? this.rect.top : offsetTop + pad
+        const left = rect.left > 0 ? this.rect.left : offsetLeft + pad
         this.x = window.scrollX + left
         this.y = window.scrollY + top
 
@@ -966,16 +966,6 @@ class Hint {
         top: ${this._y}px !important;
         left: ${this._x}px !important;
         `
-
-        // flags can be moved to not overlap with each other, but highlights should stay put
-        this.highlight.style.cssText = `
-        top: ${this.rect.top}px !important;
-        left: ${this.rect.left}px !important;
-        height: ${this.rect.height}px !important;
-        width: ${this.rect.width}px !important;
-        `
-
-        this.outline.style.cssText = this.highlight.style.cssText
     }
 }
 
