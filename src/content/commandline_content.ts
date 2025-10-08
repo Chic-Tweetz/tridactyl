@@ -121,7 +121,9 @@ export function show(hidehover = false) {
         }
 
         ensureIframeExists()
-        cmdline_iframe.inert = false;
+        cmdline_iframe.inert = false
+        cmdline_iframe.setAttribute("popover", "manual")
+        cmdline_iframe.showPopover()
         cmdline_iframe.classList.remove("hidden")
         const height =
             cmdline_iframe.contentWindow.document.body.offsetHeight + "px"
@@ -136,6 +138,7 @@ export function show(hidehover = false) {
 
 export function hide() {
     try {
+        cmdline_iframe.removeAttribute("popover")
         cmdline_iframe.inert = true;
         cmdline_iframe.classList.add("hidden")
         cmdline_iframe.setAttribute("style", "height: 0px !important;")

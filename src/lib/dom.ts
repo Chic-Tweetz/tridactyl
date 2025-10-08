@@ -10,6 +10,7 @@ import {
     inContentScript,
 } from "@src/lib/webext"
 const logger = new Logging.Logger("dom")
+import { optionalThemeCss } from "@src/content/styling"
 
 // From saka-key lib/dom.js, under Apachev2
 
@@ -333,22 +334,38 @@ export function getSelector(e: HTMLElement) {
     return uniqueSelector(e)
 }
 
+let lastShadowCss = ""
 /* Get all the elements that match the given selector inside shadow DOM */
 function getShadowElementsBySelector(selector: string) {
     let elems = []
     const roots: (Document | ShadowRoot)[] = [document]
+    let shadowCss = optionalThemeCss()
+    let retheme = shadowCss !== lastShadowCss
 
     while (roots.length) {
         const root = roots.pop()
         root.querySelectorAll("*").forEach(elem => {
             if ((elem as any).openOrClosedShadowRoot) {
-                roots.push((elem as any).openOrClosedShadowRoot)
+                // Not ideal to chuck this in as an unmentioned side effect
+                // but good for testing out applying hint styles to elements in shadows
+                // it works, but also some sites (gerrit) have 1000+ shadows
+                const shadowRoot = (elem as any).openOrClosedShadowRoot
+                if (!shadowRoot.querySelector("#TridactylShadowStyles") && optionalThemeCss() !== "") {
+                    const style = document.createElement("style")
+                    style.textContent = optionalThemeCss()
+                    style.id = "TridactylShadowStyles"
+                    shadowRoot.prepend(style)
+                } else if (retheme) {
+                    shadowRoot.querySelector("#TridactylShadowStyles").textContent = shadowCss
+                }
+                roots.push(shadowRoot)
                 elems = elems.concat(
                     ...roots[roots.length - 1].querySelectorAll(selector),
                 )
             }
         })
     }
+    lastShadowCss = shadowCss
     return elems
 }
 

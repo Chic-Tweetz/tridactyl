@@ -575,6 +575,8 @@ export function hintPage(
     modeState.hudTranslate.appendChild(modeState.hintHost)
     modeState.hud.appendChild(modeState.hudTranslate)
     document.documentElement.appendChild(modeState.hud)
+    modeState.hud.setAttribute("popover", "manual")
+    ;(modeState.hud as any).showPopover()
     modeState.deOverlap()
     window.removeEventListener("scroll", updateHudOffset)
     window.addEventListener("scroll", updateHudOffset)
