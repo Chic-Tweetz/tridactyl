@@ -8,7 +8,6 @@
 	--tridactyl-hintspan-active-bg: linear-gradient(0, rgb(180,8,50) 0, var(--tritheme-red) 100%);
 	--tridactyl-hintspan-active-border-color: rgb(190,0,25);
 	--tridactyl-hintspan-active-border-width: 1px;
-
   --tridactyl-hintspan-pressed-fg: rgb(212, 172, 58);
 
 	--tridactyl-hint-fg: var(--tritheme-red);

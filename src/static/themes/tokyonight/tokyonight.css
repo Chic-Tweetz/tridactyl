@@ -51,7 +51,7 @@
     --tritheme-moon-green1-rgb: 79, 214, 190;
     --tritheme-moon-teal-rgb: 79, 214, 190;
     --tritheme-moon-magenta-rgb: 192, 153, 255;
-    --tritheme-moon-blue2_bg-rgb: 32, 51, 70;
+    --tritheme-moon-blue2-bg-rgb: 32, 51, 70;
     --tritheme-fg_gutter-rgb: 59, 66, 97;
     --tritheme-moon-hlbg-rgb: 62, 104, 215;
     --tritheme-moon-orange-bg-rgb: 56, 52, 61;
@@ -81,7 +81,7 @@
     --tritheme-moon-green1: rgb(var(--tritheme-moon-green1-rgb));
     --tritheme-moon-teal: rgb(var(--tritheme-moon-teal-rgb));
     --tritheme-moon-magenta: rgb(var(--tritheme-moon-magenta-rgb));
-    --tritheme-moon-blue2_bg: rgb(var(--tritheme-moon-blue2_bg-rgb));
+    --tritheme-moon-blue2-bg: rgb(var(--tritheme-moon-blue2-bg-rgb));
     --tritheme-fg_gutter: rgb(var(--tritheme-fg_gutter-rgb));
     --tritheme-moon-orange-bg: rgb(var(--tritheme-moon-orange-bg-rgb));
     --tritheme-moon-yellow: rgb(255, 199, 119);
@@ -119,7 +119,7 @@
     /* Hint character tags */
     --tridactyl-hintspan-font-family: var(--tridactyl-font-family);
     --tridactyl-hintspan-font-size: var(--tridactyl-small-font-size);
-    --tridactyl-hintspan-bg: var(--tritheme-moon-blue2_bg);
+    --tridactyl-hintspan-bg: var(--tritheme-moon-blue2-bg);
     --tridactyl-hintspan-fg: var(--tritheme-moon-green1);
     --tridactyl-hintspan-js-background: var(--tritheme-bg);
     --tridactyl-hintspan-border-width: 1px;
@@ -140,11 +140,12 @@
     --tridactyl-hint-highlight-active-outline: 1px solid var(--tritheme-moon-yellow);
 
     --tridactyl-hint-fg: var(--tritheme-cyan);
-    --tridactyl-hint-bg: rgba(var(--tritheme-moon-hlbg-rgb), 0.5);
-    --tridactyl-hint-outline: var(--tridactyl-hint-overlay-outline);
+    --tridactyl-hint-bg: rgba(var(--tritheme-moon-blue2-bg-rgb), 0.5);
+     
+    --tridactyl-hint-outline: var(--tridactyl-hint-highlight-outline);
     --tridactyl-hint-active-fg: var(--tritheme-yellow);
     --tridactyl-hint-active-bg: rgba(var(--tritheme-moon-orange-bg-rgb), 0.75);
-    --tridactyl-hint-active-outline: var(--tridactyl-hint-overlay-outline);
+    --tridactyl-hint-active-outline: var(--tridactyl-hint-highlight-outline);
 
     /* Commandline */
 
@@ -296,3 +297,4 @@ td.title {
 :root.TridactylOwnNamespace a {
     color: var(--tritheme-link-fg);
 }
+

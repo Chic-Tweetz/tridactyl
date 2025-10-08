@@ -2453,7 +2453,7 @@ input:not([disabled]):not([readonly]):-moz-any(
 textarea:not([disabled]):not([readonly]),
 object,
 [role='application'],
-[contenteditable='true'][role='textbox']
+[contenteditable][role='textbox']:not([contenteditable='false'])
 `
 
 /** Password field selectors
@@ -2990,7 +2990,14 @@ export async function tabduplicate(index?: number) {
 */
 //#background
 export async function tabdetach(index?: number) {
-    return browser.windows.create({ tabId: await idFromIndex(index) })
+    // Workaround for detached tabs not getting focus (issue #5273)
+    const tabId = await idFromIndex(index)
+    const currentTab = await browser.tabs.get(tabId)
+    const tempTab = (await browser.windows.create({ incognito: currentTab.incognito })).tabs[0]
+    await browser.tabs.move(tabId, { index: -1, windowId: tempTab.windowId })
+    browser.tabs.remove(tempTab.id)
+    browser.tabs.update(tabId, { active: true })
+    return browser.windows.get(tempTab.windowId)
 }
 
 /** Toggle fullscreen state
@@ -4373,6 +4380,10 @@ export function comclear(name: string) {
 */
 //#background
 export async function bind(...args: string[]) {
+    if (args.includes("--recursive")) {
+        throw new Error("`--recursive` can only be called on unbind.")
+    }
+
     const args_obj = parse_bind_args(...args)
     let p = Promise.resolve()
     if (args_obj.excmd !== "") {
@@ -4830,7 +4841,10 @@ export function blacklistadd(url: string) {
     return autocmd("DocStart", url, "mode ignore")
 }
 
-/** Unbind a sequence of keys so that they do nothing at all.
+/**
+   Unbind a sequence of keys so that they do nothing at all.
+
+   Accepts the flag `--recursive` to unbind all binds that start with the specified key sequence, e.g. `:unbind --recursive ;` unbinds all the binds like `;f` `;F` `;;` etc.
 
     See also:
 
@@ -4840,6 +4854,17 @@ export function blacklistadd(url: string) {
 //#background
 export async function unbind(...args: string[]) {
     const args_obj = parse_bind_args(...args)
+
+    if (args_obj.isRecursive) {
+        const prefix = args_obj.key
+        const maps = config.get(args_obj.configName as keyof config.default_config)
+        for (const binding in maps) {
+            if (binding.startsWith(prefix)) {
+                config.set(args_obj.configName, binding, null)
+            }
+        }
+    }
+
     if (args_obj.excmd !== "") throw new Error("unbind syntax: `unbind key`")
     if (args_obj.mode == "browser") {
         const commands = await browser.commands.getAll()
@@ -6279,3 +6304,94 @@ export async function tstattach(index: string) {
     const tabId = await idFromIndex(index)
     treestyletab.attachTree(tabId)
 }
+
+// {{{ Profile management
+
+import * as Profiles from "@src/lib/profiles"
+
+/**
+ * Launch a new Firefox instance with the specified profile.
+ *
+ * If no profile name is specified, shows available profiles.
+ * Requires the native messenger to be installed.
+ *
+ * Example: `profilelaunch myprofile`
+ * Example: `profilelaunch "Work Profile"`
+ */
+//#background
+export async function profilelaunch(profileName?: string) {
+    if (!profileName) {
+        fillcmdline("Usage: profilelaunch <profile-name>")
+        return
+    }
+
+    try {
+        await Profiles.launchProfile(profileName)
+        fillcmdline(`Launched Firefox with profile "${profileName}"`)
+    } catch (e) {
+        throw new Error(`Profile launch failed. Is the native messenger installed? Error: ${e}`)
+    }
+}
+
+/**
+ * Create a new Firefox profile.
+ *
+ * Example: `profilecreate "New Profile"`
+ */
+//#background
+export async function profilecreate(profileName: string) {
+    if (!profileName) {
+        throw new Error("Profile name is required. Usage: profilecreate <profile-name>")
+    }
+
+    try {
+        await Profiles.createProfile(profileName)
+        fillcmdline(`Created profile "${profileName}"`)
+    } catch (e) {
+        throw new Error(`Profile creation failed. Is the native messenger installed? Error: ${e}`)
+    }
+}
+
+/**
+ * Rename a Firefox profile.
+ *
+ * Example: `profilerename "Old Name" "New Name"`
+ */
+//#background
+export async function profilerename(oldName: string, newName: string) {
+    if (!oldName || !newName) {
+        throw new Error("Both old and new profile names are required. Usage: profilerename <old-name> <new-name>")
+    }
+
+    try {
+        await Profiles.renameProfile(oldName, newName)
+        fillcmdline(`Renamed profile "${oldName}" to "${newName}"`)
+    } catch (e) {
+        throw new Error(`Profile rename failed. Is the native messenger installed? Error: ${e}`)
+    }
+}
+
+/**
+ * Disable all hilighting of hintable elements when hinting.
+ * Only hint flags will remain, Vimium style.
+ */
+export function hintstylesnohighlights() {
+    ["fg","bg","outline","overlay","overlayoutline"].forEach(type => config.set("hintstyles", type, "none"))
+}
+
+/**
+ * Add highlights over the page when hinting and leave original elements unchanged.
+ */
+export function hintstylesoverlays() {
+    ["fg", "bg","outline"].forEach(type => config.set("hintstyles", type, "none"))
+    ;["overlay","overlayoutline"].forEach(type => config.set("hintstyles", type, "all"))
+}
+
+/**
+ * Style hintable elements directly when hinting.
+ */
+export function hintstylesdirect() {
+    ["fg","bg","outline"].forEach(type => config.set("hintstyles", type, "all"))
+    ;["overlay","overlayoutline"].forEach(type => config.set("hintstyles", type, "none"))
+}
+// }}}

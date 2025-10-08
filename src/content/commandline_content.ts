@@ -40,7 +40,7 @@ async function init() {
     const noiframe = await config.getAsync("noiframe")
     const notridactyl = await config.getAsync("superignore")
 
-    if (document.contentType.includes("xml")) {
+    if (document.contentType != "application/xhtml+xml" && document.contentType.includes("xml")) {
         logger.info("Content type is xml; aborting iframe injection.")
         return
     }
@@ -129,7 +129,9 @@ export function show(hidehover = false) {
         }
 
         ensureIframeExists()
-        cmdline_iframe.inert = false;
+        cmdline_iframe.inert = false
+        cmdline_iframe.setAttribute("popover", "manual")
+        ;(cmdline_iframe as any).showPopover()
         cmdline_iframe.classList.remove("hidden")
         const height =
             cmdline_iframe.contentWindow.document.body.offsetHeight + "px"
@@ -144,6 +146,7 @@ export function show(hidehover = false) {
 
 export function hide() {
     try {
+        cmdline_iframe.removeAttribute("popover")
         cmdline_iframe.inert = true;
         cmdline_iframe.classList.add("hidden")
         cmdline_iframe.setAttribute("style", "height: 0px !important;")

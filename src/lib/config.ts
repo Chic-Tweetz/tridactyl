@@ -799,7 +799,7 @@ export class default_config {
     /**
      * URL the newtab will redirect to.
      *
-     * All usual rules about things you can open with `open` apply, with the caveat that you'll get interesting results if you try to use something that needs `nativeopen`: so don't try `about:newtab` or a `file:///` URI. You should instead use a data URI - https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URIs - or host a local webserver (e.g. Caddy).
+     * All usual rules about things you can open with `open` apply, with the caveat that you'll get interesting results if you try to use something that needs `nativeopen`: so don't try `about:newtab` or a `file:///` URI. You can instead host a local webserver (e.g. Caddy).
      */
     newtab = ""
 
@@ -1159,7 +1159,7 @@ export class default_config {
     tabopencontaineraware: "true" | "false" = "false"
 
     /**
-     * If moodeindicator is enabled, containerindicator will color the border of the mode indicator with the container color.
+     * If modeindicator is enabled, containerindicator will color the border of the mode indicator with the container color.
      */
     containerindicator: "true" | "false" = "true"
 
@@ -1370,6 +1370,7 @@ export class default_config {
 
     /**
      * Which css styles to add for hint elements.
+     * Optionally add extra elements to the page to highlight hints using overlay and overlay outline.
      *
      * Use `hintstyles.fg` for text color, `hintstyles.bg` for background color, `hintstyles.outline` for outlines.
      * Values may be set to "all" to enable the style for all hints, "active" to enable the style only for the currently selected hint, or "none" to disable the style completely.

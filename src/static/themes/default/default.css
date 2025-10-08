@@ -39,7 +39,8 @@
     --tridactyl-hintspan-active-border-color: var(--tridactyl-hintspan-border-color);
 
     /* Element highlights */
-    --tridactyl-hint-active-fg: var(--tridactyl-fg);
+    --tridactyl-hint-fg: var(--tridactyl-fg);
+    --tridactyl-hint-active-fg: var(--tridactyl-hint-fg);
     --tridactyl-hint-active-bg: #88ff00;
     --tridactyl-hint-active-outline: 1px solid #cc0000;
 

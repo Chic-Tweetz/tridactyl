@@ -33,6 +33,10 @@ const customCss = {
     code: "",
 }
 
+export function optionalThemeCss() {
+    return hintElemCss.code
+}
+
 export async function theme(element) {
     // Remove any old theme
 
@@ -95,11 +99,6 @@ export async function theme(element) {
             ? ".TridactylHintActive {\n" + activeElemRules + "}\n"
             : "") +
             activeOverlayRules
-
-    if (hintElemCss.code !== "") {
-        await browserBg.tabs.insertCSS(await ownTabId(), hintElemCss)
-        insertedHintElemCSS = true
-    }
 
     if (hintElemCss.code !== "") {
         await browserBg.tabs.insertCSS(await ownTabId(), hintElemCss)
