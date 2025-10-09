@@ -63,13 +63,19 @@ class KeyCanceller {
     constructor() {
         this.cancelKeyUp = this.cancelKeyUp.bind(this)
         this.cancelKeyPress = this.cancelKeyPress.bind(this)
+        this.clearQueue = this.clearQueue.bind(this)
     }
 
     push(ke: KeyboardEvent) {
-        ke.preventDefault()
+        ke.preventDefault() // this cancels keypress automatically
         ke.stopImmediatePropagation()
-        this.keyPress.push(ke)
+        // this.keyPress.push(ke)
         this.keyUp.push(ke)
+    }
+
+    public clearQueue() {
+        this.keyPress = []
+        this.keyUp = []
     }
 
     public cancelKeyPress = (ke: KeyboardEvent) => {
