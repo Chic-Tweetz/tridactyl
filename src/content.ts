@@ -159,6 +159,7 @@ function listen(elem) {
         true,
     )
 }
+window.addEventListener("blur", ContentController.canceller.clearQueue)
 listen(window)
 document.addEventListener("readystatechange", _ =>
     getAllDocumentFrames().forEach(f => listen(f)),
