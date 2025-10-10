@@ -10,6 +10,7 @@ import {
     inContentScript,
 } from "@src/lib/webext"
 const logger = new Logging.Logger("dom")
+import { hintElemStyles } from "@src/content/styling"
 
 // From saka-key lib/dom.js, under Apachev2
 
@@ -378,6 +379,43 @@ export function getElemsBySelector(selector: string, filters: ElementFilter[]) {
     }
 
     return elems
+}
+
+let lastHintElemStyles = ""
+const shadowStyleSheet = new CSSStyleSheet()
+
+// Can't seem to access adoptedStyleSheets from extension context
+const addStyleSheetToShadow = window.eval(`((shadow, styleSheet) => {
+    if (shadow.adoptedStyleSheets.indexOf(styleSheet) === -1) {
+        shadow.adoptedStyleSheets.push(styleSheet);
+    }
+})`)
+
+// Like getElemsBySelector but also pushes hint elem css to shadow DOMs as they're found
+export function getElemsBySelectorAndStyleShadows(selector: string, filters: ElementFilter[] = []) {
+    const shadowCss = hintElemStyles()
+    if (shadowCss !== lastHintElemStyles) (shadowStyleSheet as any).replace(shadowCss)
+    lastHintElemStyles = shadowCss
+    const roots = [document]
+    const elems = [
+        Array.from(document.querySelectorAll(selector))
+            .filter(elem => filters.every(filter => filter(elem)))
+        ]
+    while (roots.length) {
+        const root = roots.pop()
+        root.querySelectorAll("*").forEach(elem => {
+            if ((elem as any).openOrClosedShadowRoot) {
+                const shadowRoot = (elem as any).openOrClosedShadowRoot
+                addStyleSheetToShadow(shadowRoot, shadowStyleSheet)
+                elems.push(
+                    (Array.from(shadowRoot.querySelectorAll(selector)) as Element[])
+                        .filter(elem => filters.every(filter => filter(elem)))
+                    )
+                roots.push(shadowRoot)
+            }
+        })
+    }
+    return elems.flat()
 }
 
 /** Get the nth input element on a page

@@ -33,6 +33,10 @@ const customCss = {
     code: "",
 }
 
+export function hintElemStyles() {
+    return hintElemCss.code
+}
+
 export async function theme(element) {
     // Remove any old theme
 
