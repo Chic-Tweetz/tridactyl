@@ -344,6 +344,45 @@ const addStyleSheetToShadow = window.eval(`((shadow, styleSheet) => {
     }
 })`)
 
+export function checkCss() {
+    return [lastHintElemStyles, shadowStyleSheet]
+}
+
+export function getAllShadowRoots() {
+    let root: (Document | ShadowRoot) = document
+    const shadows: ShadowRoot[] = []
+    let checked = 0
+    do {
+        root.querySelectorAll("*").forEach(elem => {
+            if ((elem as any).openOrClosedShadowRoot)
+                shadows.push((elem as any).openOrClosedShadowRoot)
+        })
+        root = shadows[checked]
+        ++checked
+    } while (checked <= shadows.length)
+    return shadows
+}
+
+// like getElemsBySelector but specifically for getting hint elements
+// Adds styles to shadow DOMs if needed
+export function getElemsAndStyleShadowHints(selector: string, filters: ElementFilter[]) {
+    const elems = Array.from(document.querySelectorAll(selector))
+    const shadowCss = hintElemStyles()
+    if (lastHintElemStyles !== shadowCss) {
+        (shadowStyleSheet as any).replace(shadowCss)
+        lastHintElemStyles = shadowCss
+    }
+    getAllShadowRoots().forEach(shadowRoot => {
+        const shadowElems = shadowRoot.querySelectorAll(selector)
+        // This makes more sense: only add hint styles if there are hints to style
+        if (shadowElems.length) {
+            elems.push(...shadowElems)
+            addStyleSheetToShadow(shadowRoot, shadowStyleSheet)
+        }
+    })
+    return elems.filter(elem => filters.every(filter => filter(elem)))
+}
+
 /* Get all the elements that match the given selector inside shadow DOM */
 function getShadowElementsBySelector(selector: string) {
     const shadowCss = hintElemStyles()
@@ -358,9 +397,7 @@ function getShadowElementsBySelector(selector: string) {
         const root = roots.pop()
         root.querySelectorAll("*").forEach(elem => {
             if ((elem as any).openOrClosedShadowRoot) {
-                const shadowRoot = (elem as any).openOrClosedShadowRoot
-                addStyleSheetToShadow(shadowRoot, shadowStyleSheet)
-                roots.push(shadowRoot)
+                roots.push((elem as any).openOrClosedShadowRoot)
                 elems = elems.concat(
                     ...roots[roots.length - 1].querySelectorAll(selector),
                 )

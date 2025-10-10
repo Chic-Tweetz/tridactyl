@@ -1352,7 +1352,7 @@ export function hintables(
 ) {
     const visibleFilter = DOM.isVisibleFilter(includeInvisible)
     const elems = changeHintablesToLargestChild(
-        DOM.getElemsBySelector(selectors, []).filter(visibleFilter),
+        DOM.getElemsAndStyleShadowHints(selectors, []).filter(visibleFilter),
     )
     const hintables: Hintables[] = [{ elements: elems }]
     if (withjs) {
@@ -1414,7 +1414,7 @@ function isElementLargerThan(e1: Element, e2: Element): boolean {
  * @hidden
  */
 export function saveableElements(includeInvisible = false) {
-    return DOM.getElemsBySelector(DOM.HINTTAGS_saveable, [
+    return DOM.getElemsAndStyleShadowHints(DOM.HINTTAGS_saveable, [
         DOM.isVisibleFilter(includeInvisible),
     ])
 }
@@ -1423,7 +1423,7 @@ export function saveableElements(includeInvisible = false) {
  * @hidden
  */
 export function hintableImages(includeInvisible = false) {
-    return DOM.getElemsBySelector(DOM.HINTTAGS_img_selectors, [
+    return DOM.getElemsAndStyleShadowHints(DOM.HINTTAGS_img_selectors, [
         DOM.isVisibleFilter(includeInvisible),
     ])
 }
@@ -1433,7 +1433,7 @@ export function hintableImages(includeInvisible = false) {
  * @hidden
  */
 export function hintByText(match: string | RegExp) {
-    return DOM.getElemsBySelector(DOM.HINTTAGS_filter_by_text_selectors, [
+    return DOM.getElemsAndStyleShadowHints(DOM.HINTTAGS_filter_by_text_selectors, [
         DOM.isVisible,
         hintByTextFilter(match),
     ])
@@ -1559,7 +1559,7 @@ export function hintByTextFilter(match: string | RegExp): HintSelectedCallback {
 @hidden
  */
 export function killables(includeInvisible = false) {
-    return DOM.getElemsBySelector(DOM.HINTTAGS_killable_selectors, [
+    return DOM.getElemsAndStyleShadowHints(DOM.HINTTAGS_killable_selectors, [
         DOM.isVisibleFilter(includeInvisible),
     ])
 }
