@@ -33,7 +33,7 @@ const customCss = {
     code: "",
 }
 
-export function optionalThemeCss() {
+export function hintElemStyles() {
     return hintElemCss.code
 }
 
