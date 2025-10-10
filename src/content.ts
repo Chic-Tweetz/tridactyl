@@ -135,30 +135,35 @@ const guardedAcceptKey = (keyevent: KeyboardEvent) => {
     if (!keyevent.isTrusted) return
     ContentController.acceptKey(keyevent)
 }
+// I'm going to have to see if anything breaks if we don't have a keypress listener
+// but I'm fairly confident we only need to preventDefault inkeydown events to cancel keypresses
 function listen(elem) {
     elem.removeEventListener("keydown", guardedAcceptKey, true)
-    elem.removeEventListener(
-        "keypress",
-        ContentController.canceller.cancelKeyPress,
-        true,
-    )
+    // elem.removeEventListener(
+    //     "keypress",
+    //     ContentController.canceller.cancelKeyPress,
+    //     true,
+    // )
     elem.removeEventListener(
         "keyup",
         ContentController.canceller.cancelKeyUp,
         true,
     )
     elem.addEventListener("keydown", guardedAcceptKey, true)
-    elem.addEventListener(
-        "keypress",
-        ContentController.canceller.cancelKeyPress,
-        true,
-    )
+    // elem.addEventListener(
+    //     "keypress",
+    //     ContentController.canceller.cancelKeyPress,
+    //     true,
+    // )
     elem.addEventListener(
         "keyup",
         ContentController.canceller.cancelKeyUp,
         true,
     )
 }
+// pressing : to open the cmdline for example blurs the page before the keyup event fires
+// the : event then sticks around in the canceller's keyUp array 
+// we can just empty the array when blurring a page as it shouldn't be getting key events at that point
 window.addEventListener("blur", ContentController.canceller.clearQueue)
 listen(window)
 document.addEventListener("readystatechange", _ =>
