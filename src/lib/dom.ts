@@ -338,11 +338,24 @@ let lastHintElemStyles = ""
 const shadowStyleSheet = new CSSStyleSheet()
 
 // Can't seem to access adoptedStyleSheets from extension context
-const addStyleSheetToShadow = window.eval(`((shadow, styleSheet) => {
-    if (shadow.adoptedStyleSheets.indexOf(styleSheet) === -1) {
-        shadow.adoptedStyleSheets.push(styleSheet);
+let addStyleSheetToShadow
+try {
+    addStyleSheetToShadow = window.eval(`((shadow, styleSheet) => {
+        if (shadow.adoptedStyleSheets.indexOf(styleSheet) === -1) {
+            shadow.adoptedStyleSheets.push(styleSheet);
+        }
+    })`)
+} catch (e) {
+    // CSP can block window.eval but we can still try adding <style> tags
+    addStyleSheetToShadow = (shadowRoot,_) => {
+        if (!shadowRoot.querySelector(".TridactylShadowStyles")) {
+            const style = document.createElement("style")
+            style.textContent = hintElemStyles()
+            style.className = "TridactylShadowStyles"
+            shadowRoot.prepend(style)
+        }
     }
-})`)
+}
 
 export function checkCss() {
     return [lastHintElemStyles, shadowStyleSheet]
