@@ -151,7 +151,7 @@
 
     /* Commandline */
 
-    --tridactyl-cmdl-fg: var(--tritheme-fg);
+    --tridactyl-cmdl-fg: var(--tritheme-lightblue);
     --tridactyl-cmdl-bg: var(--tritheme-darkblue4);
     --tridactyl-cmdl-font-family: var(--tridactyl-font-family);
 
