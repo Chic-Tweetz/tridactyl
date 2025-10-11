@@ -342,8 +342,6 @@ const shadowStyleSheet = new CSSStyleSheet()
 // AND window.eval itself can be blocked, yeah this is just annoying all over
 const addStyleSheetToShadow = (() => {
     const backup = shadowRoot => {
-        console.log("backup shadow style called for")
-        console.log(shadowRoot)
         if (!shadowRoot.querySelector(".TridactylShadowStyles")) {
             const style = document.createElement("style")
             style.textContent = hintElemStyles()
