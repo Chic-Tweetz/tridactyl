@@ -67,10 +67,8 @@ class KeyCanceller {
     }
 
     push(ke: KeyboardEvent) {
-        ke.preventDefault() // this cancels keypress automatically
+        ke.preventDefault() // this cancels the keypress event
         ke.stopImmediatePropagation()
-        // I believe we only actually need the keyUp array?
-        // this.keyPress.push(ke)
         this.keyUp.push(ke)
     }
 

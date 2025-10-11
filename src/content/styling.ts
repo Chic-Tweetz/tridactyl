@@ -61,8 +61,18 @@ export async function theme(element) {
     const hintElemOptions = await config.getAsync("hintstyles")
 
     // This is getting out of hand now because I want to be able to change fg if using overlays vs bg :)
-    const hintFgVar = hintElemOptions.overlays === "all" ? "--tridactyl-hint-highlight-fg" : "--tridactyl-hint-fg"
-    const activeFgVar = hintElemOptions.overlays !== "none" ? "--tridactyl-hint-highlight-active-fg" : "--tridactyl-hint-active-fg"
+    const hintFgVar = hintElemOptions.overlay === "all" ? "--tridactyl-hint-highlight-fg" : "--tridactyl-hint-fg"
+    const activeFgVar = hintElemOptions.overlay !== "none" ? "--tridactyl-hint-highlight-active-fg" : "--tridactyl-hint-active-fg"
+
+    const largeHintElemBgRules =
+        (hintElemOptions.bg === "all"
+            ? ":root.TridactylHintElem,body.TridactylHintElem {\n    background: var(--tridactyl-large-hint-bg) !important;\n}\n"
+            : "")
+
+    const largeActiveElemBgRules =
+        (hintElemOptions.bg !== "none"
+            ? ":root.TridactylHintActive,body.TridactylHintActive {\n    background: var(--tridactyl-large-hint-active-bg) !important;\n}\n"
+            : "")
 
     const hintElemRules =
         (hintElemOptions.fg === "all"
@@ -102,6 +112,8 @@ export async function theme(element) {
         (activeElemRules !== ""
             ? ".TridactylHintActive {\n" + activeElemRules + "}\n"
             : "") +
+            largeHintElemBgRules +
+            largeActiveElemBgRules +
             activeOverlayRules
 
     if (hintElemCss.code !== "") {

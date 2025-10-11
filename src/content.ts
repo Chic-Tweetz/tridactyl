@@ -135,26 +135,14 @@ const guardedAcceptKey = (keyevent: KeyboardEvent) => {
     if (!keyevent.isTrusted) return
     ContentController.acceptKey(keyevent)
 }
-// I'm going to have to see if anything breaks if we don't have a keypress listener
-// but I'm fairly confident we only need to preventDefault inkeydown events to cancel keypresses
 function listen(elem) {
     elem.removeEventListener("keydown", guardedAcceptKey, true)
-    // elem.removeEventListener(
-    //     "keypress",
-    //     ContentController.canceller.cancelKeyPress,
-    //     true,
-    // )
     elem.removeEventListener(
         "keyup",
         ContentController.canceller.cancelKeyUp,
         true,
     )
     elem.addEventListener("keydown", guardedAcceptKey, true)
-    // elem.addEventListener(
-    //     "keypress",
-    //     ContentController.canceller.cancelKeyPress,
-    //     true,
-    // )
     elem.addEventListener(
         "keyup",
         ContentController.canceller.cancelKeyUp,
