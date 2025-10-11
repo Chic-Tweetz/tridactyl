@@ -626,7 +626,9 @@ export function hintPage(
 }
 
 function updateHudOffset() {
-    modeState.hudTranslate.style.translate = `${-window.scrollX}px ${-window.scrollY}px`
+    window.requestAnimationFrame(() => {
+        modeState.hudTranslate.style.translate = `${-window.scrollX}px ${-window.scrollY}px`
+    })
 }
 
 /** @hidden */
