@@ -338,16 +338,12 @@ let lastHintElemStyles = ""
 const shadowStyleSheet = new CSSStyleSheet()
 
 // Can't seem to access adoptedStyleSheets from extension context
-let addStyleSheetToShadow
-try {
-    addStyleSheetToShadow = window.eval(`((shadow, styleSheet) => {
-        if (shadow.adoptedStyleSheets.indexOf(styleSheet) === -1) {
-            shadow.adoptedStyleSheets.push(styleSheet);
-        }
-    })`)
-} catch (e) {
-    // CSP can block window.eval but we can still try adding <style> tags
-    addStyleSheetToShadow = (shadowRoot,_) => {
+// and doubly annoyingly it can be blocked in the page
+// AND window.eval itself can be blocked, yeah this is just annoying all over
+const addStyleSheetToShadow = (() => {
+    const backup = shadowRoot => {
+        console.log("backup shadow style called for")
+        console.log(shadowRoot)
         if (!shadowRoot.querySelector(".TridactylShadowStyles")) {
             const style = document.createElement("style")
             style.textContent = hintElemStyles()
@@ -355,7 +351,26 @@ try {
             shadowRoot.prepend(style)
         }
     }
-}
+    let allowed
+    try {
+        allowed = window.eval(`((shadow, styleSheet) => {
+            if (shadow.adoptedStyleSheets.indexOf(styleSheet) === -1) {
+                shadow.adoptedStyleSheets.push(styleSheet);
+            }
+        })`)
+    } catch (e) {
+        // window.eval blocked due to CSP
+        return backup
+    }
+
+    return (shadowRoot) => {
+        try {
+            allowed(shadowRoot, shadowStyleSheet)
+        } catch (e) {
+            backup(shadowRoot)
+        }
+    }
+})()
 
 export function checkCss() {
     return [lastHintElemStyles, shadowStyleSheet]
@@ -390,7 +405,7 @@ export function getElemsAndStyleShadowHints(selector: string, filters: ElementFi
         // This makes more sense: only add hint styles if there are hints to style
         if (shadowElems.length) {
             elems.push(...shadowElems)
-            addStyleSheetToShadow(shadowRoot, shadowStyleSheet)
+            addStyleSheetToShadow(shadowRoot)
         }
     })
     return elems.filter(elem => filters.every(filter => filter(elem)))
