@@ -120,10 +120,39 @@ export function mouseEvent(
     })
 }
 
+/** Ignore elements whose textContent is contained in a single child element.
+*   Also ignores whitespace-only textContent.
+*/
+function hasUniqueText(element: Element, includeInvisibleChildren = false) {
+    if (element.textContent.trim() === "") return false
+    let childTextElems = 0
+
+    // Check for multiple child elements with text, or non-empty text nodes
+    for (const node of element.childNodes.values()) {
+        if ((node.nodeType === Node.TEXT_NODE) && ((node as Text).data.trim() !== "")) {
+            return true
+        } else if ((node.nodeType === Node.ELEMENT_NODE) && node.textContent.trim() !== "") {
+            if (includeInvisibleChildren || isSubstantial(node as Element)) {
+                ++childTextElems
+                if (childTextElems > 1) return true
+            }
+        }
+    }
+    return false
+}
+
+// hasUniqueText checks elements' child nodes which may be invisible
+// we want isSubstantial over isVisible for children,
+// to allow for eg a <div> container whose 1st <p> is on screen, but 2nd <p> is off screen
+// currently this does mean redoing a lot of clientRect and getComputedStyle which isn't ideal
+function hasUniqueVisibleTextFilter(includeInvisibleChildren = false) {
+    return elem => hasUniqueText(elem, includeInvisibleChildren)
+}
+
 export function elementsWithText(includeInvisible = false) {
     return getElemsBySelector("*", [
         isVisibleFilter(includeInvisible),
-        hint => hint.textContent !== "",
+        hasUniqueVisibleTextFilter(includeInvisible),
     ])
 }
 
