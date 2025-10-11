@@ -146,6 +146,7 @@
      
     --tridactyl-hint-outline: var(--tridactyl-hint-highlight-outline);
     --tridactyl-hint-active-fg: color-mix(in hsl, var(--tritheme-moon-yellow), white 60%);
+    --tridactyl-hint-highlight-active-fg: var(--tritheme-yellow);
     --tridactyl-hint-active-bg: rgba(var(--tritheme-orange-rgb), 0.8);
     --tridactyl-hint-active-outline: var(--tridactyl-hint-highlight-active-outline);
 

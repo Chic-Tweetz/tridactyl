@@ -60,9 +60,13 @@ export async function theme(element) {
 
     const hintElemOptions = await config.getAsync("hintstyles")
 
+    // This is getting out of hand now because I want to be able to change fg if using overlays vs bg :)
+    const hintFgVar = hintElemOptions.overlays === "all" ? "--tridactyl-hint-highlight-fg" : "--tridactyl-hint-fg"
+    const activeFgVar = hintElemOptions.overlays !== "none" ? "--tridactyl-hint-highlight-active-fg" : "--tridactyl-hint-active-fg"
+
     const hintElemRules =
         (hintElemOptions.fg === "all"
-            ? "    -webkit-text-fill-color: var(--tridactyl-hint-fg) !important;\n"
+            ? `    -webkit-text-fill-color: var(${hintFgVar}) !important;\n`
             : "") +
         (hintElemOptions.bg === "all"
             ? "    background: var(--tridactyl-hint-bg) !important;\n"
@@ -73,7 +77,7 @@ export async function theme(element) {
 
     const activeElemRules =
         (hintElemOptions.fg !== "none"
-            ? "    -webkit-text-fill-color: var(--tridactyl-hint-active-fg) !important;\n"
+            ? `    -webkit-text-fill-color: var(${activeFgVar}) !important;\n`
             : "") +
         (hintElemOptions.bg !== "none"
             ? "    background: var(--tridactyl-hint-active-bg) !important;\n"
