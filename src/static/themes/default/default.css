@@ -48,6 +48,9 @@
     --tridactyl-hint-bg: rgba(255, 255, 0, 0.25);
     --tridactyl-hint-outline: 1px solid #8f5902;
 
+    --tridactyl-large-hint-bg: color-mix(in oklch, var(--tridactyl-bg), var(--tridactyl-hint-bg) 50%);
+    --tridactyl-large-hint-active-bg: color-mix(in oklch, var(--tridactyl-bg), var(--tridactyl-hint-active-bg) 50%);
+
     /* Element highlight overlays */
     --tridactyl-hint-highlight-fg: var(--tridactyl-hint-fg);
     --tridactyl-hint-highlight-active-fg: var(--tridactyl-hint-active-fg);
