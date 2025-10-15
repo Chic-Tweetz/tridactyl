@@ -16,68 +16,6 @@ span.TridactylHint {
     z-index: 2147483646 !important;
 }
 
-span.TridactylHint.TridactylHintSpanActive {
-    background: var(--tridactyl-hintspan-active-bg) !important;
-    -webkit-text-fill-color: var(--tridactyl-hintspan-active-fg) !important;
-    border-color: var(--tridactyl-hintspan-active-border-color) !important;
-}
-
-span.TridactylHintCharPressed {
-    color: var(--tridactyl-hintspan-pressed-fg) !important;
-    -webkit-text-fill-color: var(--tridactyl-hintspan-pressed-fg) !important;
-}
-
-div.TridactylHud {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    overflow: clip !important;
-    z-index: 2147483647 !important;
-    pointer-events: none;
-}
-
-div.TridactylHud > * {
-    pointer-events: all;
-}
-
-div.TridactylHudTranslation {
-    position: absolute !important;
-}
-
-div.TridactylHintHighlight,
-div.TridactylHintOutline,
-div.TridactylHintHighlightActive,
-div.TridactylHintOutlineActive {
-    position: absolute !important;
-}
-
-div.TridactylHintHighlight {
-    background: var(--tridactyl-hint-highlight-bg) !important;
-}
-
-div.TridactylHintHighlightActive {
-    background: var(--tridactyl-hint-highlight-active-bg) !important;
-}
-
-div.TridactylHintOutline {
-    outline: var(--tridactyl-hint-highlight-outline) !important;
-}
-
-div.TridactylHintOutlineActive {
-    outline: var(--tridactyl-hint-highlight-active-outline) !important;
-}
-
-div.TridactylHintHighlight *, div.TridactylHintOutline * {
-    position: absolute !important;
-    background: inherit !important;
-    outline: inherit !important;
-}
-
-div.TridactylHintHighlightHost {
-    opacity: var(--tridactyl-hint-highlight-opacity) !important;
-}
-
 span.TridactylHintA {
     z-index: 2147483647 !important;
 }
@@ -96,8 +34,20 @@ span.TridactylHintUppercase > span {
 span.TridactylJSHint {
     background-color: var(--tridactyl-hintspan-js-background) !important;
 }
+
 .TridactylKilledElem {
     display: none !important;
+}
+
+span.TridactylHint.TridactylHintSpanActive {
+    background: var(--tridactyl-hintspan-active-bg) !important;
+    -webkit-text-fill-color: var(--tridactyl-hintspan-active-fg) !important;
+    border-color: var(--tridactyl-hintspan-active-border-color) !important;
+}
+
+span.TridactylHintCharPressed {
+    color: var(--tridactyl-hintspan-pressed-fg) !important;
+    -webkit-text-fill-color: var(--tridactyl-hintspan-pressed-fg) !important;
 }
 
 div.TridactylHud {
