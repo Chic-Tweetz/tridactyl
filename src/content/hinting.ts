@@ -562,6 +562,9 @@ export function hintPage(
             removeFilteredCharClass()
         })
     }
+    // weird shadow dom related issue on youtube made clientRects accessible
+    // if classLists changed between calls to new Hint (very odd and annoying but this seems to fix it...)
+    modeState.hints.forEach(hint => hint.hidden = false)
 
     if (!modeState.hints.length) {
         // No more hints to display
@@ -866,7 +869,17 @@ class Hint {
         this.y = window.scrollY + top
 
         modeState.hintHost.appendChild(this.flag)
-        this.hidden = false
+
+        /*
+        * youtube (shadow DOM / weird rendering stuff they do I don't know)
+        * when doing :hint *
+        * some elements having their classList changed caused other elements
+        * (often with the same IDs... IDK what's going on really)
+        * to have no clientRects when it came time to create their hints
+        * some sort of ... reflow ... rendering optimisation... recalculation... something
+        * these elements also had rects with 0 width and height
+        */
+        // this.hidden = false
     }
 
     public static isHintable(target: Element): boolean {
@@ -983,13 +996,16 @@ function buildHintsSimple(
         elements: h.elements.filter(el => Hint.isHintable(el)),
         hintclasses: h.hintclasses,
     }))
+
     const totalhints = hintablesfiltered.reduce(
         (n, h) => n + h.elements.length,
         0,
     )
+
     const allnames = Array.from(
         hintnames(totalhints + modeState.hints.length),
     ).slice(modeState.hints.length)
+
     for (const hintables of hintablesfiltered) {
         const names = allnames.slice(modeState.hints.length)
         for (const [el, name] of izip(hintables.elements, names)) {

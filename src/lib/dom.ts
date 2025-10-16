@@ -257,7 +257,10 @@ export function isVisible(thing: Element | Range) {
             thing = thing.parentElement
         }
     }
-    const clientRect = thing.getBoundingClientRect()
+
+    // something to do with shadow DOMs(?) - there might be no clientRects for us
+    const clientRect = thing.getClientRects()[0] ? thing.getBoundingClientRect() : null
+
     switch (true) {
         case !clientRect:
         case clientRect.bottom < 4:
@@ -273,13 +276,17 @@ export function isVisible(thing: Element | Range) {
     // remove elements that are barely within the viewport, tiny, or invisible
     // Only call getComputedStyle when necessary
     const computedStyle = getComputedStyle(element)
+    // I'm sure the widthMatters and heightMatters are important but I don't understand them
     switch (true) {
-        case widthMatters(computedStyle) && clientRect.width < 3:
-        case heightMatters(computedStyle) && clientRect.height < 3:
+        case clientRect.width < 3:
+        case clientRect.height < 3:
+        /* case widthMatters(computedStyle) && clientRect.width < 3:
+        case heightMatters(computedStyle) && clientRect.height < 3: */
         case computedStyle.visibility !== "visible":
         case computedStyle.display === "none":
             return false
     }
+
     return true
 
     /* // Eliminate elements hidden by another overlapping element. */
@@ -403,14 +410,15 @@ export function checkCss() {
     return [lastHintElemStyles, shadowStyleSheet]
 }
 
-export function getAllShadowRoots() {
+export function getAllShadowRoots(filters: ElementFilter[] = []) {
     let root: (Document | ShadowRoot) = document
     const shadows: ShadowRoot[] = []
     let checked = 0
     do {
         root.querySelectorAll("*").forEach(elem => {
-            if ((elem as any).openOrClosedShadowRoot)
+            if ((elem as any).openOrClosedShadowRoot && filters.every(filter => filter(elem))) {
                 shadows.push((elem as any).openOrClosedShadowRoot)
+            }
         })
         root = shadows[checked]
         ++checked
@@ -427,7 +435,8 @@ export function getElemsAndStyleShadowHints(selector: string, filters: ElementFi
         (shadowStyleSheet as any).replace(shadowCss)
         lastHintElemStyles = shadowCss
     }
-    getAllShadowRoots().forEach(shadowRoot => {
+    // Filter out shadow roots using the same filters as elements (maybe, IDK)
+    getAllShadowRoots(filters).forEach(shadowRoot => {
         const shadowElems = shadowRoot.querySelectorAll(selector)
         // This makes more sense: only add hint styles if there are hints to style
         if (shadowElems.length) {
