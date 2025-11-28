@@ -58,7 +58,7 @@ async function init() {
         return
     }
 
-    if (noiframe !== "true" && notridactyl !== "true" && !enabled) {
+    if (noiframe === "false" && notridactyl !== "true" && !enabled) {
         hide()
         document.documentElement.appendChild(cmdline_iframe)
         enabled = true
