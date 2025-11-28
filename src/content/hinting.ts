@@ -992,15 +992,8 @@ function buildHintsSimple(
     hintablesArray: Hintables[],
     onSelect: HintSelectedCallback,
 ) {
-    const hintablesfiltered = hintablesArray.map(h => ({
-        elements: h.elements.filter(el => Hint.isHintable(el)),
-        hintclasses: h.hintclasses,
-    }))
-
-    const totalhints = hintablesfiltered.reduce(
-        (n, h) => n + h.elements.length,
-        0,
-    )
+    const hintablesfiltered = hintablesArray.map(h => ({ elements: h.elements.filter(el => Hint.isHintable(el)), hintclasses: h.hintclasses }))
+    const totalhints = hintablesfiltered.reduce((n, h) => n + h.elements.length, 0)
 
     const allnames = Array.from(
         hintnames(totalhints + modeState.hints.length),
@@ -1056,17 +1049,12 @@ function buildHintsVimperator(
     hintablesArray: Hintables[],
     onSelect: HintSelectedCallback,
 ) {
-    const hintablesfiltered = hintablesArray.map(h => ({
-        elements: h.elements.filter(el => Hint.isHintable(el)),
-        hintclasses: h.hintclasses,
-    }))
-    const totalhints = hintablesfiltered.reduce(
-        (n, h) => n + h.elements.length,
-        0,
-    )
+    const hintablesfiltered = hintablesArray.map(h => ({ elements: h.elements.filter(el => Hint.isHintable(el)), hintclasses: h.hintclasses }))
+    const totalhints = hintablesfiltered.reduce((n, h) => n + h.elements.length, 0)
     const allnames = Array.from(
         hintnames(totalhints + modeState.hints.length),
     ).slice(modeState.hints.length)
+
     for (const hintables of hintablesfiltered) {
         const names = allnames.slice(modeState.hints.length)
         for (const [el, name] of izip(hintables.elements, names)) {

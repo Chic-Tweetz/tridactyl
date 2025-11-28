@@ -99,6 +99,7 @@ import * as Proxy from "@src/lib/proxy"
 import * as arg from "@src/lib/arg_util"
 import * as R from "ramda"
 import * as treestyletab from "@src/interop/tst"
+import { uuidv4 } from "@src/lib/math"
 
 /**
  * This is used to drive some excmd handling in `composite`.
@@ -508,7 +509,9 @@ export async function unloadtheme(themename: string) {
  *
  * If THEMENAME is set to any other value except `--url`, Tridactyl will attempt to use its native binary (see [[native]]) in order to load a CSS file named THEMENAME from disk. The CSS file has to be in a directory named "themes" and this directory has to be in the same directory as your tridactylrc. If this fails, Tridactyl will attempt to load the theme from its internal storage.
  *
- * Lastly, themes can be loaded from URLs with `:colourscheme --url [url] [themename]`. They are stored internally - if you want to update the theme run the whole command again.
+ * Themes can be loaded from URLs with `:colourscheme --url [url] [themename]`. They are stored internally - if you want to update the theme run the whole command again. You can use `%` as a placeholder for the current URL.
+ *
+ * Themes can be used for specific sites with `:colourscheme --regex [url regex]`. As a shorthand to style our `:reader` mode, you can use `:colourscheme --module=reader`.
  *
  * Note that the theme name should NOT contain any dot.
  *
@@ -528,22 +531,25 @@ export async function unloadtheme(themename: string) {
  */
 //#background
 export async function colourscheme(...args: string[]) {
-    const themename = args[0] == "--url" ? args[2] : args[0]
+    const option = arg.lib({"--url": String, "--regex": String, "--module": String}, {argv: args, allowNegativePositional: true})
+    let url = option["--url"]
+    const regex = option["--module"] == "reader" ? "moz-extension://.*/static/reader\.html" : option["--regex"]
+    const themename = option._[0]
 
     // If this is a builtin theme, no need to bother with slow stuff
-    if (Metadata.staticThemes.includes(themename)) return set("theme", themename)
-    if (themename.search("\\.") >= 0) throw new Error(`Theme name should not contain any dots! (given name: ${themename}).`)
-    if (args[0] == "--url") {
-        if (themename === undefined) throw new Error(`You must provide a theme name!`)
-        let url = args[1]
-        if (url === "%") url = window.location.href // this is basically an easter egg
-        if (!(url.startsWith("http://") || url.startsWith("https://"))) url = "http://" + url
-        const css = await rc.fetchText(url)
-        set("customthemes." + themename, css)
-    } else {
-        await loadtheme(themename)
+    if (!(Metadata.staticThemes.includes(themename))) {
+        if (themename.search("\\.") >= 0) throw new Error(`Theme name should not contain any dots! (given name: ${themename}).`)
+        if (url) {
+            if (themename === undefined) throw new Error(`You must provide a theme name!`)
+            if (url === "%") url = window.location.href // this is basically an easter egg
+            if (!(url.startsWith("http://") || url.startsWith("https://"))) url = "http://" + url
+            const css = await rc.fetchText(url)
+            set("customthemes." + themename, css)
+        } else {
+            await loadtheme(themename)
+        }
     }
-    return set("theme", themename)
+    return regex ? seturl(regex, "theme", themename) : set("theme", themename)
 }
 
 /**
@@ -2283,7 +2289,7 @@ export function urlmodify_js(mode: "-t" | "-r" | "-s" | "-q" | "-Q" | "-g" | "-t
  */
 //#content
 export async function geturlsforlinks(reltype = "rel", rel: string) {
-    const elems = document.querySelectorAll("link[" + reltype + "='" + rel + "']")
+    const elems = document.querySelectorAll("link[" + reltype + "^='" + rel + "']")
     if (elems) return Array.prototype.map.call(elems, x => x.href)
     return []
 }
@@ -6222,7 +6228,17 @@ export async function readerurl() {
     document.querySelectorAll(".TridactylStatusIndicator").forEach(ind => ind.parentNode.removeChild(ind))
     const article = new Readability(document.cloneNode(true) as any as Document).parse()
     article["link"] = window.location.href
-    return browser.runtime.getURL("static/reader.html#" + btoa(encodeURIComponent(JSON.stringify(article))))
+    article["favicon"] = (await ownTab()).favIconUrl
+    let hash = ""
+    const article_encoded = btoa(encodeURIComponent(JSON.stringify(article)))
+    if (!(await browserBg.windows.getCurrent()).incognito) {
+        const article_uuid = uuidv4()
+        await set("reader_articles." + article_uuid, article_encoded)
+        hash = article_uuid
+    } else {
+        hash = article_encoded
+    }
+    return browser.runtime.getURL("static/reader.html#" + hash)
 }
 
 /**
