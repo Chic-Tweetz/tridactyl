@@ -5,6 +5,7 @@ import * as config from "@src/lib/config"
 import { theme } from "@src/content/styling"
 const logger = new Logger("messaging")
 const cmdline_logger = new Logger("cmdline")
+import * as Messaging from "@src/lib/messaging"
 
 /* TODO:
     CSS
@@ -16,6 +17,8 @@ const cmdline_logger = new Logger("cmdline")
 */
 
 // inject the commandline iframe into a content page
+
+let noiframe = false
 
 let cmdline_iframe: HTMLIFrameElement
 export function makeIframe() {
@@ -30,6 +33,17 @@ export function makeIframe() {
     )
     cmdline_iframe.setAttribute("id", "cmdline_iframe")
     cmdline_iframe.setAttribute("loading", "lazy")
+    cmdline_iframe.addEventListener("load", () => {
+        if (!cmdline_iframe.contentDocument) {
+            console.log("csp blocking iframe functionality")
+            noiframe = true
+            Messaging.addListener("commandline_frame", (msg, sender, sendResponse)=>{
+                Messaging.messageOwnTab("stop_buffering_page_keys")
+                sendResponse(true)
+            })
+            Messaging.messageOwnTab("commandline_frame_ready_to_receive_messages")
+        }
+    })
 }
 makeIframe()
 
@@ -37,7 +51,7 @@ let enabled = false
 
 /** Initialise the cmdline_iframe element unless the window location is included in a value of config/noiframe */
 async function init() {
-    const noiframe = await config.getAsync("noiframe")
+    noiframe = (await config.getAsync("noiframe")) === "true"
     const notridactyl = await config.getAsync("superignore")
 
     if (document.contentType != "application/xhtml+xml" && document.contentType.includes("xml")) {
@@ -45,7 +59,7 @@ async function init() {
         return
     }
 
-    if (noiframe === "false" && notridactyl !== "true" && !enabled) {
+    if (!noiframe && notridactyl !== "true" && !enabled) {
         hide()
         document.documentElement.appendChild(cmdline_iframe)
         enabled = true
@@ -106,6 +120,7 @@ export function ensureIframeExists() {
 }
 
 export function show(hidehover = false) {
+    if (noiframe) return
     try {
         /* Hide "hoverlink" pop-up which obscures command line
          *
@@ -177,6 +192,5 @@ export function executeWithoutCommandLine(fn) {
     return result
 }
 
-import * as Messaging from "@src/lib/messaging"
 import * as SELF from "@src/content/commandline_content"
 Messaging.addListener("commandline_content", Messaging.attributeCaller(SELF))

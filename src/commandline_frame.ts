@@ -59,6 +59,7 @@ import * as R from "ramda"
 import { MinimalKey, minimalKeyFromKeyboardEvent } from "@src/lib/keyseq"
 import { TabGroupCompletionSource } from "@src/completions/TabGroup"
 import { ProfileCompletionSource } from "@src/completions/Profile"
+import { ownTabId, browserBg } from "@src/lib/webext"
 
 /** @hidden **/
 const logger = new Logger("cmdline")
@@ -90,13 +91,59 @@ const commandline_state = {
     state,
 }
 
+// if we use a popup, we don't want to message the cmdline's tab but whichever tab it's meant to control
+let messageTab = Messaging.messageOwnTab
+let popupTabTarget
+
+export function asPopup(forTab=-1) {
+    if (forTab !== -1) popupTabTarget = forTab
+    console.log("commandline being treated as popup...")
+    browserBg.tabs.onActivated.addListener(activeInfo => {
+        console.log("changed tab...")
+        ownTabId().then(thisTabId => {
+            if (activeInfo.tabId === thisTabId) {
+                popupTabTarget = activeInfo.previousTabId
+            } else {
+                popupTabTarget = activeInfo.tabId
+            }
+        })
+    })
+    commandline_state.fns["popup_hide_and_clear"] = () => window.close()
+    messageTab = (type, command, args) => {
+        console.log("messaging tab: " + popupTabTarget)
+        return Messaging.messageTab(popupTabTarget, type, command, args)
+    }
+    Messaging.addListener("commandline_frame", ()=>console.log("received"))
+
+    Messaging.addListener("controller_content", (message, sender, sendResponse) => {
+        console.log("relaying controller_content")
+        console.log(message)
+        if (message.command === "acceptExCmd") {
+            console.log("focusing tab first...")
+            browserBg.tabs.get(popupTabTarget).then(tab => {
+                browserBg.windows.update(tab.windowId, { focused: true })
+                .then(() => browserBg.tabs.update(tab.id, { active: true }))
+                .then(() => {
+                    messageTab("controller_content", message.command, message.args)
+                    window.close()
+                })
+            })
+        } else {
+            messageTab("controller_content", message.command, message.args)
+            window.close()
+        }
+    })
+    focus()
+    return true
+}
+
 // first theming of commandline iframe
 theme(document.querySelector(":root"))
 
 /** @hidden **/
 function resizeArea() {
     if (commandline_state.isVisible) {
-        Messaging.messageOwnTab("commandline_content", "show")
+        messageTab("commandline_content", "show")
         focus()
     }
 }
@@ -198,7 +245,7 @@ export function focus() {
     commandline_state.clInput.removeEventListener("blur", noblur)
     commandline_state.clInput.addEventListener("blur", noblur)
     logger.debug("commandline_frame clInput focus(), activeElement is clInput: " + (window.document.activeElement === commandline_state.clInput))
-    Messaging.messageOwnTab("stop_buffering_page_keys").then(consumeBufferedPageKeys)
+    messageTab("stop_buffering_page_keys").then(consumeBufferedPageKeys)
 }
 
 /** @hidden **/
@@ -244,7 +291,11 @@ commandline_state.clInput.addEventListener(
             // This is definitely a hack. Should expand aliases with exmode, etc.
             // but this whole thing should be scrapped soon, so whatever.
             if (response.value.startsWith("ex.")) {
-                const [funcname, ...args] = response.value.slice(3).split(/\s+/)
+                console.log("ex. response")
+                let [funcname, ...args] = response.value.slice(3).split(/\s+/)
+                if (popupTabTarget && funcname === "hide_and_clear") funcname = "popup_hide_and_clear"
+                console.log(funcname)
+                console.log(args)
 
                 QUEUE[QUEUE.length - 1].then(() => {
                     QUEUE.push(
@@ -260,6 +311,7 @@ commandline_state.clInput.addEventListener(
                     prev_cmd_called_history = history_called
                 })
             } else {
+                console.log("normal response")
                 // Send excmds directly to our own tab, which fixes the
                 // old bug where a command would be issued in one tab but
                 // land in another because the active tab had
@@ -268,7 +320,7 @@ commandline_state.clInput.addEventListener(
                 // shim to the background, but the latency increase should
                 // be acceptable becuase the background-mode excmds tend
                 // to be a touch less latency-sensitive.
-                Messaging.messageOwnTab("controller_content", "acceptExCmd", [
+                messageTab("controller_content", "acceptExCmd", [
                     response.value,
                 ]).then(_ => (prev_cmd_called_history = history_called))
             }
@@ -433,4 +485,4 @@ Messaging.addListener(
     perfObserver: perf.listenForCounters(),
 })
 
-Messaging.messageOwnTab("commandline_frame_ready_to_receive_messages")
+messageTab("commandline_frame_ready_to_receive_messages")

@@ -3971,6 +3971,35 @@ export function hidecmdline() {
     CommandLineContent.hide_and_blur()
 }
 
+import { ownTabId } from "@src/lib/webext"
+
+//#content
+export async function cmdlinepopup() {
+    cmdlinepopupfortab(await ownTabId())
+}
+
+//#background
+export async function cmdlinepopupfortab(tabid:number) {
+    const popuptab = await winopen("-popup", browser.runtime.getURL("static/commandline.html"))
+    async function waitForScript(tabId, changeInfo, tab) {
+        console.log("waiting for popup...")
+        console.log(tabId)
+        console.log(changeInfo)
+        console.log(tab)
+        // any idea why the help tab always opens??
+        if (tabId === popuptab.id && changeInfo.status === "complete" && tab.url === browser.runtime.getURL("static/commandline.html")) {
+            console.log("messaging popup tab " + popuptab.id)
+            browser.windows.update(tab.windowId, { height: 500 })
+        //     const msg = Messaging.messageTab(tab.id, "commandline_frame", "asPopup", [tabid])
+        //     console.log("well...")
+        //     console.log(msg)
+            Messaging.messageTab(popuptab.id, "commandline_frame", "asPopup", [tabid])
+            browser.tabs.onUpdated.removeListener(waitForScript)
+        }
+    }
+    browser.tabs.onUpdated.addListener(waitForScript)
+}
+
 /** Set the current value of the commandline to string *with* a trailing space */
 //#content
 export function fillcmdline(...strarr: string[]) {
