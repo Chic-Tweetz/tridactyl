@@ -59,7 +59,7 @@ import * as R from "ramda"
 import { MinimalKey, minimalKeyFromKeyboardEvent } from "@src/lib/keyseq"
 import { TabGroupCompletionSource } from "@src/completions/TabGroup"
 import { ProfileCompletionSource } from "@src/completions/Profile"
-import { ownTabId, browserBg } from "@src/lib/webext"
+import { ownTab, ownTabId, browserBg } from "@src/lib/webext"
 
 /** @hidden **/
 const logger = new Logger("cmdline")
@@ -95,9 +95,20 @@ const commandline_state = {
 let messageTab = Messaging.messageOwnTab
 let popupTabTarget
 
-export function asPopup(forTab=-1) {
+export function asPopup(forTab=-1, trailspace=true, str="") {
+    console.log("asPopup received this string: '" + str + "'")
     if (forTab !== -1) popupTabTarget = forTab
     console.log("commandline being treated as popup...")
+    // do i want to let it work for any old tab?
+    browserBg.windows.onFocusChanged.addListener(windowId => {
+        ownTab().then(tab => {
+            // Kinda feeling this tbh
+            if (windowId !== tab.windowId) {
+                window.close()
+            }
+        })
+    })
+    /*
     browserBg.tabs.onActivated.addListener(activeInfo => {
         console.log("changed tab...")
         ownTabId().then(thisTabId => {
@@ -105,15 +116,25 @@ export function asPopup(forTab=-1) {
                 popupTabTarget = activeInfo.previousTabId
             } else {
                 popupTabTarget = activeInfo.tabId
+                browserBg.tabs.get(activeInfo.tabId)
+                .then(t => {
+                    console.log("focused url: " + t.url)
+                    // i'm not sure i even want it to live if focus changes at all
+                    if (t.url === window.location.href) window.close()
+                })
             }
         })
     })
+    */
     commandline_state.fns["popup_hide_and_clear"] = () => window.close()
     messageTab = (type, command, args) => {
-        console.log("messaging tab: " + popupTabTarget)
+        console.log(">>>>relaying to tab: " + popupTabTarget + " <<<<")
+        console.log(type)
+        console.log(command)
+        console.log(args)
+        console.log(">>>>end of message relay<<<<")
         return Messaging.messageTab(popupTabTarget, type, command, args)
     }
-    Messaging.addListener("commandline_frame", ()=>console.log("received"))
 
     Messaging.addListener("controller_content", (message, sender, sendResponse) => {
         console.log("relaying controller_content")
@@ -133,7 +154,12 @@ export function asPopup(forTab=-1) {
             window.close()
         }
     })
-    focus()
+    document.body.style.background = "var(--tridactyl-bg)"
+
+    // this accidentally opens the proper commandline if you use this on a working tab
+    // though I'm not sure quite how - we're in a new window now aren't we?
+    fillcmdline(str, trailspace, true)
+    // focus()
     return true
 }
 
@@ -142,7 +168,7 @@ theme(document.querySelector(":root"))
 
 /** @hidden **/
 function resizeArea() {
-    if (commandline_state.isVisible) {
+    if (commandline_state.isVisible && !popupTabTarget) {
         messageTab("commandline_content", "show")
         focus()
     }

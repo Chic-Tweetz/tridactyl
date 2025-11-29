@@ -3974,26 +3974,39 @@ export function hidecmdline() {
 import { ownTabId } from "@src/lib/webext"
 
 //#content
-export async function cmdlinepopup() {
-    cmdlinepopupfortab(await ownTabId())
+export async function cmdlinepopup(...strarr: string[]) {
+    cmdlinepopupfortab(await ownTabId(), true, ...strarr)
+}
+
+//#content
+export async function cmdlinepopup_notrail(...strarr: string[]) {
+    cmdlinepopupfortab(await ownTabId(), false, ...strarr)
 }
 
 //#background
-export async function cmdlinepopupfortab(tabid:number) {
-    const popuptab = await winopen("-popup", browser.runtime.getURL("static/commandline.html"))
+export async function cmdlinepopupfortab(tabid:number, trailspace:boolean, ...strarr: string[]) {
+    const fortab = await browser.tabs.get(tabid) // guess i should just pass the tab itself
+    const forwin = await browser.windows.get(fortab.windowId)
+    const creationData: any = { url: browser.runtime.getURL("static/commandline.html"), focused: false, type: "popup" }
+    creationData.left = forwin.left
+    creationData.top = forwin.top + forwin.height - 500
+    creationData.height = 500
+    creationData.width = forwin.width
+
+    const popupwin = browser.windows.create(creationData)
+    // trying to avoid a flashbang when it loads...
+    const popuptab = popupwin.then(w => w.tabs[0])
+
+    // const popuptab = await winopen("-popup", browser.runtime.getURL("static/commandline.html"))
     async function waitForScript(tabId, changeInfo, tab) {
         console.log("waiting for popup...")
         console.log(tabId)
         console.log(changeInfo)
         console.log(tab)
-        // any idea why the help tab always opens??
-        if (tabId === popuptab.id && changeInfo.status === "complete" && tab.url === browser.runtime.getURL("static/commandline.html")) {
-            console.log("messaging popup tab " + popuptab.id)
-            browser.windows.update(tab.windowId, { height: 500 })
-        //     const msg = Messaging.messageTab(tab.id, "commandline_frame", "asPopup", [tabid])
-        //     console.log("well...")
-        //     console.log(msg)
-            Messaging.messageTab(popuptab.id, "commandline_frame", "asPopup", [tabid])
+        const popupTabId = (await popuptab).id
+        if (tabId === popupTabId && changeInfo.status === "complete" && tab.url === browser.runtime.getURL("static/commandline.html")) {
+            Messaging.messageTab(popupTabId, "commandline_frame", "asPopup", [tabid, trailspace, strarr.join(" ")])
+            .then(() => browser.windows.update(tab.windowId, { focused: true }))
             browser.tabs.onUpdated.removeListener(waitForScript)
         }
     }

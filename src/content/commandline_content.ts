@@ -39,7 +39,16 @@ export function makeIframe() {
             noiframe = true
             Messaging.addListener("commandline_frame", (msg, sender, sendResponse)=>{
                 Messaging.messageOwnTab("stop_buffering_page_keys")
-                sendResponse(true)
+
+                if (msg.command === "fillcmdline") {
+                    console.log("auto popup-ing")
+                    console.log(msg.args)
+                    // seems trailing spaces are trimmed when messaged so can't handle that here
+                    Messaging.messageOwnTab("controller_content", "acceptExCmd",
+                                            ["cmdlinepopup" +
+                                                (msg.args[1] ? "" : "_notrail") +
+                                                " " + msg.args[0]])
+                }
             })
             Messaging.messageOwnTab("commandline_frame_ready_to_receive_messages")
         }
