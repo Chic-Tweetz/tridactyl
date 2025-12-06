@@ -417,7 +417,12 @@ export function getAllShadowRoots(filters: ElementFilter[] = []) {
     do {
         root.querySelectorAll("*").forEach(elem => {
             if ((elem as any).openOrClosedShadowRoot && filters.every(filter => filter(elem))) {
-                shadows.push((elem as any).openOrClosedShadowRoot)
+                // Skip restricted shadows - can happen in extension pages eg :reader
+                try {
+                    // This is forbidden if the shadow is restricted
+                    (elem as any).openOrClosedShadowRoot.querySelectorAll
+                    shadows.push((elem as any).openOrClosedShadowRoot)
+                } catch (e) {}
             }
         })
         root = shadows[checked]
@@ -461,10 +466,13 @@ function getShadowElementsBySelector(selector: string) {
         const root = roots.pop()
         root.querySelectorAll("*").forEach(elem => {
             if ((elem as any).openOrClosedShadowRoot) {
-                roots.push((elem as any).openOrClosedShadowRoot)
-                elems = elems.concat(
-                    ...roots[roots.length - 1].querySelectorAll(selector),
-                )
+                try {
+                    (elem as any).openOrClosedShadowRoot.querySelectorAll
+                    roots.push((elem as any).openOrClosedShadowRoot)
+                    elems = elems.concat(
+                        ...roots[roots.length - 1].querySelectorAll(selector),
+                    )
+                } catch (e) {}
             }
         })
     }
