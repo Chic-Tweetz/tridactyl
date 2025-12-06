@@ -282,7 +282,7 @@ export class default_config {
         r: "reload",
         R: "reloadhard",
         x: "stop",
-        gi: "focusinput -l",
+        gi: "focusinput",
         "g?": "rot13",
         "g!": "jumble",
         "g;": "changelistjump -1",
@@ -663,7 +663,7 @@ export class default_config {
         tabgroupswitch: "tgroupswitch",
         tabnew: "tabopen",
         tabm: "tabmove",
-        tabo: "tabonly",
+        tabo: "fillcmdline_tmp 3000 The :tabo alias has been removed. You can add it back with :command tabo tabonly",
         tn: "tabnext_gt",
         bn: "tabnext_gt",
         tnext: "tabnext_gt",
@@ -1105,6 +1105,25 @@ export class default_config {
      * "downloadforbiddenreplacement" value.
      */
     downloadforbiddennames = ""
+
+    /**
+    * Placeholder string used in ":saveas" targets. If the save-as path
+    * contains this marker, it will be replaced with the filename
+    * derived from the URL.
+    *
+    * For example, using:
+    *
+    *   :saveas ~/Documents/ex-%
+    *
+    * with the URL:
+    *
+    *   https://example.com/log.txt
+    *
+    * will produce the file:
+    *
+    *   ~/Documents/ex-log.txt
+    */
+    downloadfilenamemarker = "%";
 
     /**
      * Set this to something weird if you want to have fun every time Tridactyl tries to update its native messenger.

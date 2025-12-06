@@ -511,7 +511,7 @@ export async function unloadtheme(themename: string) {
  *
  * Themes can be loaded from URLs with `:colourscheme --url [url] [themename]`. They are stored internally - if you want to update the theme run the whole command again. You can use `%` as a placeholder for the current URL.
  *
- * Themes can be used for specific sites with `:colourscheme --regex [url regex]`. As a shorthand to style our `:reader` mode, you can use `:colourscheme --module=reader`.
+ * Themes can be used for specific sites with `:colourscheme --regex [url regex]`. As a shorthand to style our `:reader` mode, you can use `:colourscheme --module=reader`, for example, `:colourscheme --module=reader --url=https://raw.githubusercontent.com/tridactyl/tridactyl/refs/heads/master/contrib/themes/reader/newspaper.css newspaper`
  *
  * Note that the theme name should NOT contain any dot.
  *
@@ -543,7 +543,7 @@ export async function colourscheme(...args: string[]) {
             if (themename === undefined) throw new Error(`You must provide a theme name!`)
             if (url === "%") url = window.location.href // this is basically an easter egg
             if (!(url.startsWith("http://") || url.startsWith("https://"))) url = "http://" + url
-            const css = await rc.fetchText(url)
+            const css = await (await fetch(url)).text()
             set("customthemes." + themename, css)
         } else {
             await loadtheme(themename)
@@ -952,6 +952,8 @@ export async function restart() {
  * - A relative path, relative to the native messenger executable (e.g. ~/.local/share/tridactyl on linux).
  * If filename is not given, a download dialogue will be opened. If filename is a directory, the file will be saved inside of it, its name being inferred from the URL. If the directories mentioned in the path do not exist or if a file already exists at this path, the file will be kept in your downloads folder and an error message will be given.
  *
+ * All instances of `downloadfilenamemarker`, `%` by default, will be replaced with the original filename.
+ *
  * **NB**: if a non-default save location is chosen, Firefox's download manager will say the file is missing. It is not - it is where you asked it to be saved.
  *
  * Flags:
@@ -985,8 +987,8 @@ export async function saveas(...args: string[]) {
     }
 
     if (args.length > 0) {
-        const filename = await Messaging.message("download_background", "downloadUrlAs", window.location.href, file, overwrite, cleanup)
-        return fillcmdline_tmp(10000, `Download completed: ${filename} stored in ${file}`)
+        const downloadUrlAsResult = await Messaging.message("download_background", "downloadUrlAs", window.location.href, file, overwrite, cleanup)
+        return fillcmdline_tmp(10000, `Download completed: saved at ${downloadUrlAsResult.finalSaveAs}`)
     } else {
         return Messaging.message("download_background", "downloadUrl", window.location.href, true)
     }
@@ -1781,25 +1783,51 @@ export function home(all: "false" | "true" = "false") {
 
     On the ex command page, the "nmaps" list is a list of all the bindings for the command you're seeing and the "exaliases" list lists all its aliases.
 
-    If there's a conflict (e.g. you have a "go" binding that does something, a "go" excmd that does something else and a "go" setting that does a third thing), the binding is chosen first, then the setting, then the excmd. In such situations, if you want to let Tridactyl know you're looking for something specfic, you can specify the following flags as first arguments:
+    If there's a conflict (e.g. you have a "go" binding that does something, a "go" excmd that does something else and a "go" setting that does a third thing), the binding is chosen first, then the setting, then the excmd. In such situations, if you want to let Tridactyl know you're looking for something specfic, you can specify the following flags:
 
     `-a`: look for an alias
+
     `-b`: look for a binding
+
     `-e`: look for an ex command
+
     `-s`: look for a setting
+
+    `-B`: open the help page in a background tab
+
+    `-o`: open the help page in the current tab
+
+    `-t`: open the help page in a new tab
+
+    `-w`: open the help page in a new window
 
     If the keyword you gave to `:help` is actually an alias for a composite command (see [[composite]]) , you will be taken to the help section for the first command of the pipeline. You will be able to see the whole pipeline by hovering your mouse over the alias in the "exaliases" list. Unfortunately there currently is no way to display these HTML tooltips from the keyboard.
 
     e.g. `:help bind`
 */
 //#background
-export async function help(...helpItems: string[]) {
-    const flags = {
-        // -a: look for an alias
-        "-a": (settings, helpItem) => {
+export async function help(...args: string[]) {
+    const option = arg.lib({
+        "-a": Boolean,
+        "-b": Boolean,
+        "-e": Boolean,
+        "-s": Boolean,
+        "-B": Boolean,
+        "-o": Boolean,
+        "-t": Boolean,
+        "-w": Boolean,
+    }, { argv: args, allowNegativePositional: true })
+
+    const openInCurrentWindow = option["-o"] || ((await activeTab()).url.startsWith(browser.runtime.getURL("static/docs/")) && !(option["-B"] || option["-t"] || option["-w"]))
+    const subject = option._.join(" ")
+    const settings = await config.getAsync()
+    let url = ""
+
+    const strategies = {
+        alias: (helpItem: string) => {
             const aliases = settings.exaliases
             // As long as helpItem is an alias, try to resolve this alias to a real helpItem
-            const resolved = []
+            const resolved: string[] = []
             while (aliases[helpItem]) {
                 resolved.push(helpItem)
                 helpItem = aliases[helpItem].split(" ")
@@ -1812,8 +1840,7 @@ export async function help(...helpItems: string[]) {
             }
             return ""
         },
-        // -b: look for a binding
-        "-b": (settings, helpItem) => {
+        binding: (helpItem: string) => {
             for (const mode of modeMaps) {
                 const bindings = settings[mode]
                 // If 'helpItem' matches a binding, replace 'helpItem' with
@@ -1828,10 +1855,8 @@ export async function help(...helpItems: string[]) {
             }
             return ""
         },
-        // -e: look for an excmd
-        "-e": (settings, helpItem) => browser.runtime.getURL("static/docs/modules/_src_excmds_.html") + "#" + helpItem,
-        // -s: look for a setting
-        "-s": (settings, helpItem) => {
+        excmd: (helpItem: string) => browser.runtime.getURL("static/docs/modules/_src_excmds_.html") + "#" + helpItem,
+        setting: (helpItem: string) => {
             let subSettings = settings
             const settingNames = helpItem.split(".")
             let settingHelpAnchor = ""
@@ -1849,37 +1874,33 @@ export async function help(...helpItems: string[]) {
         },
     }
 
-    let flag = ""
-
-    if (helpItems.length > 0 && Object.keys(flags).includes(helpItems[0])) {
-        flag = helpItems[0]
-        helpItems.splice(0, 1)
-    }
-
-    const subject = helpItems.join(" ")
-    const settings = await config.getAsync()
-    let url = ""
     if (subject === "") {
         url = browser.runtime.getURL("static/docs/modules/_src_excmds_.html")
     } else {
         // If the user did specify what they wanted, specifically look for it
-        if (flag !== "") {
-            url = flags[flag](settings, subject)
-        }
+        if (option["-a"]) url = strategies.alias(subject)
+        else if (option["-b"]) url = strategies.binding(subject)
+        else if (option["-e"]) url = strategies.excmd(subject)
+        else if (option["-s"]) url = strategies.setting(subject)
 
         // Otherwise or if it couldn't be found, try all possible items
         if (url === "") {
-            url = ["-b", "-s", "-a", "-e"].reduce((acc, curFlag) => {
-                if (acc !== "") return acc
-                return flags[curFlag](settings, subject)
-            }, "")
+            const priority = [strategies.binding, strategies.setting, strategies.alias, strategies.excmd]
+            for (const strategy of priority) {
+                url = strategy(subject)
+                if (url !== "") break
+            }
         }
     }
 
     let done
-    if ((await activeTab()).url.startsWith(browser.runtime.getURL("static/docs/"))) {
+    if (openInCurrentWindow) {
         done = open(url)
-    } else {
+    } else if (option["-B"]) {
+        done = tabopen("-b", url)
+    } else if (option["-w"]) {
+        done = winopen(url)
+    } else { // option["-t"]
         done = tabopen(url)
     }
     return done.then(() => undefined)
@@ -2487,7 +2508,7 @@ export function focusinput(nth: number | string) {
     let fallbackToNumeric = true
 
     // nth = "-l" -> use the last used input for this page
-    if (nth === "-l") {
+    if (nth === "-l" || !nth) {
         // try to recover the last used input stored as a
         // DOM node, which should be exactly the one used before (or null)
         if (DOM.getLastUsedInput()) {
@@ -2969,7 +2990,12 @@ async function tabFromIndex(index?: number | "%" | "#" | string): Promise<browse
 
 /** Close all other tabs in this window */
 //#background
-export async function tabonly() {
+export async function tabonly(...args: string[]) {
+    if (args.length > 0) {
+        fillcmdline_tmp(3000, "# tabonly doesn't accept arguments, run without arguments to close all background tabs in this window")
+        return
+    }
+
     const tabs = await browser.tabs.query({
         pinned: false,
         active: false,
