@@ -84,6 +84,7 @@ div.TridactylHintHighlight {
 
 div.TridactylHintHighlightActive {
     background: var(--tridactyl-hint-highlight-active-bg) !important;
+    z-index: 1 !important;
 }
 
 div.TridactylHintOutline {

@@ -112,7 +112,7 @@
     --tridactyl-status-font-size: 8pt;
     --tridactyl-status-bg: rgba(var(--tritheme-darkblue4-rgb), 0.5);
 
-    --tritheme-status-private-border: var(--tridactyl-status-border);
+    --tritheme-status-private-border: solid 1px #51148A;
     --tritheme-status-private-bg: var(--tridactyl-status-bg);
 
     /* Search highlight */
