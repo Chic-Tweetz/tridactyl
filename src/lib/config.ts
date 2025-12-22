@@ -782,7 +782,7 @@ export class default_config {
      *  ```
      */
     searchurls = {
-        google: "https://www.google.com/search?q=",
+        google: "https://www.google.com/search?udm=14&q=",
         scholar: "https://scholar.google.com/scholar?q=",
         bing: "https://www.bing.com/search?q=",
         duckduckgo: "https://duckduckgo.com/?q=",
@@ -1001,6 +1001,7 @@ export class default_config {
         state: "warning",
         styling: "warning",
         autocmds: "warning",
+        profiles: "warning",
     }
 
     /**
@@ -1107,23 +1108,23 @@ export class default_config {
     downloadforbiddennames = ""
 
     /**
-    * Placeholder string used in ":saveas" targets. If the save-as path
-    * contains this marker, it will be replaced with the filename
-    * derived from the URL.
-    *
-    * For example, using:
-    *
-    *   :saveas ~/Documents/ex-%
-    *
-    * with the URL:
-    *
-    *   https://example.com/log.txt
-    *
-    * will produce the file:
-    *
-    *   ~/Documents/ex-log.txt
-    */
-    downloadfilenamemarker = "%";
+     * Placeholder string used in ":saveas" targets. If the save-as path
+     * contains this marker, it will be replaced with the filename
+     * derived from the URL.
+     *
+     * For example, using:
+     *
+     *   :saveas ~/Documents/ex-%
+     *
+     * with the URL:
+     *
+     *   https://example.com/log.txt
+     *
+     * will produce the file:
+     *
+     *   ~/Documents/ex-log.txt
+     */
+    downloadfilenamemarker = "%"
 
     /**
      * Set this to something weird if you want to have fun every time Tridactyl tries to update its native messenger.
@@ -1408,8 +1409,7 @@ export class default_config {
     /**
      * Internal temporary storage for :reader, mapping UUIDs to base64 encoded html strings of articles
      */
-    reader_articles: { [id: string]: string } = {
-    }
+    reader_articles: { [id: string]: string } = {}
 }
 
 const platform_defaults = {
