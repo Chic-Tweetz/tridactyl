@@ -443,25 +443,17 @@ config.getAsync("modeindicator").then(mode => {
             }
         }
 
-        const privateMode = browser.extension.inIncognitoContext
-            ? "TridactylPrivate"
-            : ""
-        statusIndicator.className =
-            "cleanslate TridactylStatusIndicator " + privateMode
         if (
             dom.isTextEditable(document.activeElement) &&
             !["input", "ignore"].includes(mode)
         ) {
             result = "insert"
-            // this doesn't work; statusIndicator.style is full of empty string
-            // statusIndicator.style.borderColor = "green !important"
             // need to fix loss of focus by click: doesn't do anything here.
         } else if (
             mode === "insert" &&
             !dom.isTextEditable(document.activeElement)
         ) {
             result = "normal"
-            // statusIndicator.style.borderColor = "lightgray !important"
         } else {
             result = mode
         }
@@ -482,17 +474,20 @@ config.getAsync("modeindicator").then(mode => {
             "config",
             modeindicatorshowkeys,
         )
-        statusIndicator.textContent = result
-        statusIndicator.className +=
-            " TridactylMode" + statusIndicator.textContent
 
-        if (
-            config.get("modeindicator") !== "true" ||
-            config.get("modeindicatormodes", mode) === "false"
-        ) {
-            statusIndicator.classList.add("TridactylInvisible")
-        } else {
-            statusIndicator.classList.remove("TridactylInvisble")
+        statusIndicator.textContent = result
+
+        if (property === "mode") {
+            const indicatorClass = "cleanslate TridactylStatusIndicator "
+            const privateMode = browser.extension.inIncognitoContext
+                ? "TridactylPrivate"
+                : ""
+            const invisibleClass = config.get("modeindicator") !== "true" ||
+                config.get("modeindicatormodes", mode) === "false"
+                ? "TridactylInvisible"
+                : ""
+
+            statusIndicator.className = `${indicatorClass} ${privateMode} TridactylMode${mode} ${invisibleClass}`
         }
     })
 })
