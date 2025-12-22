@@ -430,6 +430,15 @@ config.getAsync("modeindicator").then(mode => {
         })
     }
 
+    // It's kind of awkward to get an "ex" mode displayed because it's not a real mode
+    // if the (real) mode changes while the cmdline is focused, update the text after the cmdline closes
+    let exModeExitText = ""
+    let exModeExitClass = ""
+    const exitExMode = () => {
+        statusIndicator.textContent = exModeExitText
+        statusIndicator.className = exModeExitClass
+    }
+
     addContentStateChangedListener(async (property, oldMode, oldValue, newValue) => {
         let mode = newValue
         let suffix = ""
@@ -475,20 +484,31 @@ config.getAsync("modeindicator").then(mode => {
             modeindicatorshowkeys,
         )
 
+        const indicatorClass = "cleanslate TridactylStatusIndicator "
+        const privateMode = browser.extension.inIncognitoContext
+            ? "TridactylPrivate"
+            : ""
+        const invisibleClass = config.get("modeindicator") !== "true" ||
+            config.get("modeindicatormodes", mode) === "false"
+            ? "TridactylInvisible"
+            : ""
+
+        exModeExitText = result
+        exModeExitClass = `${indicatorClass} ${privateMode} TridactylMode${result.split(" ")[0]} ${invisibleClass}`
+
+        const cmdline = document.querySelector(`#cmdline_iframe[src="${browser.runtime.getURL("static/commandline.html")}"]`)
+        if (document.activeElement === cmdline) {
+            (cmdline as any).contentWindow.removeEventListener("blur", exitExMode)
+            (cmdline as any).contentWindow.addEventListener("blur", exitExMode)
+            result = "ex"
+        }
+
         statusIndicator.textContent = result
 
-        if (property === "mode") {
-            const indicatorClass = "cleanslate TridactylStatusIndicator "
-            const privateMode = browser.extension.inIncognitoContext
-                ? "TridactylPrivate"
-                : ""
-            const invisibleClass = config.get("modeindicator") !== "true" ||
-                config.get("modeindicatormodes", mode) === "false"
-                ? "TridactylInvisible"
-                : ""
+        // Hinting to select an input made the text "insert" but the mode apparently still "normal"
+        const modeText = result.split(" ")[0]
 
-            statusIndicator.className = `${indicatorClass} ${privateMode} TridactylMode${mode} ${invisibleClass}`
-        }
+        statusIndicator.className = `${indicatorClass} ${privateMode} TridactylMode${modeText} ${invisibleClass}`
     })
 })
 

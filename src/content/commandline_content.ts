@@ -41,6 +41,34 @@ export function makeIframe() {
                 Messaging.messageOwnTab("stop_buffering_page_keys")
             })
             Messaging.messageOwnTab("commandline_frame_ready_to_receive_messages")
+        } else {
+            // Hijacking this existing if for something completely different:
+            // There isn't an actual ex mode, but we could still set the status indicator's text if we focus the cmdline
+            // There's more in content.ts to make sure the correct text is put in the status indicator
+            // (would rather put it all in one place)
+            let lastMode = "normal"
+            cmdline_iframe.contentWindow.addEventListener("focus", () => {
+                const indicator = document.querySelector(".TridactylStatusIndicator")
+                if (indicator && indicator.textContent !== "ex") {
+                    lastMode = indicator.textContent.split(" ")[0]
+                    setTimeout(() => {
+                        indicator.textContent = "ex"
+                        indicator.classList.remove("TridactylMode" + lastMode)
+                        indicator.classList.add("TridactylModeex")
+                    }, 0)
+                }
+            })
+            cmdline_iframe.contentWindow.addEventListener("blur", () => {
+                const indicator = document.querySelector(".TridactylStatusIndicator")
+                if (!indicator) return
+                if (indicator.textContent !== "ex") {
+                    lastMode = indicator.textContent.split(" ")[0]
+                    return
+                }
+                indicator.textContent = lastMode
+                indicator.classList.remove("TridactylModeex")
+                indicator.classList.add("TridactylMode" + lastMode)
+            })
         }
     })
 }

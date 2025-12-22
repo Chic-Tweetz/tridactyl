@@ -107,10 +107,10 @@
     --tridactyl-private-window-icon-url: url("chrome://global/skin/icons/indicator-private-browsing.svg");
 
     /* Mode indicator */
-    --tridactyl-status-fg: white;
-    --tridactyl-status-border: var(--tritheme-darkblue2) solid 1.5px;
+    --tridactyl-status-fg: rgb(27, 29, 43);
+    --tridactyl-status-border: rgb(27, 29, 43) solid 1.5px;
     --tridactyl-status-font-size: 8pt;
-    --tridactyl-status-bg: rgba(var(--tritheme-darkblue4-rgb), 0.5);
+    --tridactyl-status-bg: rgba(var(--tritheme-moon-blue-rgb), 0.9);
 
     --tritheme-status-private-border: solid 1px #51148A;
     --tritheme-status-private-bg: var(--tridactyl-status-bg);
@@ -229,9 +229,48 @@
     border: var(--tridactyl-cmdl-input-border);
 }
 
+/* Tuck the mode indicator into the MacOS rounded corner */
+.TridactylStatusIndicator {
+    margin: -2px !important;
+    padding-top: 0px !important;
+    padding-bottom: 0px !important;
+    padding-right: 10px !important;
+    padding-left: 5px !important;
+    border-bottom-right-radius: 15px !important;
+}
+
+/* Colourful modes (missing normal, nmode and gobble which will all be a default blue) */
+.TridactylModehint {
+    --tridactyl-status-bg: rgba(var(--tritheme-moon-yellow-rgb), 0.9);
+}
+
+.TridactylModeinsert, .TridactylModeinput {
+    --tridactyl-status-bg: rgba(var(--tritheme-moon-green-rgb), 0.9);
+}
+
+.TridactylModevisual {
+    --tridactyl-status-bg: rgba(var(--tritheme-moon-magenta-rgb), 0.9);
+}
+
+.TridactylModeignore {
+    --tridactyl-status-bg: rgba(180, 180, 180, 0.75);
+}
+
+.TridactylModeex {
+    --tridactyl-status-bg: rgba(var(--tritheme-orange3-rgb), 0.9);
+}
+
+.TridactylModegobble {
+    --tridactyl-status-bg: rgba(var(--tritheme-red-rgb), 0.9);
+}
+
+.TridactylModenmode {
+    --tridactyl-status-bg: rgba(var(--tritheme-cyan-rgb), 0.9);
+}
+
 .TridactylPrivate {
     border: var(--tritheme-status-private-border) !important;
-    background: var(--tritheme-status-private-bg) !important;
+    background: var(--tridactyl-status-bg) !important;
 }
 
 span.TridactylHint {
