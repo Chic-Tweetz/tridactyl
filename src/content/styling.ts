@@ -1,7 +1,7 @@
 import { staticThemes } from "@src/.metadata.generated"
 import * as config from "@src/lib/config"
 import * as Logging from "@src/lib/logging"
-import { browserBg, ownTabId } from "@src/lib/webext"
+import { browserBg, ownTabId, ownTabContainer } from "@src/lib/webext"
 
 const logger = new Logging.Logger("styling")
 
@@ -36,6 +36,8 @@ const customCss = {
 export function hintElemStyles() {
     return hintElemCss.code
 }
+
+let insertedContainerCss = false
 
 export async function theme(element) {
     // Remove any old theme
@@ -168,6 +170,41 @@ export async function theme(element) {
         element.tagName.toUpperCase() === "HTML"
     ) {
         THEMED_ELEMENTS.push(element)
+    }
+
+    // Add/overwrite a --tridactyl-container-color var that can be used for the status indicator (or whatever else)
+    // As usual, slightly more complicated than anticipated!
+    if (!insertedContainerCss) {
+        const containerIndicator = await config.getAsync("containerindicator")
+        let color
+        let icon
+        if (containerIndicator !== "true") {
+            color = "lightgray"
+            icon = ""
+        } else if (browser.extension.inIncognitoContext) {
+            color = "#7514CF"
+            icon = "var(--tridactyl-private-window-icon-url)"
+        } else {
+            await ownTabContainer()
+                .then(ownTab =>
+                    browserBg.contextualIdentities.get(ownTab.cookieStoreId),
+                )
+                .then(container => {
+                    color = (container as any).colorCode
+                    icon = (container as any).iconUrl
+                })
+                .catch(error => {
+                    color = "lightgray"
+                    icon = ""
+                })
+        }
+        const rule = `:root { --tridactyl-container-color: ${color}; --tridactyl-container-icon-url: url("${icon}"); }`
+        await browserBg.tabs.insertCSS(await ownTabId(), {
+            allFrames: true,
+            matchAboutBlank: true,
+            code: rule,
+        })
+        insertedContainerCss = true
     }
 }
 
