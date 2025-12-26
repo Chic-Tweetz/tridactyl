@@ -499,7 +499,7 @@ config.getAsync("modeindicator").then(mode => {
         const cmdline = document.querySelector(`#cmdline_iframe[src="${browser.runtime.getURL("static/commandline.html")}"]`)
         if (document.activeElement === cmdline) {
             (cmdline as any).contentWindow.removeEventListener("blur", exitExMode)
-            (cmdline as any).contentWindow.addEventListener("blur", exitExMode)
+            ;(cmdline as any).contentWindow.addEventListener("blur", exitExMode)
             result = "ex"
         }
 
