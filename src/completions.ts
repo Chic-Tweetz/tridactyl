@@ -190,6 +190,9 @@ export abstract class CompletionSourceFuse extends CompletionSource {
         this.state = "hidden"
     }
 
+    // Adding things here that I want to use for custom completions because it's easy
+    public custom_callback(callbackName: string) {}
+
     // Helpful default implementations
 
     public async filter(exstr: string) {
@@ -334,6 +337,25 @@ export abstract class CompletionSourceFuse extends CompletionSource {
                 return true
             })
         } else return false
+    }
+
+    // Used in getting multiple completion sources working/not completely broken
+    public isHidden() {
+        return this.state === "hidden"
+    }
+
+    // returns a pair of indices with -1 instead of wrapping
+    // used to decide which completion source to use when going next/prev if multiple are visible
+    public async currentAndNextIndex(inc = 1) {
+        // I had it in my head that "active" completions weren't hidden, but they are included
+        if (this.state === "hidden") return [-1, -1]
+        const visopts = this.options.filter(o => o.state !== "hidden")
+        if (visopts.length === 0) return [-1, -1]
+
+        const currind = visopts.findIndex(o => o.state === "focused")
+        const nextind = currind + inc
+
+        return [currind, nextind < visopts.length ? nextind : -1]
     }
 
     /* abstract onUpdate(query: string, prefix: string, options: CompletionOptionFuse[]) */

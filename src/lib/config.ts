@@ -1410,6 +1410,75 @@ export class default_config {
      * Internal temporary storage for :reader, mapping UUIDs to base64 encoded html strings of articles
      */
     reader_articles: { [id: string]: string } = {}
+
+    /**
+     * In progess. How best to set these?
+     * would be nice if I could "inherit" like start from a fully setup "tab" completion
+     * this doesn't take too much setup to get completions working though
+     */
+    customcompletions = {
+        hintthis: {
+            title: "hint elements",
+            srcstrings: "a,div,p",
+            excmd: "hint -c",
+        },
+        customcomp: {
+            title: "my custom completion list!",
+            srcfn: "tri.browserBg.tabs.query({})",
+            columns: {
+                title: { key: "title", },
+                url: { class: "url", fn: "t => t.url", },
+                doc: { class: "haha", fn: "t => 'whatevs'" },
+            },
+            excmd: "fillcmdline",
+            valuefn: "t => t.title.slice(0, 5)",
+
+            // good extras? (not implemented)
+            srcrefresh: "refreshFn => on event or whatever refreshFn(), will call srcfn again and update the options",
+            completionfn: "opt => fillcmdline with a built string (instead of appending value to excmd)",
+
+            // Haven't actually made these do anything useful, just testing stuff
+            callbacks: {
+                exec: "tab => {console.log('on exec callback!');console.log(tab);}",
+                delete: "tab => { console.log('delete callback!') }",
+                action: "tab => { console.log('custom action!') }",
+                select: "tab => { console.log('selection:');console.log(tab.title); }",
+                deselect: "tab => { console.log('deselected:');console.log(tab.title); }",
+            },
+        },
+        // Can almost use this to switch to a tab if it exists or open a new one (alias tabif to one or the other)
+        // good for finding problems with multiple sources showing at once
+        tabif: {
+            title: "tab or tabopen",
+            excmd: "tab",
+            srcfn: "tri.browserBg.tabs.query({})",
+            columns: {
+                title: { key: "title" },
+                url: { fn: "tab => `<a>${tab.url}</a>`" }
+            },
+            valuefn: "tab => tab.title",
+        },
+        // Surprisingly this seems to work (scrolls paragraphs into view and highlights as they're selected)
+        paras: {
+            srcfn: "Array.from(document.querySelectorAll('p'))",
+            title: "Paragraphs",
+            excmd: "goto",
+            valuefn: "p => tri.dom.getSelector(p)",
+            callbacks: {
+                show: "()=>{if (!tri.thisstyle){tri.thisstyle=document.createElement('style');tri.thisstyle.textContent='.TridactylCompletionSelection{outline:1px solid blue !important;}';}document.head.appendChild(tri.thisstyle);}",
+                delete: "p => p.remove()",
+                action: "p => p.scrollIntoView()",
+                select: "p => {p.classList.add('TridactylCompletionSelection');p.scrollIntoView()}",
+                deselect: "p => p.classList.remove('TridactylCompletionSelection')",
+                hide: "()=>{console.log('paras hidden...');document.querySelectorAll('.TridactylCompletionSelection').forEach(e=>e.classList.remove('TridactylCompletionSelection'));tri.thisstyle.remove()}",
+            },
+            columns: {
+                title: {
+                    fn: "p => p.textContent.length < 53 ? p.textContent : p.textContent.slice(0, 50) + '...'",
+                },
+            },
+        },
+    }
 }
 
 const platform_defaults = {

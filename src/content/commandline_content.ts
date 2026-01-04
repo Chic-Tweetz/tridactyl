@@ -4,6 +4,7 @@ import Logger from "@src/lib/logging"
 import * as config from "@src/lib/config"
 import { theme } from "@src/content/styling"
 import * as Messaging from "@src/lib/messaging"
+import * as customCompletions from "@src/content/completions_content"
 const logger = new Logger("messaging")
 const cmdline_logger = new Logger("cmdline")
 
@@ -192,6 +193,7 @@ export function hide() {
         cmdline_iframe.inert = true;
         cmdline_iframe.classList.add("hidden")
         cmdline_iframe.setAttribute("style", "height: 0px !important;")
+        customCompletions.hide()
     } catch (e) {
         // Using cmdline_logger here is OK because cmdline_logger won't try to
         // call hide(), thus we avoid the recursion that happens for show() and
@@ -232,3 +234,6 @@ export function executeWithoutCommandLine(fn) {
 
 import * as SELF from "@src/content/commandline_content"
 Messaging.addListener("commandline_content", Messaging.attributeCaller(SELF))
+
+customCompletions.listenForCustomCompletions()
+
