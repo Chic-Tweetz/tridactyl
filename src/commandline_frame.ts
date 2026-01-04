@@ -44,6 +44,7 @@ import { ThemeCompletionSource } from "@src/completions/Theme"
 import { TabHistoryCompletionSource } from "@src/completions/TabHistory"
 import { WindowCompletionSource } from "@src/completions/Window"
 import { ProxyCompletionSource } from "@src/completions/Proxy"
+import { CustomCompletionSource } from "@src/completions/Custom"
 import { contentState } from "@src/content/state_content"
 import { theme } from "@src/content/styling"
 import { getCommandlineFns } from "@src/lib/commandline_cmds"
@@ -88,6 +89,7 @@ const commandline_state = {
     initialClInputValue: "",
     refresh_completions,
     state,
+    custom_callback,
 }
 
 // first theming of commandline iframe
@@ -121,6 +123,11 @@ function getCompletion(args_only = false): string | undefined {
     return args_only ? activeSource.args : activeSource.completion
 }
 
+// Perhaps not the best way to get callbacks working, but it does work
+function custom_callback(callbackName: string) {
+    getActiveCompletionSource()?.custom_callback(callbackName)
+}
+
 /** @hidden **/
 export function enableCompletions() {
     if (!commandline_state.activeCompletions) {
@@ -151,6 +158,7 @@ export function enableCompletions() {
             WindowCompletionSource,
             ExtensionsCompletionSource,
             ProxyCompletionSource,
+            CustomCompletionSource,
         ]
             .map(constructorr => {
                 try {

@@ -44,8 +44,45 @@ export function getCommandlineFns(cmdline_state: {
                 "current_cmdline",
                 "cmdline_filter",
             )
+            /*
             if (cmdline_state.activeCompletions)
                 cmdline_state.activeCompletions.forEach(comp => comp.next())
+            */
+
+            // This does work, but probably a bit of a refactor in order to get multiple sources working
+            const visibleCompletions = cmdline_state.activeCompletions.filter(comp => !comp.isHidden())
+            if (visibleCompletions.length === 1) {
+                visibleCompletions[0].next()
+                return
+            }
+            if (visibleCompletions.length === 0) {
+                return
+            }
+
+            let currcomp = -1
+            let nextcomp = 0
+            for (let i = 0; i < visibleCompletions.length; ++i) {
+                const comp = visibleCompletions[i]
+                const [currind, nextind] = await comp.currentAndNextIndex()
+                if (currind > -1) {
+                    currcomp = i
+                    if (nextind > -1) {
+                        nextcomp = currcomp
+                    } else if (currcomp + 1 < visibleCompletions.length) {
+                        nextcomp = currcomp + 1
+                    } else {
+                        nextcomp = -1
+                    }
+                    break
+                }
+            }
+
+            visibleCompletions.forEach((comp, i) => {
+                if (i !== nextcomp) {
+                    comp.deselect()
+                }
+            })
+            visibleCompletions[nextcomp]?.next()
         },
 
         /**
@@ -57,8 +94,43 @@ export function getCommandlineFns(cmdline_state: {
                 "current_cmdline",
                 "cmdline_filter",
             )
+            /*
             if (cmdline_state.activeCompletions)
                 cmdline_state.activeCompletions.forEach(comp => comp.prev())
+            */
+            const visibleCompletions = cmdline_state.activeCompletions.filter(comp => !comp.isHidden())
+            if (visibleCompletions.length === 1) {
+                visibleCompletions[0].prev()
+                return
+            }
+            if (visibleCompletions.length === 0) {
+                return
+            }
+
+            let currcomp = -1
+            let nextcomp = visibleCompletions.length - 1
+            for (let i = visibleCompletions.length - 1; i >= 0; --i) {
+                const comp = visibleCompletions[i]
+                const [currind, nextind] = await comp.currentAndNextIndex(-1)
+                if (currind > -1) {
+                    currcomp = i
+                    if (nextind > -1) {
+                        nextcomp = currcomp
+                    } else if (currcomp > 0) {
+                        nextcomp = currcomp - 1
+                    } else {
+                        nextcomp = -1
+                    }
+                    break
+                }
+            }
+
+            visibleCompletions.forEach((comp, i) => {
+                if (i !== nextcomp) {
+                    comp.deselect()
+                }
+            })
+            visibleCompletions[nextcomp]?.prev()
         },
 
         /**
@@ -191,8 +263,15 @@ export function getCommandlineFns(cmdline_state: {
                 "current_cmdline",
                 "cmdline_filter",
             )
-            const command =
-                cmdline_state.getCompletion() || cmdline_state.clInput.value
+
+            // Callback here perhaps? (callback for any completion with a callback.exec)
+            const maybeCompletion = cmdline_state.getCompletion()
+            if (maybeCompletion) {
+                cmdline_state.custom_callback("exec")
+            }
+            const command = maybeCompletion || cmdline_state.clInput.value
+            // const command =
+            //     cmdline_state.getCompletion() || cmdline_state.clInput.value
 
             cmdline_state.fns.hide_and_clear()
 
@@ -225,12 +304,26 @@ export function getCommandlineFns(cmdline_state: {
                 "clipboard yank " + command,
             ])
         },
+
+        // Why did I name this action and everything else callback? Why comment about it instead of changing it??
+        custom_completion_action: (callbackName: string) => {
+            const completion = cmdline_state.getCompletion()
+            if (completion) {
+                cmdline_state.custom_callback(callbackName)
+            }
+        },
     }
 }
 
+
 function execute_ex_on_x(args_only: boolean, cmdline_state, excmd: string) {
-    const args =
-        cmdline_state.getCompletion(args_only) || cmdline_state.clInput.value
+    const maybeCompletion = cmdline_state.getCompletion(args_only)
+    const args = maybeCompletion || cmdline_state.clInput.value
+
+    // Might want a callback here?
+    if (maybeCompletion) {
+        cmdline_state.custom_callback("execute_ex_on_x", { excmd, args })
+    }
 
     const cmdToExec = (excmd ? excmd + " " : "") + args
     cmdline_state.fns.store_ex_string(cmdToExec)
