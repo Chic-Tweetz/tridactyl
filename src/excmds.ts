@@ -392,6 +392,105 @@ export async function editor() {
     }
 }
 
+// Don't really know how the editor api works but I can copy how :editor works
+// Maybe it'd be easier to tweak editor and give it a couple of optional args?
+/**
+ * Open your favourite editor and send the output as args to an excmd.
+ * Optionally supply an initial string or HTML element.
+ */
+//#content
+export async function editor_excmd(excmd = "fillcmdline_notrail", ...initial: string[] | HTMLElement[]) {
+    // document.documentElement.appendChild(elem)
+    // const selector = DOM.getSelector(elem)
+    // addTridactylEditorClass(selector)
+
+    if (!(await Native.nativegate())) {
+        // removeTridactylEditorClass(selector)
+        return undefined
+    }
+
+    // Dummy element - I don't know how to/if you can use the editor without an element
+    let elem
+    if (typeof initial[0] === "string") {
+        elem = document.createElement("textarea")
+        elem.value = initial.join(" ")
+    } else {
+        try {
+            elem = initial[0].cloneNode(true)
+            ;["selectionStart", "selectionEnd", "selectionDirection"]
+                .forEach(k => elem[k] = initial[k])
+        } catch (e) {
+            elem = document.createElement("textarea")
+        }
+    }
+
+    const beforeUnloadListener = (event: BeforeUnloadEvent) => {
+        event.preventDefault()
+        event.returnValue = true
+    }
+
+    // Keep not getting focus on the command line so possibly overthinking this workaround
+    let editingComplete = false
+    let commandSent = false
+    let command
+    const iframe = document.querySelector(`iframe[src="${browser.runtime.getURL("static/commandline.html")}"]`)
+
+    const focusReturned = () => {
+        if (!editingComplete && !commandSent) return
+        window.removeEventListener("focus", focusReturned)
+        if (iframe) {
+            (iframe as any).contentWindow.removeEventListener("focus", focusReturned)
+        }
+        controller.acceptExCmd(command)
+        commandSent = true
+    }
+
+    window.addEventListener("beforeunload", beforeUnloadListener)
+
+    window.addEventListener("focus", focusReturned)
+
+    if (iframe) {
+        (iframe as any).contentWindow.addEventListener("focus", focusReturned)
+    }
+
+    let ans
+    const useHtml = await config.getAsync("editorusehtml") == "true"
+    try {
+        const editor = getEditor(elem, { preferHTML: useHtml })
+        const text = await editor.getContent()
+        const pos = await editor.getCursor()
+
+        const file = (await Native.temp(text, document.location.hostname)).content
+        const exec = await Native.editor(file, ...pos)
+
+        if (exec.code == 0) {
+            await editor.setContent(exec.content)
+            // TODO: ask the editor nicely where its cursor was left and use that
+            //          for now just try to put it where it started at
+            await editor.setCursor(...pos)
+
+            // TODO: add annoying "This message was written with [Tridactyl](https://addons.mozilla.org/en-US/firefox/addon/tridactyl-vim/)" to everything written using editor
+            ans = [file, exec.content]
+        } else {
+            logger.debug(`Editor terminated with non-zero exit code: ${exec.code}`)
+        }
+    } catch (e) {
+        throw new Error(`:editor failed: ${e}`)
+    } finally {
+        command = excmd + " " + ans[1]
+        editingComplete = true
+
+        // removeTridactylEditorClass(selector)
+        window.removeEventListener("beforeunload", beforeUnloadListener)
+
+        // Either we send the command when regaining focus, or we'll wait a moment and just do it
+        setTimeout(() => {
+            focusReturned()
+        }, 250)
+        // return controller.acceptExCmd(`${excmd} ${ans[1]}`)
+    }
+}
+
 /**
  * Like [[guiset]] but quieter.
  */
