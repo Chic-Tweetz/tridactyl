@@ -371,11 +371,13 @@ config.getAsync("modeindicator").then(mode => {
     const privateMode = browser.extension.inIncognitoContext
         ? "TridactylPrivate"
         : ""
+
     statusIndicator.className =
         "cleanslate TridactylStatusIndicator " +
         privateMode +
         " TridactylModenormal "
 
+    let containerColorClass = ""
     // Dynamically sets the border container color.
     if (containerIndicator === "true") {
         webext
@@ -384,16 +386,20 @@ config.getAsync("modeindicator").then(mode => {
                 webext.browserBg.contextualIdentities.get(ownTab.cookieStoreId),
             )
             .then(container => {
-                statusIndicator.setAttribute(
-                    "style",
-                    `border: ${
-                        (container as any).colorCode
-                    } var(--tridactyl-indicator-border-style, solid) var(--tridactyl-indicator-border-width, 1.5px) !important`,
-                )
+                containerColorClass = "TridactylStatusColorful"
+                // What if we set a variable instead?
+                // statusIndicator.setAttribute(
+                //     "style",
+                //     `border: ${
+                //         (container as any).colorCode
+                //     } var(--tridactyl-indicator-border-style, solid) var(--tridactyl-indicator-border-width, 1.5px) !important`,
+                // )
             })
             .catch(error => {
+                containerColorClass = browser.extension.inIncognitoContext ? "TridactylStatusColorful" : ""
                 logger.debug(error)
             })
+            .then(() => statusIndicator.classList.add(containerColorClass))
     }
 
     // This listener makes the modeindicator disappear when the mouse goes over it
@@ -484,7 +490,7 @@ config.getAsync("modeindicator").then(mode => {
             modeindicatorshowkeys,
         )
 
-        const indicatorClass = "cleanslate TridactylStatusIndicator "
+        const indicatorClass = "cleanslate TridactylStatusIndicator"
         const privateMode = browser.extension.inIncognitoContext
             ? "TridactylPrivate"
             : ""
@@ -494,7 +500,7 @@ config.getAsync("modeindicator").then(mode => {
             : ""
 
         exModeExitText = result
-        exModeExitClass = `${indicatorClass} ${privateMode} TridactylMode${result.split(" ")[0]} ${invisibleClass}`
+        exModeExitClass = `${indicatorClass} ${containerColorClass} ${privateMode} TridactylMode${result.split(" ")[0]} ${invisibleClass}`
 
         const cmdline = document.querySelector(`#cmdline_iframe[src="${browser.runtime.getURL("static/commandline.html")}"]`)
         if (document.activeElement === cmdline) {
@@ -508,7 +514,7 @@ config.getAsync("modeindicator").then(mode => {
         // Hinting to select an input made the text "insert" but the mode apparently still "normal"
         const modeText = result.split(" ")[0]
 
-        statusIndicator.className = `${indicatorClass} ${privateMode} TridactylMode${modeText} ${invisibleClass}`
+        statusIndicator.className = `${indicatorClass} ${privateMode} ${containerColorClass} TridactylMode${modeText} ${invisibleClass}`
     })
 })
 
