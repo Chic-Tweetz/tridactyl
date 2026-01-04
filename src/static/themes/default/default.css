@@ -14,7 +14,7 @@
     --tridactyl-status-font-size: var(--tridactyl-small-font-size);
     --tridactyl-status-bg: var(--tridactyl-bg);
     --tridactyl-status-fg: var(--tridactyl-fg);
-    --tridactyl-status-border: 1px lightgray solid;
+    --tridactyl-status-border: 1px lightgrey solid;
     --tridactyl-status-border-radius: 2px;
 
     /* Search highlight */
