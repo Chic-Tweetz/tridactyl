@@ -72,7 +72,7 @@ export class CustomCompletionSource extends Completions.CompletionSourceFuse {
     // and can call some by default when choosing / selecting / etc
     // added a ...args in case that might be useful somewhere
     public custom_callback(callbackName: string = "exec", ...args) {
-        if (this.lastFocused && this.completionConfig.callbacks[callbackName]) {
+        if (this.lastFocused && this.completionConfig.callbacks?.[callbackName]) {
             const [prefix, query] = this.splitOnPrefix(this.lastExstr)
             messaging.messageOwnTab(
                 "custom_completion_content",
