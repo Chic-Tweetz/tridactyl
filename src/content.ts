@@ -399,7 +399,10 @@ config.getAsync("modeindicator").then(mode => {
                 containerColorClass = browser.extension.inIncognitoContext ? "TridactylStatusColorful" : ""
                 logger.debug(error)
             })
-            .then(() => statusIndicator.classList.add(containerColorClass))
+            .then(() => {
+                if (containerColorClass !== "")
+                    statusIndicator.classList.add(containerColorClass)
+            })
     }
 
     // This listener makes the modeindicator disappear when the mouse goes over it
