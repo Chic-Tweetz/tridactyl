@@ -172,9 +172,10 @@ export function getCommandlineFns(cmdline_state: {
          * If a completion is selected, inserts it in the command line with a space.
          * If no completion is selected, inserts a space where the caret is.
          */
-        insert_space_or_completion: () => {
+        insert_space_or_completion: (noTrailingSpace = "false") => {
             const completionSource = cmdline_state.getActiveCompletionSource()
             const completion = completionSource?.completion
+            const ignoreSpace = noTrailingSpace === "true"
             if (cmdline_state.activeCompletions) {
                 cmdline_state.activeCompletions.forEach(
                     comp => (comp.completion = undefined),
@@ -182,8 +183,8 @@ export function getCommandlineFns(cmdline_state: {
             }
             if (completion) {
                 cmdline_state.clInput.value =
-                    completion + (completionSource?.trailingSpace ? " " : "")
-            } else {
+                    completion + (!ignoreSpace && completionSource?.trailingSpace ? " " : "")
+            } else if (!ignoreSpace) {
                 space(cmdline_state)
             }
             return cmdline_state.refresh_completions(
