@@ -7,6 +7,10 @@
 import * as config from "@src/lib/config"
 import * as messaging from "@src/lib/messaging"
 
+// TODO: Consider creating a CustomCompletion class
+// functions defined from config would be member functions
+// you could set vars using this.whathaveyou
+
 // Decent default columns order (have not gone through every existing completion)
 // columns with these names will appear in this order unless told otherwise
 const commonColumnsOrder = [
@@ -33,7 +37,7 @@ const commonColumnsOrder = [
 function columnOrder(customCompletion) {
     const columns = customCompletion.columns
     if (!columns) return []
-    const order = (customCompletion.columnorder || []).concat(commonColumnsOrder)
+    const order = (customCompletion.columnorder?.split(",") || []).concat(commonColumnsOrder)
     const uniqueRealColumnsOrdered = []
 
     const unplaced = new Set(Object.keys(columns))
@@ -77,13 +81,12 @@ function source_callback(messageId, callbackName, index, prefix, query) {
 }
 
 // Exporting hide so it can be called directly from wherever we might need to
-// TODO: probably clean up all our vars above when hide is called
-// - notice that showing and hiding the cmdline keeps calling hide
 export function hide() {
     // Maybe stop (... as any)ing all the time?
     if ((completionsConfig as any).callbacks?.hide) {
         try { 
             eval((completionsConfig as any).callbacks.hide)()
+            ;(completionsConfig as any).callbacks.hide = undefined
         } catch (e) {
             console.error("Custom completion callback error: 'hide'")
             console.error(e)
@@ -107,6 +110,7 @@ async function get_completions(message) {
         title: customCompletion.title || "custom completions",
         options: [],
         excmd: customCompletion.excmd || prefix,
+        rowClass: customCompletion.class || prefix + "CompletionOption",
     }
 
     let sourceArray
@@ -136,24 +140,26 @@ async function get_completions(message) {
 
     // Made this a bit messy didn't I
     const valuefn = customCompletion.valuefn
-        ? eval(customCompletion.valuefn)
+        ? await eval(customCompletion.valuefn)
         : (customCompletion.valuekey
         ? option => option[customCompletion.valuekey]
         : option => option.toString())
 
-    let options = sourceArray.map(option => {
-        const cols = columns.map(col => {
-            const innerHTML = col.fn(option)
-            const fuseKey = col.ignore !== "false"
-            return {
-                innerHTML,
-                fuseKey,
-                class: col.class
-            }
-        })
+    let options = await Promise.all(sourceArray.map(async option => {
+        const cols = await Promise.all(
+            columns.map(async col => {
+                const innerHTML = await col.fn(option)
+                const fuseKey = col.ignore !== "false"
+                return {
+                    innerHTML,
+                    fuseKey,
+                    class: col.class
+                }
+            })
+        )
         let value = valuefn(option)
         return { cols, value }
-    })
+    }))
 
 
     // We should send a message instead of replying to the last one I think

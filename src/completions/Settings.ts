@@ -74,7 +74,22 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
             return
         }
 
-        this.options = Object.keys(settings)
+        // Some tweaks to show completions for nested objects
+        // would be nice to get this working for keys a "." in them like autocmd urls
+        const deepQuery = query.split(/[\. ]/)
+        query = deepQuery.pop()
+
+        let target = settings
+        deepQuery.every(key => {
+            const next = target[key]
+            if (typeof next === "object") target = next
+            else target = {}
+            return next
+        })
+
+        const deepKeys = deepQuery.length ? deepQuery.join(".") + "." : ""
+
+        this.options = Object.keys(target)
             .filter(x => x.startsWith(query))
             .sort()
             .map(setting => {
@@ -85,9 +100,9 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
                     doc = md.doc
                     type = md.type.toString()
                 }
-                return new SettingsCompletionOption(options + setting, {
+                return new SettingsCompletionOption(options + deepKeys + setting, {
                     name: setting,
-                    value: JSON.stringify(settings[setting]),
+                    value: JSON.stringify(target[setting]),
                     doc,
                     type,
                 })
