@@ -1415,6 +1415,12 @@ export class default_config {
                 url: { class: "url", fn: "t => t.url", },
                 doc: { class: "haha", fn: "t => 'whatevs'" },
             },
+            // should be able to put things at the end using double commas
+            // title,,doc
+            // should put title first, everything else default and doc at the end
+            // (currently columnorder specified cols come first so you have to type them all to get something to the end)
+            columnorder: "title,doc,url",
+
             excmd: "fillcmdline",
             valuefn: "t => t.title.slice(0, 5)",
 
@@ -1438,6 +1444,10 @@ export class default_config {
             excmd: "tab",
             srcfn: "tri.browserBg.tabs.query({})",
             columns: {
+                prefix: { fn: "tab => '_'" },
+                privatewindow: { fn: "tab => 'p'" },
+                container: { fn: "tab => 'c'" },
+                icon: { fn: "tab => `<img src='${tab.favIconUrl}'>`" },
                 title: { key: "title" },
                 url: { fn: "tab => `<a>${tab.url}</a>`" }
             },

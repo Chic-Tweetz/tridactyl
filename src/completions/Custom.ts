@@ -29,11 +29,13 @@ class CustomCompletionOption extends Completions.CompletionOptionHTML
     public fuseKeys = []
     public indexInSource: number
 
-    constructor(option) {
+    constructor(option, className) {
         super()
 
         // Just building <td>s for each column (would it be nice to allow for more?)
         this.html = document.createElement("tr")
+        this.html.classList.add("option")
+        this.html.classList.add(className)
         option.cols.forEach(col => {
             let td = document.createElement("td")
             if (col.class) td.className = col.class
@@ -58,6 +60,7 @@ export class CustomCompletionSource extends Completions.CompletionSourceFuse {
     private srcFn
     private messageId: number = -1
     private completionConfig
+    private autoselect = false
 
     constructor(private _parent) {
         // prefixes, css class, title
@@ -118,6 +121,11 @@ export class CustomCompletionSource extends Completions.CompletionSourceFuse {
         const header = this.node.querySelector(".sectionHeader")
         if (header) header.textContent = message.args[0].title
 
+        // If we just set them all, updateChain filters them as long as there are fuseKeys
+        this.options = this.optionsSource.map(opt => new CustomCompletionOption(opt, message.rowClass))
+        //     .filter(option => !option.cols.every(col => !col.innerHTML.toLowerCase().includes(query.toLowerCase())))
+        //     .map(option => new CustomCompletionOption(option))
+
         // This message will force the resize so the input isn't pushed off-screen
         this.filter(this.lastExstr)
             .then(() => messaging.messageOwnTab("commandline_content", "show"))
@@ -167,21 +175,26 @@ export class CustomCompletionSource extends Completions.CompletionSourceFuse {
 
             // Needn't do this as we just store the completionConfig object now
             this.trailingSpace = this.completionConfig.trailingspace === "false" ? false : true
-            this.excmdSpace = this.completionConfig.excmdspace === "false" ? "" : " "
-            this.excmd = this.completionConfig.excmd || prefix
+        this.excmdSpace = this.completionConfig.excmdspace === "false" ? "" : " "
+        this.excmd = this.completionConfig.excmd || prefix
+        this.autoselect = this.completionConfig.autoselect === "true"
 
             // filter will be called again when receiving a response
             this.requestCompletions(prefix)
-            return;
+            return
         }
 
         // TODO: This isn't how filtering should work (we have Fuse after all), just getting something working
-        this.options = this.optionsSource
-            .filter(option => !option.cols.every(col => !col.innerHTML.toLowerCase().includes(query.toLowerCase())))
-            .map(option => new CustomCompletionOption(option))
+        // this.options = this.optionsSource
+        //     .filter(option => !option.cols.every(col => !col.innerHTML.toLowerCase().includes(query.toLowerCase())))
+        //     .map(option => new CustomCompletionOption(option))
 
         return this.updateChain()
     }
+
+    setStateFromScore(scoredOpts: Completions.ScoredOption[]) {
+        super.setStateFromScore(scoredOpts, this.autoselect)
+    } 
 
     select(option: CustomCompletionOption) {
         if (this.lastExstr !== undefined && option !== undefined) {
