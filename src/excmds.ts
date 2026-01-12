@@ -3102,7 +3102,12 @@ export async function tabdiscard(index: string) {
 //#background
 export async function undo(item = "recent"): Promise<number> {
     const current_win_id: number = (await browser.windows.getCurrent()).id
-    const sessions = await browser.sessions.getRecentlyClosed()
+    // cmdline popup: don't reopen the cmdline popup!
+    const sessions = (await browser.sessions.getRecentlyClosed())
+        .filter(closed => {
+            if (closed.tab) return true
+            return closed.window.tabs[0].url !== browser.runtime.getURL("static/commandline.html")
+        })
 
     // Pick the first session object that is a window or a tab from this window ("recent"), a tab ("tab"), a tab
     // from this window ("tab_strict"), a window ("window") or pick by sessionId.

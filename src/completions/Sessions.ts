@@ -101,7 +101,12 @@ export class SessionsCompletionSource extends Completions.CompletionSourceFuse {
             return
         }
 
-        const sessions = await browserBg.sessions.getRecentlyClosed()
+        // cmdline popup: one thing after another...
+        const sessions = (await browserBg.sessions.getRecentlyClosed())
+            .filter(closed => {
+                if (closed.tab) return true
+                return closed.window.tabs[0].url !== browser.runtime.getURL("static/commandline.html")
+            })
         this.options = sessions.map(s => new SessionCompletionOption(s))
     }
 }
