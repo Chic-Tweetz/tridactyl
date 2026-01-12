@@ -50,7 +50,7 @@ export async function theme(element) {
 
     // Insert hint CSS rules according to config - copying how themes are inserted
     if (insertedHintElemCSS) {
-        await browserBg.tabs.removeCSS(await ownTabId(), hintElemCss)
+        await browserBg.tabs.removeCSS(await ownTabId(false), hintElemCss)
         insertedHintElemCSS = false
     }
 
@@ -87,14 +87,14 @@ export async function theme(element) {
             : "")
 
     if (hintElemCss.code !== "") {
-        await browserBg.tabs.insertCSS(await ownTabId(), hintElemCss)
+        await browserBg.tabs.insertCSS(await ownTabId(false), hintElemCss)
         insertedHintElemCSS = true
     }
 
     if (insertedCSS) {
         // Typescript doesn't seem to be aware than remove/insertCSS's tabid
         // argument is optional
-        await browserBg.tabs.removeCSS(await ownTabId(), customCss)
+        await browserBg.tabs.removeCSS(await ownTabId(false), customCss)
         insertedCSS = false
     }
 
@@ -122,7 +122,7 @@ export async function theme(element) {
               "');"
             : await config.getAsync("customthemes", newTheme)
         if (customCss.code) {
-            await browserBg.tabs.insertCSS(await ownTabId(), customCss)
+            await browserBg.tabs.insertCSS(await ownTabId(false), customCss)
             insertedCSS = true
         } else {
             logger.error("Theme " + newTheme + " couldn't be found.")

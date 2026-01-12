@@ -59,7 +59,7 @@ import * as R from "ramda"
 import { MinimalKey, minimalKeyFromKeyboardEvent } from "@src/lib/keyseq"
 import { TabGroupCompletionSource } from "@src/completions/TabGroup"
 import { ProfileCompletionSource } from "@src/completions/Profile"
-import { ownTab, ownTabId, browserBg } from "@src/lib/webext"
+import { ownTab, ownTabId, browserBg, pretendToBeTab } from "@src/lib/webext"
 
 /** @hidden **/
 const logger = new Logger("cmdline")
@@ -91,6 +91,15 @@ const commandline_state = {
     state,
 }
 
+// TODO: Do something clever about pretending to be other tabs?
+// (or don't do it at all)
+// theme() uses webext's ownTab but we pretend to be a different tab
+// so theme that again instead of theming the popup cmdline :(
+// I've really kludged it all now
+
+// first theming of commandline iframe
+theme(document.querySelector(":root"))
+
 // if we use a popup, we don't want to message the cmdline's tab but whichever tab it's meant to control
 let messageTab = Messaging.messageOwnTab
 let popupTabTarget
@@ -99,15 +108,25 @@ export function asPopup(forTab=-1, trailspace=true, str="") {
     console.log("asPopup received this string: '" + str + "'")
     if (forTab !== -1) popupTabTarget = forTab
     console.log("commandline being treated as popup...")
+
+    // would this be foolsih (almost certainly, yes)
+    // with this you shouldn't need to use messageTab over messageOwnTab
+    // this makes :tab show the right completions
+    // :tab also simply won't work when you select one though oops
+    Messaging.setTabId(forTab)
+    pretendToBeTab(forTab)
+
     // do i want to let it work for any old tab?
     browserBg.windows.onFocusChanged.addListener(windowId => {
-        ownTab().then(tab => {
-            // Kinda feeling this tbh
+        ownTab(false).then(tab => {
+            // Kinda feeling this tbh (but it's harder to test rn)
             if (windowId !== tab.windowId) {
-                window.close()
+                console.log("popup not focused... shall i close it?")
+                // window.close()
             }
         })
     })
+
     /*
     browserBg.tabs.onActivated.addListener(activeInfo => {
         console.log("changed tab...")
@@ -127,6 +146,23 @@ export function asPopup(forTab=-1, trailspace=true, str="") {
     })
     */
     commandline_state.fns["popup_hide_and_clear"] = () => window.close()
+
+    commandline_state.fns["popup_accept_line"] = (...args) => {
+        const commandPromise = commandline_state.fns["accept_line"]()
+        // window.close()
+        console.log("popup wrapped accept_line")
+        ownTab().then(tab => {
+            console.log("focusing target tab...")
+            browserBg.tabs.update(tab.id, { active: true })
+            browserBg.windows.update(tab.windowId, { focused: true })
+        })
+        // will this work at all
+        commandPromise.then(() => window.close())
+    }
+    // commandline_state.fns["accept_line"] = async () => {
+    //     commandline_state.fns["accept_line"]().then(() => window.close())
+    // }
+    console.log(commandline_state.fns)
     messageTab = (type, command, args) => {
         console.log(">>>>relaying to tab: " + popupTabTarget + " <<<<")
         console.log(type)
@@ -138,6 +174,7 @@ export function asPopup(forTab=-1, trailspace=true, str="") {
 
     Messaging.addListener("controller_content", (message, sender, sendResponse) => {
         console.log("relaying controller_content")
+        console.log("so we should close this window then??")
         console.log(message)
         if (message.command === "acceptExCmd") {
             console.log("focusing tab first...")
@@ -146,15 +183,17 @@ export function asPopup(forTab=-1, trailspace=true, str="") {
                 .then(() => browserBg.tabs.update(tab.id, { active: true }))
                 .then(() => {
                     messageTab("controller_content", message.command, message.args)
+                    console.log("window.close???")
                     window.close()
                 })
             })
         } else {
             messageTab("controller_content", message.command, message.args)
+            console.log("window.close???")
             window.close()
         }
     })
-    document.body.style.background = "var(--tridactyl-bg)"
+    document.body.style.background = "var(--tridactyl-cmplt-bg)"
 
     // this accidentally opens the proper commandline if you use this on a working tab
     // though I'm not sure quite how - we're in a new window now aren't we?
@@ -163,8 +202,7 @@ export function asPopup(forTab=-1, trailspace=true, str="") {
     return true
 }
 
-// first theming of commandline iframe
-theme(document.querySelector(":root"))
+
 
 /** @hidden **/
 function resizeArea() {
@@ -320,6 +358,7 @@ commandline_state.clInput.addEventListener(
                 console.log("ex. response")
                 let [funcname, ...args] = response.value.slice(3).split(/\s+/)
                 if (popupTabTarget && funcname === "hide_and_clear") funcname = "popup_hide_and_clear"
+                if (popupTabTarget && funcname === "accept_line") funcname = "popup_accept_line"
                 console.log(funcname)
                 console.log(args)
 

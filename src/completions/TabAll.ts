@@ -1,5 +1,5 @@
 import * as Perf from "@src/perf"
-import { browserBg, prevActiveTab } from "@src/lib/webext"
+import { browserBg, ownTab, prevActiveTabOnWindow } from "@src/lib/webext"
 import * as Containers from "@src/lib/containers"
 import * as Completions from "@src/completions"
 import * as Messaging from "@src/lib/messaging"
@@ -189,7 +189,8 @@ export class TabAllCompletionSource extends Completions.CompletionSourceFuse {
             return a.windowId - b.windowId
         })
 
-        const altTab = await prevActiveTab()
+        // cmdline popup: target correct window
+        const altTab = await prevActiveTabOnWindow((await ownTab()).windowId)
 
         // Check to see if this is a command that needs to exclude the current
         // window

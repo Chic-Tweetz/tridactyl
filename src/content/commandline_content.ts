@@ -45,7 +45,7 @@ export function makeIframe() {
                     console.log(msg.args)
                     // seems trailing spaces are trimmed when messaged so can't handle that here
                     Messaging.messageOwnTab("controller_content", "acceptExCmd",
-                                            ["cmdlinepopup" +
+                                            ["popupcmdline" +
                                                 (msg.args[1] ? "" : "_notrail") +
                                                 " " + msg.args[0]])
                 }

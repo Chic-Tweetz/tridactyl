@@ -165,6 +165,11 @@ export async function messageOwnTab(type: TabMessageType, command?, args?) {
     return messageTab(_ownTabId, type, command, args)
 }
 
+// Usually calling this would be stupid, but it might (or might not) let me do cool stuff with popup cmdline
+export async function setTabId(id) {
+    _ownTabId = id
+}
+
 export async function messageAllTabs(
     type: TabMessageType,
     command?: string,
