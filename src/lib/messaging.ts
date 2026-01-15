@@ -18,8 +18,6 @@ export type TabMessageType =
     | "tab_changes"
     | "stop_buffering_page_keys"
     | "commandline_frame_ready_to_receive_messages"
-    | "custom_completion_content"
-    | "custom_completion_frame" // just include it in commandline_frame ??
 
 export type NonTabMessageType =
     | "owntab_background"

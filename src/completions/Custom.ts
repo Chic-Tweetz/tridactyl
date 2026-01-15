@@ -3,11 +3,9 @@ import * as aliases from "@src/lib/aliases"
 import * as config from "@src/lib/config"
 import * as messaging from "@src/lib/messaging"
 
-// Am I using all these?
-let source = null
+// Getting completions from config (mainly for the prefixes which enable them)
 let customCompletions = {}
 let customPrefixes = []
-let customFuseKeys = []
 
 config.getAsync("customcompletions")
     .then(cc => {
@@ -49,6 +47,13 @@ class CustomCompletionOption extends Completions.CompletionOptionHTML
     }
 }
 
+// moving listener outside of class - should be able to use it in commandline_frame.ts now
+// Need to keep track of the CustomCompletionSource somehow (this'll do for me)
+let source = null
+export function custom_completion_options(message) {
+    source?.receiveOptions(message)
+}
+
 // Added a bunch of extra fields here, probably don't need them all
 export class CustomCompletionSource extends Completions.CompletionSourceFuse {
     public options: CustomCompletionOption[]
@@ -56,7 +61,6 @@ export class CustomCompletionSource extends Completions.CompletionSourceFuse {
     private lastSource: string | null
     private excmd: string
     private excmdSpace = " "
-    private srcFn
     private messageId: number = -1
     private completionConfig
     private autoselect = false
@@ -64,54 +68,83 @@ export class CustomCompletionSource extends Completions.CompletionSourceFuse {
     constructor(private _parent) {
         super(customPrefixes, "CustomCompletionSource", "Custom Completions")
         this._parent.appendChild(this.node)
-        messaging.addListener("custom_completion_frame", (message) => this.optionsFromMessage(message))
+
+        // Accidentally readding this listener whenever commandline_frame's enableCompletions is called
+        // messaging.addListener("custom_completion_frame", (message) => this.optionsFromMessage(message))
+        source = this
     }
 
     // some callbacks (exec, show, hide, select, deselect) are called automatically
     // any callback can be bound in this fashion (to work with any completion with that callback):
     // :bind --mode=ex [bind] ex.custom_completion_action [callbackName]
     public custom_callback(callbackName: string = "exec", ...args) {
-        if (this.lastFocused && this.completionConfig.callbacks?.[callbackName]) {
+        const focused = (this.lastFocused as CustomCompletionOption)
+        if (focused && this.completionConfig.callbacks?.[callbackName]) {
             const [prefix, query] = this.splitOnPrefix(this.lastExstr)
             messaging.messageOwnTab(
-                "custom_completion_content",
-                "source_callback", 
+                "commandline_content",
+                "custom_completion_callback", 
                 [
                     this.messageId,
                     callbackName,
-                    (this.lastFocused as CustomCompletionOption).indexInSource,
+                    focused.indexInSource,
                     prefix,
                     query,
                     ...args,
                 ]
             )
+            if (callbackName === "delete") this.deleteOption(focused)
         }
+
     }
 
     // Scripts are run in content so they have access to tri object and page DOM
     private async requestCompletions(prefix: string) {
         const time = Date.now()
+        // how could time be less than the last one? What was I going for with this messageId stuff?
+        // I think we could probably lose it...
+        // we can check the prefix is correct if we're worried about old responses
         if (time < this.messageId) return
         this.messageId = time
-        return messaging.messageOwnTab("custom_completion_content", "get_completions", [time, prefix])
+        return messaging.messageOwnTab("commandline_content", "get_custom_completion", [time, prefix])
+    }
+
+    // I think this should be included somehow (like how :tab and :taball update themselves)
+    public async refreshOptions() {
+        let [prefix, _query] = this.splitOnPrefix(this.lastExstr)
+        this.requestCompletions(prefix)
+    }
+
+    // let's say if you have a delete callback defined, you may reasonably expect the option to disappear?
+    public async deleteOption(option?: CustomCompletionOption) {
+        option = option || (this.lastFocused as CustomCompletionOption)
+        if (!option) return
+        const ind = this.options.indexOf(option)
+        if (ind < 0) return
+
+        this.options.splice(ind, 1)
+        this.options = this.options.filter(opt => option !== opt)
+        this.updateChain()
+
+        if (this.options.length)
+            this.select(this.options[Math.min(ind, this.options.length - 1)])
     }
 
     // Receive message from content containing everything needed to populate options
-    private async optionsFromMessage(message) {
-        // TODO: use the messaging API everything else uses!
-        if (message.command !== "new_completions") return
-        if (this.messageId !== message.args[0].id) return
+    public async receiveOptions(optionsData) {
+        // again, not sure about this time ID stuff
+        if (this.messageId !== optionsData.id) return
 
         // Add index for callbacks to source array
-        this.optionsSource = message.args[0].options.map((opt, i) => {
+        this.optionsSource = optionsData.options.map((opt, i) => {
             opt.index = i
             return opt
         })
 
         const header = this.node.querySelector(".sectionHeader")
-        if (header) header.textContent = message.args[0].title
+        if (header) header.textContent = optionsData.title
 
-        this.options = this.optionsSource.map(opt => new CustomCompletionOption(opt, message.rowClass))
+        this.options = this.optionsSource.map(opt => new CustomCompletionOption(opt, optionsData.rowClass))
 
         // Force a resize to not push input off screen
         this.filter(this.lastExstr)
@@ -132,8 +165,8 @@ export class CustomCompletionSource extends Completions.CompletionSourceFuse {
 
             if ((this.completionConfig as any)?.callbacks?.hide) {
                 messaging.messageOwnTab(
-                    "custom_completion_content",
-                    "source_callback", 
+                    "commandline_content",
+                    "custom_completion_callback", 
                     [
                         this.messageId,
                         "hide",

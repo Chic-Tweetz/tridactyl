@@ -179,9 +179,10 @@ export function executeWithoutCommandLine(fn) {
     return result
 }
 
+// Use existing listener for custom completion fns
+export { get_custom_completion, custom_completion_callback } from "@src/content/completions_content"
+
 import * as Messaging from "@src/lib/messaging"
 import * as SELF from "@src/content/commandline_content"
 Messaging.addListener("commandline_content", Messaging.attributeCaller(SELF))
-
-customCompletions.listenForCustomCompletions()
 
