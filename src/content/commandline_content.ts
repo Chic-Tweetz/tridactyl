@@ -7,7 +7,6 @@ import * as Messaging from "@src/lib/messaging"
 import * as customCompletions from "@src/content/completions_content"
 const logger = new Logger("messaging")
 const cmdline_logger = new Logger("cmdline")
-import * as Messaging from "@src/lib/messaging"
 
 /* TODO:
     CSS
@@ -38,12 +37,20 @@ export function makeIframe() {
     cmdline_iframe.setAttribute("loading", "lazy")
     cmdline_iframe.addEventListener("load", () => {
         if (!cmdline_iframe.contentDocument) {
-<<<<<<< HEAD
-            // CSP likely blocking iframe scripts
-            iframe_blocked = true
-            // Prevent infinite key buffering
-            Messaging.addListener("commandline_frame", (message, sender, sendResponse) => {
+            console.log("csp blocking iframe functionality")
+            noiframe = true
+            Messaging.addListener("commandline_frame", (msg, sender, sendResponse)=>{
                 Messaging.messageOwnTab("stop_buffering_page_keys")
+
+                if (msg.command === "fillcmdline") {
+                    console.log("auto popup-ing")
+                    console.log(msg.args)
+                    // seems trailing spaces are trimmed when messaged so can't handle that here
+                    Messaging.messageOwnTab("controller_content", "acceptExCmd",
+                                            ["popupcmdline" +
+                                                (msg.args[1] ? "" : "_notrail") +
+                                                " " + msg.args[0]])
+                }
             })
             Messaging.messageOwnTab("commandline_frame_ready_to_receive_messages")
         } else {
@@ -74,24 +81,6 @@ export function makeIframe() {
                 indicator.classList.remove("TridactylModeex")
                 indicator.classList.add("TridactylMode" + lastMode)
             })
-=======
-            console.log("csp blocking iframe functionality")
-            noiframe = true
-            Messaging.addListener("commandline_frame", (msg, sender, sendResponse)=>{
-                Messaging.messageOwnTab("stop_buffering_page_keys")
-
-                if (msg.command === "fillcmdline") {
-                    console.log("auto popup-ing")
-                    console.log(msg.args)
-                    // seems trailing spaces are trimmed when messaged so can't handle that here
-                    Messaging.messageOwnTab("controller_content", "acceptExCmd",
-                                            ["popupcmdline" +
-                                                (msg.args[1] ? "" : "_notrail") +
-                                                " " + msg.args[0]])
-                }
-            })
-            Messaging.messageOwnTab("commandline_frame_ready_to_receive_messages")
->>>>>>> cmdline-popup
         }
     })
 }
@@ -178,11 +167,7 @@ export function ensureIframeExists() {
 }
 
 export function show(hidehover = false) {
-<<<<<<< HEAD
-    if (iframe_blocked) return
-=======
     if (noiframe) return
->>>>>>> cmdline-popup
     try {
         /* Hide "hoverlink" pop-up which obscures command line
          *
@@ -260,6 +245,5 @@ export function executeWithoutCommandLine(fn) {
 
 export { get_custom_completion, custom_completion_callback } from "@src/content/completions_content"
 
-import * as Messaging from "@src/lib/messaging"
 import * as SELF from "@src/content/commandline_content"
 Messaging.addListener("commandline_content", Messaging.attributeCaller(SELF))
