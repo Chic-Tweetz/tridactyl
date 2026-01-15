@@ -59,50 +59,13 @@ let latestRequest = -1
 let completionsConfig = {}
 let completionCallbacks = {}
 
-// callbacks run on the original objects/strings (not the options array)
-// though it might be nice to also have the options available
-function source_callback(messageId, callbackName, index, prefix, query) {
-    if (latestRequest !== messageId) return
-    if (callbackName === "hide") {
-        // There was a reason I separated hide out (I'm sure of it)
-        return hide()
-    }
-    // Eval once and store the function - ought to be more efficient for potentially quick things (select/deselect)
-    const callbackBodies = (completionsConfig as any).callbacks
-    if (!callbackBodies) return
-    const selected = optionsSource[index]
-    if (!selected) return
-
-    if (!completionCallbacks[callbackName] && callbackBodies[callbackName]) {
-        completionCallbacks[callbackName] = eval(callbackBodies[callbackName])
-    }
-
-    completionCallbacks[callbackName]?.(selected, prefix, query)
-}
-
-// Exporting hide so it can be called directly from wherever we might need to
-export function hide() {
-    // Maybe stop (... as any)ing all the time?
-    if ((completionsConfig as any).callbacks?.hide) {
-        try { 
-            eval((completionsConfig as any).callbacks.hide)()
-            ;(completionsConfig as any).callbacks.hide = undefined
-        } catch (e) {
-            console.error("Custom completion callback error: 'hide'")
-            console.error(e)
-        }
-    }
-}
-
-async function get_completions(message) {
-    const [time, prefix] = message.args
+// Do I really need the time/id checks though?
+export async function get_custom_completion(time, prefix) {
     if (latestRequest > time) return
     latestRequest = time
     const customCompletion = config.get("customcompletions", prefix)
 
-    if (!customCompletion) {
-        Promise.resolve({options:[]})
-    }
+    if (!customCompletion) return
 
     let response = {
         id: time,
@@ -115,7 +78,8 @@ async function get_completions(message) {
 
     let sourceArray
     if (customCompletion.srcfn) {
-        sourceArray = await eval(customCompletion.srcfn)
+        // Array.from lets you use things like querySelectorAll with less hassle
+        sourceArray = Array.from(await eval(customCompletion.srcfn))
     } else if (customCompletion.srcstrings) {
         sourceArray = customCompletion.srcstrings.split(",")
     } else {
@@ -138,7 +102,6 @@ async function get_completions(message) {
         columns = [{ class: "value", fn: option => option.toString() }]
     }
 
-    // Made this a bit messy didn't I
     const valuefn = customCompletion.valuefn
         ? await eval(customCompletion.valuefn)
         : (customCompletion.valuekey
@@ -179,22 +142,41 @@ async function get_completions(message) {
             console.error(e)
         }
     }
-    return messaging.messageOwnTab("custom_completion_frame", "new_completions", [response])
+    return messaging.messageOwnTab("commandline_frame", "custom_completion_options", [response])
+
 }
 
-// We don't need this to be a function
-// but this whole file will be skipped if I don't use something from it in commandline_content :)
-export function listenForCustomCompletions() {
-    // TODO: set this up properly! Gosh
-    browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (message.type === "custom_completion_content") {
-            if (message.command === "get_completions") {
-                get_completions(message)
-            } else if (message.command === "source_callback") {
-                // What on earth
-                source_callback(message.args[0], message.args[1], message.args[2], message.args[3], message.args[4])
-            }
+export function custom_completion_callback(messageId, callbackName, index, prefix, query) {
+    // Should think about whether the messageId stuff is necessary
+    if (latestRequest !== messageId) return
+    if (callbackName === "hide") {
+        // There was a reason I separated hide out (I'm sure of it)
+        return hide()
+    }
+    // Eval once and store the function - ought to be more efficient for potentially quick things (select/deselect)
+    const callbackBodies = (completionsConfig as any).callbacks
+    if (!callbackBodies) return
+    const selected = optionsSource[index]
+    if (!selected) return
+
+    if (!completionCallbacks[callbackName] && callbackBodies[callbackName]) {
+        completionCallbacks[callbackName] = eval(callbackBodies[callbackName])
+    }
+
+    completionCallbacks[callbackName]?.(selected, prefix, query)
+}
+
+// Exporting hide so it can be called directly from wherever we might need to
+export function hide() {
+    // Maybe stop (... as any)ing all the time?
+    if ((completionsConfig as any).callbacks?.hide) {
+        try { 
+            eval((completionsConfig as any).callbacks.hide)()
+            ;(completionsConfig as any).callbacks.hide = undefined
+        } catch (e) {
+            console.error("Custom completion callback error: 'hide'")
+            console.error(e)
         }
-    })
+    }
 }
 

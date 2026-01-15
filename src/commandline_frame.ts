@@ -123,6 +123,8 @@ function getCompletion(args_only = false): string | undefined {
     return args_only ? activeSource.args : activeSource.completion
 }
 
+// This should get the messageListener working here
+export { custom_completion_options } from "@src/completions/Custom" 
 // Perhaps not the best way to get callbacks working, but it does work
 function custom_callback(callbackName: string) {
     getActiveCompletionSource()?.custom_callback(callbackName)
