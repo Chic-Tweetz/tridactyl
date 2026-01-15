@@ -1,5 +1,5 @@
 import * as Perf from "@src/perf"
-import { browserBg, getSortedTabs, prevActiveTab } from "@src/lib/webext"
+import { browserBg, getSortedTabs, ownTab, prevActiveTabOnWindow } from "@src/lib/webext"
 import { enumerate } from "@src/lib/itertools"
 import * as Containers from "@src/lib/containers"
 import * as Completions from "@src/completions"
@@ -189,7 +189,8 @@ export class BufferCompletionSource extends Completions.CompletionSourceFuse {
         // Get alternative tab, defined as last accessed tab in any group in
         // this window.
 
-        const altTab = await prevActiveTab()
+        // cmdline popup: target the correct window
+        const altTab = await prevActiveTabOnWindow((await ownTab()).windowId)
         // Since tabmove always uses absolute tab indices, we need
         // to override possible MRU setting to match tabmove behavior
         const forceSort = prefix === "tabmove" ? "default" : undefined

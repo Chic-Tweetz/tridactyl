@@ -60,6 +60,7 @@ import * as R from "ramda"
 import { MinimalKey, minimalKeyFromKeyboardEvent } from "@src/lib/keyseq"
 import { TabGroupCompletionSource } from "@src/completions/TabGroup"
 import { ProfileCompletionSource } from "@src/completions/Profile"
+import { ownTab, ownTabId, browserBg, pretendToBeTab } from "@src/lib/webext"
 
 /** @hidden **/
 const logger = new Logger("cmdline")
@@ -92,13 +93,123 @@ const commandline_state = {
     custom_callback,
 }
 
+// TODO: Do something clever about pretending to be other tabs?
+// (or don't do it at all)
+// theme() uses webext's ownTab but we pretend to be a different tab
+// so theme that again instead of theming the popup cmdline :(
+// I've really kludged it all now
+
 // first theming of commandline iframe
 theme(document.querySelector(":root"))
 
+// if we use a popup, we don't want to message the cmdline's tab but whichever tab it's meant to control
+let messageTab = Messaging.messageOwnTab
+let popupTabTarget
+
+export function asPopup(forTab=-1, trailspace=true, str="") {
+    console.log("asPopup received this string: '" + str + "'")
+    if (forTab !== -1) popupTabTarget = forTab
+    console.log("commandline being treated as popup...")
+
+    // would this be foolsih (almost certainly, yes)
+    // with this you shouldn't need to use messageTab over messageOwnTab
+    // this makes :tab show the right completions
+    // :tab also simply won't work when you select one though oops
+    Messaging.setTabId(forTab)
+    pretendToBeTab(forTab)
+
+    // do i want to let it work for any old tab?
+    browserBg.windows.onFocusChanged.addListener(windowId => {
+        ownTab(false).then(tab => {
+            // Kinda feeling this tbh (but it's harder to test rn)
+            if (windowId !== tab.windowId) {
+                console.log("popup not focused... shall i close it?")
+                // window.close()
+            }
+        })
+    })
+
+    /*
+    browserBg.tabs.onActivated.addListener(activeInfo => {
+        console.log("changed tab...")
+        ownTabId().then(thisTabId => {
+            if (activeInfo.tabId === thisTabId) {
+                popupTabTarget = activeInfo.previousTabId
+            } else {
+                popupTabTarget = activeInfo.tabId
+                browserBg.tabs.get(activeInfo.tabId)
+                .then(t => {
+                    console.log("focused url: " + t.url)
+                    // i'm not sure i even want it to live if focus changes at all
+                    if (t.url === window.location.href) window.close()
+                })
+            }
+        })
+    })
+    */
+    commandline_state.fns["popup_hide_and_clear"] = () => window.close()
+
+    commandline_state.fns["popup_accept_line"] = (...args) => {
+        const commandPromise = commandline_state.fns["accept_line"]()
+        // window.close()
+        console.log("popup wrapped accept_line")
+        ownTab().then(tab => {
+            console.log("focusing target tab...")
+            browserBg.tabs.update(tab.id, { active: true })
+            browserBg.windows.update(tab.windowId, { focused: true })
+        })
+        // will this work at all
+        commandPromise.then(() => window.close())
+    }
+    // commandline_state.fns["accept_line"] = async () => {
+    //     commandline_state.fns["accept_line"]().then(() => window.close())
+    // }
+    console.log(commandline_state.fns)
+    messageTab = (type, command, args) => {
+        console.log(">>>>relaying to tab: " + popupTabTarget + " <<<<")
+        console.log(type)
+        console.log(command)
+        console.log(args)
+        console.log(">>>>end of message relay<<<<")
+        return Messaging.messageTab(popupTabTarget, type, command, args)
+    }
+
+    Messaging.addListener("controller_content", (message, sender, sendResponse) => {
+        console.log("relaying controller_content")
+        console.log("so we should close this window then??")
+        console.log(message)
+        if (message.command === "acceptExCmd") {
+            console.log("focusing tab first...")
+            browserBg.tabs.get(popupTabTarget).then(tab => {
+                browserBg.windows.update(tab.windowId, { focused: true })
+                .then(() => browserBg.tabs.update(tab.id, { active: true }))
+                .then(() => {
+                    messageTab("controller_content", message.command, message.args)
+                    console.log("window.close???")
+                    window.close()
+                })
+            })
+        } else {
+            messageTab("controller_content", message.command, message.args)
+            console.log("window.close???")
+            window.close()
+        }
+    })
+    document.body.style.background = "var(--tridactyl-cmplt-bg)"
+
+    // this accidentally opens the proper commandline if you use this on a working tab
+    // though I'm not sure quite how - we're in a new window now aren't we?
+    fillcmdline(str, trailspace, true)
+    // focus()
+    return true
+}
+
+
+
 /** @hidden **/
 function resizeArea() {
-    if (commandline_state.isVisible) {
-        Messaging.messageOwnTab("commandline_content", "show")
+    if (commandline_state.isVisible && !popupTabTarget) {
+        messageTab("commandline_content", "show")
         focus()
     }
 }
@@ -208,7 +319,7 @@ export function focus() {
     commandline_state.clInput.removeEventListener("blur", noblur)
     commandline_state.clInput.addEventListener("blur", noblur)
     logger.debug("commandline_frame clInput focus(), activeElement is clInput: " + (window.document.activeElement === commandline_state.clInput))
-    Messaging.messageOwnTab("stop_buffering_page_keys").then(consumeBufferedPageKeys)
+    messageTab("stop_buffering_page_keys").then(consumeBufferedPageKeys)
 }
 
 /** @hidden **/
@@ -254,7 +365,12 @@ commandline_state.clInput.addEventListener(
             // This is definitely a hack. Should expand aliases with exmode, etc.
             // but this whole thing should be scrapped soon, so whatever.
             if (response.value.startsWith("ex.")) {
-                const [funcname, ...args] = response.value.slice(3).split(/\s+/)
+                console.log("ex. response")
+                let [funcname, ...args] = response.value.slice(3).split(/\s+/)
+                if (popupTabTarget && funcname === "hide_and_clear") funcname = "popup_hide_and_clear"
+                if (popupTabTarget && funcname === "accept_line") funcname = "popup_accept_line"
+                console.log(funcname)
+                console.log(args)
 
                 QUEUE[QUEUE.length - 1].then(() => {
                     QUEUE.push(
@@ -270,6 +386,7 @@ commandline_state.clInput.addEventListener(
                     prev_cmd_called_history = history_called
                 })
             } else {
+                console.log("normal response")
                 // Send excmds directly to our own tab, which fixes the
                 // old bug where a command would be issued in one tab but
                 // land in another because the active tab had
@@ -278,7 +395,7 @@ commandline_state.clInput.addEventListener(
                 // shim to the background, but the latency increase should
                 // be acceptable becuase the background-mode excmds tend
                 // to be a touch less latency-sensitive.
-                Messaging.messageOwnTab("controller_content", "acceptExCmd", [
+                messageTab("controller_content", "acceptExCmd", [
                     response.value,
                 ]).then(_ => (prev_cmd_called_history = history_called))
             }
@@ -443,4 +560,4 @@ Messaging.addListener(
     perfObserver: perf.listenForCounters(),
 })
 
-Messaging.messageOwnTab("commandline_frame_ready_to_receive_messages")
+messageTab("commandline_frame_ready_to_receive_messages")

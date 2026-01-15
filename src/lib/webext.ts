@@ -15,11 +15,18 @@ export async function getSortedTabs(
                   +a.active || -b.active || b.lastAccessed - a.lastAccessed
             : (a, b) => a.index - b.index
     const hiddenVal = config.get("tabshowhidden") === "true" ? undefined : false
-    return browserBg.tabs
-        .query({
+    // cmdline popup: want tabs for a particular window, not the active window (that would just be the popup)
+    const queryObject = notBackground()
+        ? {
+            windowId: (await ownTab()).windowId,
+            hidden: hiddenVal,
+        }
+        : {
             currentWindow: true,
             hidden: hiddenVal,
-        })
+        }
+    return browserBg.tabs
+        .query(queryObject)
         .then(tabs => tabs.sort(comp))
 }
 
@@ -108,6 +115,18 @@ export async function prevActiveTab() {
     return tabs[0]
 }
 
+// Cmdline popup again, this time because we don't want the active window if the cmdline popup is focused!
+export async function prevActiveTabOnWindow(windowId?: number) {
+    const tabs = (
+        await browserBg.tabs.query({
+            windowId,
+        })
+    ).sort((a, b) => b.lastAccessed - a.lastAccessed)
+
+    if (tabs.length > 1) return tabs[1]
+    return tabs[0]
+}
+
 /**
  * Return the active window's id.
  *
@@ -124,13 +143,25 @@ export async function activeTabContainerId() {
     return (await activeTab()).cookieStoreId
 }
 
-export async function ownTab() {
+// I just want :tab completions to work in the cmdline popup :(
+let pretendToBeTabId = -1
+export function pretendToBeTab(id) {
+    pretendToBeTabId = id
+}
+
+// cmdline popup: allowPretending so theming can work in the cmdline popup
+export async function ownTab(allowPretending = true) {
+    if (pretendToBeTabId > -1 && allowPretending) {
+        return browserBg.tabs.query({})
+            .then(tabs => tabs.find(tab => tab.id === pretendToBeTabId))
+    }
     // Warning: this relies on the owntab_background listener being set in messaging.ts in order to work
     return browser.runtime.sendMessage({ type: "owntab_background" })
 }
 
-export async function ownTabId() {
-    return (await ownTab()).id
+// cmdline popup: added allowPretending here too... I'm messing with things all over the place
+export async function ownTabId(allowPretending = true) {
+    return (await ownTab(allowPretending)).id
 }
 
 async function windows() {

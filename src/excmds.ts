@@ -3227,7 +3227,12 @@ export async function tabdiscard(index: string) {
 //#background
 export async function undo(item = "recent"): Promise<number> {
     const current_win_id: number = (await browser.windows.getCurrent()).id
-    const sessions = await browser.sessions.getRecentlyClosed()
+    // cmdline popup: don't reopen the cmdline popup!
+    const sessions = (await browser.sessions.getRecentlyClosed())
+        .filter(closed => {
+            if (closed.tab) return true
+            return closed.window.tabs[0].url !== browser.runtime.getURL("static/commandline.html")
+        })
 
     // Pick the first session object that is a window or a tab from this window ("recent"), a tab ("tab"), a tab
     // from this window ("tab_strict"), a window ("window") or pick by sessionId.
@@ -4096,6 +4101,58 @@ export function hidecmdline() {
     CommandLineContent.hide_and_blur()
 }
 
+import { ownTabId } from "@src/lib/webext"
+
+/**
+ * Like [[fillcmdline]] except using a popup window for the cmdline.
+ * Used automatically when Tridactyl notices the normal cmdline is inaccessible (eg on github raw pages).
+ */
+//#content
+export async function popupcmdline(...strarr: string[]) {
+    cmdlinepopupfortab(await ownTabId(), true, ...strarr)
+}
+
+/**
+ * [[popupcmdline]] with no trailing space as in [[fillcmdline_notrail]] 
+ */
+//#content
+export async function popupcmdline_notrail(...strarr: string[]) {
+    cmdlinepopupfortab(await ownTabId(), false, ...strarr)
+}
+
+/**
+ * Create a popup window to use as a commandline for a given tab.
+ */
+//#background
+export async function cmdlinepopupfortab(tabid:number, trailspace:boolean, ...strarr: string[]) {
+    // I currently shove the popup down to the bottom of the window this was called from
+    const fortab = await browser.tabs.get(tabid) // guess i should just pass the tab itself
+    const forwin = await browser.windows.get(fortab.windowId)
+    const creationData: any = { url: browser.runtime.getURL("static/commandline.html"), focused: false, type: "popup" }
+    creationData.left = forwin.left
+    creationData.top = forwin.top + forwin.height - 500
+    creationData.height = 500
+    creationData.width = forwin.width
+    // This is to prevent :undo reopening the popup (should probably check for incognito permissions first)
+    // browser.extension.isAllowedIncognitoAccess()
+    creationData.incognito = await browser.extension.isAllowedIncognitoAccess()
+
+    const popupwin = browser.windows.create(creationData)
+    // trying to avoid a flashbang when it loads...
+    const popuptab = popupwin.then(w => w.tabs[0])
+
+    // const popuptab = await winopen("-popup", browser.runtime.getURL("static/commandline.html"))
+    async function waitForScript(tabId, changeInfo, tab) {
+        const popupTabId = (await popuptab).id
+        if (tabId === popupTabId && changeInfo.status === "complete" && tab.url === browser.runtime.getURL("static/commandline.html")) {
+            Messaging.messageTab(popupTabId, "commandline_frame", "asPopup", [tabid, trailspace, strarr.join(" ")])
+            .then(() => browser.windows.update(tab.windowId, { focused: true }))
+            browser.tabs.onUpdated.removeListener(waitForScript)
+        }
+    }
+    browser.tabs.onUpdated.addListener(waitForScript)
+}
+
 /** Set the current value of the commandline to string *with* a trailing space */
 //#content
 export function fillcmdline(...strarr: string[]) {
@@ -4389,6 +4446,7 @@ export async function tab_helper(interactive: boolean, anyWindow: boolean, ...ke
     if (id !== null && id !== undefined && !/\d+\.\d+/.exec(id)) {
         let defaultQuery = {}
         if (!anyWindow) defaultQuery = { windowId: (await activeTab()).windowId }
+
 
         const results = new Map()
         try {
