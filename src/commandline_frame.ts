@@ -107,9 +107,7 @@ let messageTab = Messaging.messageOwnTab
 let popupTabTarget
 
 export function asPopup(forTab=-1, trailspace=true, str="") {
-    console.log("asPopup received this string: '" + str + "'")
     if (forTab !== -1) popupTabTarget = forTab
-    console.log("commandline being treated as popup...")
 
     // would this be foolsih (almost certainly, yes)
     // with this you shouldn't need to use messageTab over messageOwnTab
@@ -123,7 +121,6 @@ export function asPopup(forTab=-1, trailspace=true, str="") {
         ownTab(false).then(tab => {
             // Kinda feeling this tbh (but it's harder to test rn)
             if (windowId !== tab.windowId) {
-                console.log("popup not focused... shall i close it?")
                 // window.close()
             }
         })
@@ -152,9 +149,7 @@ export function asPopup(forTab=-1, trailspace=true, str="") {
     commandline_state.fns["popup_accept_line"] = (...args) => {
         const commandPromise = commandline_state.fns["accept_line"]()
         // window.close()
-        console.log("popup wrapped accept_line")
         ownTab().then(tab => {
-            console.log("focusing target tab...")
             browserBg.tabs.update(tab.id, { active: true })
             browserBg.windows.update(tab.windowId, { focused: true })
         })
@@ -164,34 +159,22 @@ export function asPopup(forTab=-1, trailspace=true, str="") {
     // commandline_state.fns["accept_line"] = async () => {
     //     commandline_state.fns["accept_line"]().then(() => window.close())
     // }
-    console.log(commandline_state.fns)
     messageTab = (type, command, args) => {
-        console.log(">>>>relaying to tab: " + popupTabTarget + " <<<<")
-        console.log(type)
-        console.log(command)
-        console.log(args)
-        console.log(">>>>end of message relay<<<<")
         return Messaging.messageTab(popupTabTarget, type, command, args)
     }
 
     Messaging.addListener("controller_content", (message, sender, sendResponse) => {
-        console.log("relaying controller_content")
-        console.log("so we should close this window then??")
-        console.log(message)
         if (message.command === "acceptExCmd") {
-            console.log("focusing tab first...")
             browserBg.tabs.get(popupTabTarget).then(tab => {
                 browserBg.windows.update(tab.windowId, { focused: true })
                 .then(() => browserBg.tabs.update(tab.id, { active: true }))
                 .then(() => {
                     messageTab("controller_content", message.command, message.args)
-                    console.log("window.close???")
                     window.close()
                 })
             })
         } else {
             messageTab("controller_content", message.command, message.args)
-            console.log("window.close???")
             window.close()
         }
     })
@@ -365,12 +348,9 @@ commandline_state.clInput.addEventListener(
             // This is definitely a hack. Should expand aliases with exmode, etc.
             // but this whole thing should be scrapped soon, so whatever.
             if (response.value.startsWith("ex.")) {
-                console.log("ex. response")
                 let [funcname, ...args] = response.value.slice(3).split(/\s+/)
                 if (popupTabTarget && funcname === "hide_and_clear") funcname = "popup_hide_and_clear"
                 if (popupTabTarget && funcname === "accept_line") funcname = "popup_accept_line"
-                console.log(funcname)
-                console.log(args)
 
                 QUEUE[QUEUE.length - 1].then(() => {
                     QUEUE.push(
@@ -386,7 +366,6 @@ commandline_state.clInput.addEventListener(
                     prev_cmd_called_history = history_called
                 })
             } else {
-                console.log("normal response")
                 // Send excmds directly to our own tab, which fixes the
                 // old bug where a command would be issued in one tab but
                 // land in another because the active tab had
