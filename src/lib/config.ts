@@ -1501,7 +1501,7 @@ export class default_config {
                 }
             },
             columnorder: "cmd,keyseq,mode",
-            valuefn: "opt => `--mode=${opt.mode} ${opt.key}`",
+            valuefn: "opt => `--mode=${opt.mode} ${opt.keyseq}`",
         }
     }
 }
