@@ -35,7 +35,10 @@ class CustomCompletionOption extends Completions.CompletionOptionHTML
         option.cols.forEach(col => {
             let td = document.createElement("td")
             if (col.class) td.className = col.class
-            td.innerHTML = col.innerHTML || ""
+            // Cleaning strings with <tag-like> structures (eg key binds like <Enter>) is a pain
+            // make setting HTML opt-in, just set text usually
+            if (col.setHTML) td.innerHTML = col.innerHTML || ""
+            else td.textContent = col.innerHTML
             this.html.appendChild(td)
 
             // Might you ever want fuseKeys which don't show up in the options table?

@@ -1462,9 +1462,9 @@ export class default_config {
                 prefix: { fn: "tab => '_'" },
                 privatewindow: { fn: "tab => 'p'" },
                 container: { fn: "tab => 'c'" },
-                icon: { fn: "tab => `<img src='${tab.favIconUrl}'>`" },
+                icon: { fn: "tab => `<img src='${tab.favIconUrl}'>`", html: "true" },
                 title: { key: "title" },
-                url: { fn: "tab => `<a>${tab.url}</a>`" }
+                url: { fn: "tab => `<a>${tab.url}</a>`", html: "true" }
             },
             valuefn: "tab => tab.title",
         },
@@ -1488,6 +1488,36 @@ export class default_config {
                 },
             },
         },
+        // Trying out making something potentially helpful for a change :) - search for commands to see binds
+        // does something like this already exist by default already anyway?
+        findbind: {
+            title: "find bind",
+            excmd: "bindshow",
+            srcfn: `const short = {i:"insert",n:"normal",v:"visual"};
+                Object.entries(tri.config.get()).filter(([k,_v]) => k.endsWith("maps")).flatMap(([k,v]) => {
+                    let mode = k.slice(0,-4);
+                    mode = short[mode] || mode;
+                    return Object.entries(v).map(([keyseq,cmd])=>({keyseq,cmd,mode}));
+                });`,
+            columns: {
+                keyseq: {
+                    class: "name",
+                    key: "keyseq",
+                    ignore: "true",
+                },
+                cmd: {
+                    class: "content",
+                    key: "cmd",
+                },
+                mode: {
+                    class: "type",
+                    key: "mode",
+                    ignore: "true",
+                }
+            },
+            columnorder: "cmd,keyseq,mode",
+            valuefn: "opt => `--mode=${opt.mode} ${opt.key}`",
+        }
     }
 }
 
