@@ -95,6 +95,7 @@ export async function get_custom_completion(time, prefix) {
                 if (colSettings.fn) colSettings.fn = eval(colSettings.fn)
                 else if (colSettings.key) colSettings.fn = t => t[colSettings.key]
                 else colSettings.fn = option => `column: "${col}" has no fn or key`
+                colSettings.html = colSettings.html === "true"
                 return colSettings
             })
     } else {
@@ -111,9 +112,11 @@ export async function get_custom_completion(time, prefix) {
     let options = await Promise.all(sourceArray.map(async option => {
         const cols = await Promise.all(
             columns.map(async col => {
+                const setHTML = col.html
                 const innerHTML = await col.fn(option)
-                const fuseKey = col.ignore !== "false"
+                const fuseKey = col.ignore !== "true"
                 return {
+                    setHTML,
                     innerHTML,
                     fuseKey,
                     class: col.class
