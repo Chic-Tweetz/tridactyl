@@ -1502,6 +1502,14 @@ export class default_config {
             },
             columnorder: "cmd,keyseq,mode",
             valuefn: "opt => `--mode=${opt.mode} ${opt.keyseq}`",
+        },
+        asyoutype: {
+            title: "irrelevant",
+            excmd: "typeit",
+            srcstrings: "",
+            callbacks: {
+                query: "(_sel,_pre,query)=>console.log('YOU ARE TYPING', query)"
+            },
         }
     }
 }

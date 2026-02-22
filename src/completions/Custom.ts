@@ -82,7 +82,11 @@ export class CustomCompletionSource extends Completions.CompletionSourceFuse {
     // :bind --mode=ex [bind] ex.custom_completion_action [callbackName]
     public custom_callback(callbackName: string = "exec", ...args) {
         const focused = (this.lastFocused as CustomCompletionOption)
-        if (focused && this.completionConfig.callbacks?.[callbackName]) {
+
+        const selectionOptional = ["show", "hide", "query"]
+        const sendit = focused || selectionOptional.includes(callbackName)
+
+        if (sendit && this.completionConfig.callbacks?.[callbackName]) {
             const [prefix, query] = this.splitOnPrefix(this.lastExstr)
             messaging.messageOwnTab(
                 "commandline_content",
@@ -90,7 +94,7 @@ export class CustomCompletionSource extends Completions.CompletionSourceFuse {
                 [
                     this.messageId,
                     callbackName,
-                    focused.indexInSource,
+                    focused ? focused.indexInSource : -1,
                     prefix,
                     query,
                     ...args,
@@ -98,18 +102,17 @@ export class CustomCompletionSource extends Completions.CompletionSourceFuse {
             )
             if (callbackName === "delete") this.deleteOption(focused)
         }
-
     }
 
     // Scripts are run in content so they have access to tri object and page DOM
-    private async requestCompletions(prefix: string) {
+    private async requestCompletions(prefix: string, query?: string) {
         const time = Date.now()
         // how could time be less than the last one? What was I going for with this messageId stuff?
         // I think we could probably lose it...
         // we can check the prefix is correct if we're worried about old responses
         if (time < this.messageId) return
         this.messageId = time
-        return messaging.messageOwnTab("commandline_content", "get_custom_completion", [time, prefix])
+        return messaging.messageOwnTab("commandline_content", "get_custom_completion", [time, prefix, query])
     }
 
     // I think this should be included somehow (like how :tab and :taball update themselves)
@@ -199,11 +202,16 @@ export class CustomCompletionSource extends Completions.CompletionSourceFuse {
             this.autoselect = this.completionConfig.autoselect === "true"
 
             // filter will be called again when receiving a response so we can return now
-            this.requestCompletions(prefix)
+            this.requestCompletions(prefix, query)
             return
         }
 
-        return this.updateChain()
+        // Should have a timeout for these for typing fast (unless that's handled elsewhere already?)
+        this.custom_callback("query");
+
+        this.updateChain()
+        // we can make a "live" excmd and hide the completions div
+        if (this.options.length === 0) this.state = "hidden"
     }
 
     setStateFromScore(scoredOpts: Completions.ScoredOption[]) {

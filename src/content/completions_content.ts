@@ -156,11 +156,12 @@ export function custom_completion_callback(messageId, callbackName, index, prefi
         // There was a reason I separated hide out (I'm sure of it)
         return hide()
     }
+
     // Eval once and store the function - ought to be more efficient for potentially quick things (select/deselect)
     const callbackBodies = (completionsConfig as any).callbacks
     if (!callbackBodies) return
-    const selected = optionsSource[index]
-    if (!selected) return
+    const selected = optionsSource[index];
+    if (!selected && callbackName !== "query") return
 
     if (!completionCallbacks[callbackName] && callbackBodies[callbackName]) {
         completionCallbacks[callbackName] = eval(callbackBodies[callbackName])
