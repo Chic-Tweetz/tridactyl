@@ -162,6 +162,15 @@ export class default_config {
     }
 
     /**
+     * exfindmaps will be used when using the finding searchbar.
+     */
+    exfindmaps = {
+        "🕷🕷INHERITS🕷🕷": "exmaps",
+        "<C-g>": "findnext",
+        "<C-t>": "findnext -?",
+    }
+
+    /**
      * ignoremaps contain all of the bindings for "ignore mode".
      *
      * They consist of key sequences mapped to ex commands.
@@ -389,6 +398,9 @@ export class default_config {
             "open https://www.youtube.com/watch?v=M3iOROuTuMA",
         m: "gobble 1 markadd",
         "`": "gobble 1 markjump",
+        "/": "searchbar",
+        n: "findnext",
+        N: "findnext -?",
     }
 
     vmaps = {

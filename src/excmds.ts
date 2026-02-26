@@ -271,12 +271,12 @@ export function fillinput(selector: string, ...content: string[]) {
 
     // CodeMirror support (I think only versions prior to CodeMirror 6)
     if (inputToFill?.parentNode?.parentElement?.className?.match(/CodeMirror/gi)) {
-        ; (inputToFill.parentNode.parentElement as any).wrappedJSObject.CodeMirror.setValue(content.join(" "))
+        ;(inputToFill.parentNode.parentElement as any).wrappedJSObject.CodeMirror.setValue(content.join(" "))
         return
     }
 
     if ("value" in inputToFill) {
-        ; (inputToFill as HTMLInputElement).value = content.join(" ")
+        ;(inputToFill as HTMLInputElement).value = content.join(" ")
     } else {
         inputToFill.textContent = content.join(" ")
     }
@@ -363,7 +363,7 @@ export async function editor() {
     window.addEventListener("beforeunload", beforeUnloadListener)
 
     let ans
-    const useHtml = await config.getAsync("editorusehtml") == "true"
+    const useHtml = (await config.getAsync("editorusehtml")) == "true"
     try {
         const editor = getEditor(elem, { preferHTML: useHtml })
         const text = await editor.getContent()
@@ -531,13 +531,13 @@ export async function unloadtheme(themename: string) {
  */
 //#background
 export async function colourscheme(...args: string[]) {
-    const option = arg.lib({"--url": String, "--regex": String, "--module": String}, {argv: args, allowNegativePositional: true})
+    const option = arg.lib({ "--url": String, "--regex": String, "--module": String }, { argv: args, allowNegativePositional: true })
     let url = option["--url"]
     const regex = option["--module"] == "reader" ? "moz-extension://.*/static/reader\.html" : option["--regex"]
     const themename = option._[0]
 
     // If this is a builtin theme, no need to bother with slow stuff
-    if (!(Metadata.staticThemes.includes(themename))) {
+    if (!Metadata.staticThemes.includes(themename)) {
         if (themename.search("\\.") >= 0) throw new Error(`Theme name should not contain any dots! (given name: ${themename}).`)
         if (url) {
             if (themename === undefined) throw new Error(`You must provide a theme name!`)
@@ -1365,7 +1365,7 @@ window.addEventListener("HistoryState", addTabHistory)
 /** Blur (unfocus) the active element and enter normal mode */
 //#content
 export function unfocus() {
-    ; ((document.activeElement.shadowRoot ? DOM.deepestShadowRoot(document.activeElement.shadowRoot) : document).activeElement as HTMLInputElement).blur()
+    ;((document.activeElement.shadowRoot ? DOM.deepestShadowRoot(document.activeElement.shadowRoot) : document).activeElement as HTMLInputElement).blur()
     contentState.mode = "normal"
 }
 
@@ -1543,6 +1543,14 @@ export function findselect() {
     const selection = document.getSelection()
     selection.removeAllRanges()
     selection.addRange(range)
+}
+
+/**
+ * incsearch finding.
+ */
+//#content
+export function searchbar() {
+    return finding.searchbar()
 }
 
 /** @hidden */
@@ -1807,16 +1815,19 @@ export function home(all: "false" | "true" = "false") {
 */
 //#background
 export async function help(...args: string[]) {
-    const option = arg.lib({
-        "-a": Boolean,
-        "-b": Boolean,
-        "-e": Boolean,
-        "-s": Boolean,
-        "-B": Boolean,
-        "-o": Boolean,
-        "-t": Boolean,
-        "-w": Boolean,
-    }, { argv: args, allowNegativePositional: true })
+    const option = arg.lib(
+        {
+            "-a": Boolean,
+            "-b": Boolean,
+            "-e": Boolean,
+            "-s": Boolean,
+            "-B": Boolean,
+            "-o": Boolean,
+            "-t": Boolean,
+            "-w": Boolean,
+        },
+        { argv: args, allowNegativePositional: true },
+    )
 
     const openInCurrentWindow = option["-o"] || ((await activeTab()).url.startsWith(browser.runtime.getURL("static/docs/")) && !(option["-B"] || option["-t"] || option["-w"]))
     const subject = option._.join(" ")
@@ -1900,7 +1911,8 @@ export async function help(...args: string[]) {
         done = tabopen("-b", url)
     } else if (option["-w"]) {
         done = winopen(url)
-    } else { // option["-t"]
+    } else {
+        // option["-t"]
         done = tabopen(url)
     }
     return done.then(() => undefined)
@@ -3155,16 +3167,16 @@ export async function undo(item = "recent"): Promise<number> {
         item === "recent"
             ? s => s.window || (s.tab && s.tab.windowId === current_win_id)
             : item === "tab"
-                ? s => s.tab
-                : item === "tab_strict"
-                    ? s => s.tab && s.tab.windowId === current_win_id
-                    : item === "window"
-                        ? s => s.window
-                        : !isNaN(parseInt(item, 10))
-                            ? s => (s.tab || s.window).sessionId === item
-                            : () => {
-                                throw new Error(`[undo] Invalid argument: ${item}. Must be one of "recent, "tab", "tab_strict", "window" or a sessionId (by selecting a session using the undo completion).`)
-                            } // this won't throw an error if there isn't anything in the session list, but I don't think that matters
+              ? s => s.tab
+              : item === "tab_strict"
+                ? s => s.tab && s.tab.windowId === current_win_id
+                : item === "window"
+                  ? s => s.window
+                  : !isNaN(parseInt(item, 10))
+                    ? s => (s.tab || s.window).sessionId === item
+                    : () => {
+                          throw new Error(`[undo] Invalid argument: ${item}. Must be one of "recent, "tab", "tab_strict", "window" or a sessionId (by selecting a session using the undo completion).`)
+                      } // this won't throw an error if there isn't anything in the session list, but I don't think that matters
     const session = sessions.find(predicate)
 
     if (session) {
@@ -4312,8 +4324,8 @@ export async function tab_helper(interactive: boolean, anyWindow: boolean, ...ke
 
         const results = new Map()
         try {
-            ; (await browser.tabs.query({ ...defaultQuery, ...{ url: id } })).forEach(tab => results.set(tab.id, tab))
-        } catch (e) { }
+            ;(await browser.tabs.query({ ...defaultQuery, ...{ url: id } })).forEach(tab => results.set(tab.id, tab))
+        } catch (e) {}
         if (results.size < 2) (await browser.tabs.query({ ...defaultQuery, ...{ title: id.replace("*", "\\*") } })).forEach(tab => results.set(tab.id, tab))
         if (results.size < 2) (await browser.tabs.query(defaultQuery)).filter(tab => tab.url.includes(id)).forEach(tab => results.set(tab.id, tab))
         if (results.size < 2) (await browser.tabs.query({ ...defaultQuery, ...{ title: "*" + id + "*" } })).forEach(tab => results.set(tab.id, tab))
@@ -4780,12 +4792,12 @@ export function getAutocmdEvents() {
 export async function autocmd(event: string, url: string, ...excmd: string[]) {
     // rudimentary run time type checking
     if (!getAutocmdEvents().includes(event)) {
-        throw new Error(event + " is not a supported event.");
+        throw new Error(event + " is not a supported event.")
     }
     if (webrequests.requestEvents.includes(event)) {
-        await webrequests.registerWebRequestAutocmd(event, url, excmd.join(" "));
+        await webrequests.registerWebRequestAutocmd(event, url, excmd.join(" "))
     }
-    return config.set("autocmds", event, url, excmd.join(" "));
+    return config.set("autocmds", event, url, excmd.join(" "))
 }
 
 /**
@@ -5384,142 +5396,142 @@ export async function hint(...args: string[]): Promise<any> {
         const action = config.callback
             ? eval(config.callback)
             : (elem: any) => {
-                if (config.pipeAttribute !== null) {
-                    // We have an attribute to pipe
-                    return elem[config.pipeAttribute]
-                }
+                  if (config.pipeAttribute !== null) {
+                      // We have an attribute to pipe
+                      return elem[config.pipeAttribute]
+                  }
 
-                if (config.excmd) {
-                    // We have an excmd to run. By spec, we append the element's href
-                    if (elem.href) {
-                        // /!\ RACY RACY RACY!
-                        run_exstr(config.excmd + " " + elem.href)
-                        return elem
-                    }
+                  if (config.excmd) {
+                      // We have an excmd to run. By spec, we append the element's href
+                      if (elem.href) {
+                          // /!\ RACY RACY RACY!
+                          run_exstr(config.excmd + " " + elem.href)
+                          return elem
+                      }
 
-                    // Otherwise, no href so nothing to do
-                    return
-                }
+                      // Otherwise, no href so nothing to do
+                      return
+                  }
 
-                switch (config.openMode) {
-                    case OpenMode.Highlight:
-                        const r = document.createRange()
-                        r.setStart(elem, 0)
-                        r.setEnd(elem, 1)
-                        const s = document.getSelection()
-                        s.addRange(r)
-                        return elem
+                  switch (config.openMode) {
+                      case OpenMode.Highlight:
+                          const r = document.createRange()
+                          r.setStart(elem, 0)
+                          r.setEnd(elem, 1)
+                          const s = document.getSelection()
+                          s.addRange(r)
+                          return elem
 
-                    case OpenMode.Images:
-                    case OpenMode.ImagesTab:
-                        const src = elem.getAttribute("src")
-                        if (src) {
-                            if (config.openMode === OpenMode.ImagesTab) {
-                                // TODO: await? Other hintTabOpen calls don't seem to use one
-                                hintTabOpen(new URL(src, window.location.href).href)
-                            } else {
-                                open(new URL(src, window.location.href).href)
-                            }
-                            return elem
-                        }
+                      case OpenMode.Images:
+                      case OpenMode.ImagesTab:
+                          const src = elem.getAttribute("src")
+                          if (src) {
+                              if (config.openMode === OpenMode.ImagesTab) {
+                                  // TODO: await? Other hintTabOpen calls don't seem to use one
+                                  hintTabOpen(new URL(src, window.location.href).href)
+                              } else {
+                                  open(new URL(src, window.location.href).href)
+                              }
+                              return elem
+                          }
 
-                        return
+                          return
 
-                    case OpenMode.Kill:
-                        elem.remove()
-                        return elem
+                      case OpenMode.Kill:
+                          elem.remove()
+                          return elem
 
-                    case OpenMode.KillTridactyl:
-                        elem.classList.add("TridactylKilledElem")
-                        KILL_STACK.push(elem)
-                        return elem
+                      case OpenMode.KillTridactyl:
+                          elem.classList.add("TridactylKilledElem")
+                          KILL_STACK.push(elem)
+                          return elem
 
-                    case OpenMode.SaveResource:
-                    case OpenMode.SaveImage:
-                    case OpenMode.SaveAsResource:
-                    case OpenMode.SaveAsImage:
-                        const saveAs = config.openMode === OpenMode.SaveAsResource || config.openMode === OpenMode.SaveAsImage
-                        const attr = config.openMode === OpenMode.SaveImage || config.openMode === OpenMode.SaveAsImage ? "src" : "href"
-                        Messaging.message("download_background", "downloadUrl", new URL(elem[attr], window.location.href).href, saveAs)
-                        return elem
+                      case OpenMode.SaveResource:
+                      case OpenMode.SaveImage:
+                      case OpenMode.SaveAsResource:
+                      case OpenMode.SaveAsImage:
+                          const saveAs = config.openMode === OpenMode.SaveAsResource || config.openMode === OpenMode.SaveAsImage
+                          const attr = config.openMode === OpenMode.SaveImage || config.openMode === OpenMode.SaveAsImage ? "src" : "href"
+                          Messaging.message("download_background", "downloadUrl", new URL(elem[attr], window.location.href).href, saveAs)
+                          return elem
 
-                    case OpenMode.Scroll:
-                        elem.scrollIntoView(true)
-                        return elem
+                      case OpenMode.Scroll:
+                          elem.scrollIntoView(true)
+                          return elem
 
-                    case OpenMode.ScrollFocus:
-                        let tabindexAdded = false
-                        // img can only be focused when they have the tabindex attribute
-                        if (elem instanceof HTMLImageElement && !elem.getAttribute("tabindex")) {
-                            elem.setAttribute("tabindex", "-1")
-                            tabindexAdded = true
-                        }
-                        elem.focus()
-                        scrolling.setCurrentFocus(elem)
-                        // img doesn't get unfocused when its tabindex is removed, so no need to keep it around
-                        if (tabindexAdded) elem.removeAttribute("tabindex")
-                        return elem
+                      case OpenMode.ScrollFocus:
+                          let tabindexAdded = false
+                          // img can only be focused when they have the tabindex attribute
+                          if (elem instanceof HTMLImageElement && !elem.getAttribute("tabindex")) {
+                              elem.setAttribute("tabindex", "-1")
+                              tabindexAdded = true
+                          }
+                          elem.focus()
+                          scrolling.setCurrentFocus(elem)
+                          // img doesn't get unfocused when its tabindex is removed, so no need to keep it around
+                          if (tabindexAdded) elem.removeAttribute("tabindex")
+                          return elem
 
-                    case OpenMode.TTSRead:
-                        TTS.readText(elem.textContent)
-                        return elem
+                      case OpenMode.TTSRead:
+                          TTS.readText(elem.textContent)
+                          return elem
 
-                    case OpenMode.YankAlt:
-                        // Yank link alt text
-                        // ???: Neither anchors nor links posses an "alt" attribute. I'm assuming that the person who wrote this code also wanted to select the alt text of images
-                        return elem.title ? elem.title : elem.alt
+                      case OpenMode.YankAlt:
+                          // Yank link alt text
+                          // ???: Neither anchors nor links posses an "alt" attribute. I'm assuming that the person who wrote this code also wanted to select the alt text of images
+                          return elem.title ? elem.title : elem.alt
 
-                    case OpenMode.YankAnchor:
-                        const anchorUrl = new URL(window.location.href)
-                        // ???: What purpose does selecting elements with a name attribute have? Selecting values that only have meaning in forms doesn't seem very useful.
-                        // https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes
-                        anchorUrl.hash = elem.id || elem.name
-                        return anchorUrl.href
+                      case OpenMode.YankAnchor:
+                          const anchorUrl = new URL(window.location.href)
+                          // ???: What purpose does selecting elements with a name attribute have? Selecting values that only have meaning in forms doesn't seem very useful.
+                          // https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes
+                          anchorUrl.hash = elem.id || elem.name
+                          return anchorUrl.href
 
-                    case OpenMode.YankLink:
-                        if (elem.href) {
-                            return elem.href
-                        }
+                      case OpenMode.YankLink:
+                          if (elem.href) {
+                              return elem.href
+                          }
 
-                        return
+                          return
 
-                    case OpenMode.YankText:
-                        return elem.textContent
-                }
+                      case OpenMode.YankText:
+                          return elem.textContent
+                  }
 
-                if (elem.href) {
-                    elem.focus()
+                  if (elem.href) {
+                      elem.focus()
 
-                    switch (config.openMode) {
-                        case OpenMode.Default:
-                            DOM.simulateClick(elem)
-                            break
-                        case OpenMode.Tab:
-                            hintTabOpen(elem.href, true).catch(() => DOM.simulateClick(elem, DOM.TabTarget.NewTab))
-                            break
-                        case OpenMode.BackgroundTab:
-                            hintTabOpen(elem.href, false).catch(() => DOM.simulateClick(elem, DOM.TabTarget.NewBackgroundTab))
-                            break
-                        case OpenMode.Window:
-                            openInNewWindow({ url: new URL(elem.href, window.location.href).href })
-                            break
-                        case OpenMode.WindowPrivate:
-                            openInNewWindow({ url: elem.href, incognito: true })
-                            break
-                    }
-                } else {
-                    if (config.openMode === OpenMode.WindowPrivate) {
-                        // We want a private window, but the element doesn't have an href, so
-                        // we avoid opening the target by accident
-                        return
-                    } else {
-                        elem.focus()
-                        DOM.simulateClick(elem)
-                    }
-                }
+                      switch (config.openMode) {
+                          case OpenMode.Default:
+                              DOM.simulateClick(elem)
+                              break
+                          case OpenMode.Tab:
+                              hintTabOpen(elem.href, true).catch(() => DOM.simulateClick(elem, DOM.TabTarget.NewTab))
+                              break
+                          case OpenMode.BackgroundTab:
+                              hintTabOpen(elem.href, false).catch(() => DOM.simulateClick(elem, DOM.TabTarget.NewBackgroundTab))
+                              break
+                          case OpenMode.Window:
+                              openInNewWindow({ url: new URL(elem.href, window.location.href).href })
+                              break
+                          case OpenMode.WindowPrivate:
+                              openInNewWindow({ url: elem.href, incognito: true })
+                              break
+                      }
+                  } else {
+                      if (config.openMode === OpenMode.WindowPrivate) {
+                          // We want a private window, but the element doesn't have an href, so
+                          // we avoid opening the target by accident
+                          return
+                      } else {
+                          elem.focus()
+                          DOM.simulateClick(elem)
+                      }
+                  }
 
-                return elem
-            }
+                  return elem
+              }
 
         if (config.immediate) {
             // Immediate mode, perform the target action on all matching nodes
@@ -5839,12 +5851,12 @@ export async function bmark(url?: string, ...titlearr: string[]) {
         url === undefined
             ? (await activeTab()).url
             : (_ => {
-                try {
-                    return new URL(url).href
-                } catch (e) {
-                    return new URL("http://" + url).href
-                }
-            })()
+                  try {
+                      return new URL(url).href
+                  } catch (e) {
+                      return new URL("http://" + url).href
+                  }
+              })()
     let title = titlearr.join(" ")
     // if titlearr is given and we have duplicates, we probably want to give an error here.
     const dupbmarks = await browser.bookmarks.search({ url })
@@ -6447,22 +6459,22 @@ export async function profilerename(oldName: string, newName: string) {
  * Only hint flags will remain, Vimium style.
  */
 export function hintstylesnohighlights() {
-    ["fg","bg","outline","overlay","overlayoutline"].forEach(type => config.set("hintstyles", type, "none"))
+    ;["fg", "bg", "outline", "overlay", "overlayoutline"].forEach(type => config.set("hintstyles", type, "none"))
 }
 
 /**
  * Add highlights over the page when hinting and leave original elements unchanged.
  */
 export function hintstylesoverlays() {
-    ["fg", "bg","outline"].forEach(type => config.set("hintstyles", type, "none"))
-    ;["overlay","overlayoutline"].forEach(type => config.set("hintstyles", type, "all"))
+    ;["fg", "bg", "outline"].forEach(type => config.set("hintstyles", type, "none"))
+    ;["overlay", "overlayoutline"].forEach(type => config.set("hintstyles", type, "all"))
 }
 
 /**
  * Style hintable elements directly when hinting.
  */
 export function hintstylesdirect() {
-    ["fg","bg","outline"].forEach(type => config.set("hintstyles", type, "all"))
-    ;["overlay","overlayoutline"].forEach(type => config.set("hintstyles", type, "none"))
+    ;["fg", "bg", "outline"].forEach(type => config.set("hintstyles", type, "all"))
+    ;["overlay", "overlayoutline"].forEach(type => config.set("hintstyles", type, "none"))
 }
 // }}}
