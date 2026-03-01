@@ -6,6 +6,16 @@
 // import { compute as scrollCompute } from "compute-scroll-into-view"
 import { showAlternateInput } from "./commandline_content"
 
+
+// nasty performance hit if you do a bunch of searches
+// memory usage seems to climb (is it our match ranges?)
+// so something's not being garbage collected somewhere? I guess
+// try doing like 20+ searches for .
+// then do a hint and see how long it takes to register the hint keypresses - very odd
+
+// not sure all these are even used, let alone all necessary
+// but may consider making a Finder class or something
+// so it would be nice to contain all these things to a single instance of a Finder
 interface SearchState {
     searchAbortController: AbortController
     walkingAbortController: AbortController
@@ -15,7 +25,6 @@ interface SearchState {
     searchBlocks: any[]
     onBlockBuilt: ([]) => Promise<void> | void
     onLastBlockBuilt: () => Promise<void> | void
-    activeMatch: Range
     activeMatchIdx: number
     fromView: boolean
     foundFirst: boolean
@@ -33,7 +42,6 @@ const searchState: SearchState = {
     searchBlocks: [],
     onBlockBuilt: () => undefined,
     onLastBlockBuilt: () => undefined,
-    activeMatch: null,
     activeMatchIdx: -1,
     fromView: false,
     foundFirst: false,
@@ -42,14 +50,20 @@ const searchState: SearchState = {
     clearSearchBlocksTimer: null,
 }
 
-// Yield every 8ms so incsearch can be responsive
+// Currently we yield every 8ms when searching/building our search blocks, keeps everything responsive
 const SLICE_MS = 8
 let sliceEnd = performance.now() + SLICE_MS
 
+// iframes get their own highlight registries
 const framesToHighlights = new Map()
+// all highlight registries stored in these arrays for easy disabling
 const normalHighlightObjects = []
 const activeHighlightObjects = []
 
+// Add an input to the cmdilne iframe to call our search oninput
+// this isn't the only option for incsearch, but I thought I'd try it
+// because it could be useful to hide inputs in the iframe for other reasons
+// like IME vimperator hinting https://github.com/tridactyl/tridactyl/discussions/5337
 export function searchbar() {
     showAlternateInput(
         str => searchRe(str),
@@ -59,6 +73,8 @@ export function searchbar() {
     )
 }
 
+// I've renamed/wrapped some functions to match the original finding.ts API
+// but now I'm confused about what does what :)
 export function jumpToMatch(searchQuery, option) {
     if (option.searchFromView) {
         console.log("just making the linter happy right now")
@@ -75,7 +91,6 @@ export function focusHighlight(index: number, focus = false) {
     if (range) setActiveRange(range, focus)
 }
 
-// Rename to removeHighlighting
 export function removeHighlighting() {
     clearHighlights()
     clearActiveHighlight()
@@ -287,7 +302,6 @@ async function searchRe(...query: string[]) {
 
     // smart case sensitivity
     if (/[A-Z]/.test(queryString)) {
-        console.log("smart case?")
         flags = flags.replace("i", "")
     }
 
@@ -296,19 +310,14 @@ async function searchRe(...query: string[]) {
         return []
     }
 
-    const abortController = new AbortController()
-    searchState.searchAbortController = abortController
-
     // BUT WAIT this isn't VIM syntax! Do VIM syntax instead
     // could attempt to get flags like this /query/flags
     const regexSyntax = /(?<!\\)\/(?!.*(?<!\\)\/)([a-zA-Z]+)$/
     const regexSyntaxFlags = regexSyntax.exec(queryString)
-    console.log("resyn", regexSyntaxFlags, regexSyntax)
 
     if (regexSyntaxFlags) {
         let reflags = regexSyntaxFlags[1]
         //        reflags = reflags.replaceAll(/[^igsmyuIG]/);
-        console.log("reflags", reflags)
         if (reflags.includes("G")) {
             flags = flags.replace("g", "")
             reflags = reflags.replace("G", "")
@@ -336,10 +345,46 @@ async function searchRe(...query: string[]) {
         return []
     }
 
+    console.log(re, "new search")
+
+    const abortController = new AbortController()
+    searchState.searchAbortController = abortController
     searchState.matches = []
+
+    // Surely we can prevent duplicate matches without this...
     searchState.uniqueMatchesMap = new Map()
     searchState.foundFirst = false
     searchState.searchQuery = re
+
+    const matches = searchState.matches;
+
+    let blockIdx = 0
+
+    const searchBlocks = async () => {
+        while (blockIdx < searchState.searchBlocks.length) {
+            console.log(re, blockIdx)
+            if (abortController.signal.aborted) {
+                console.log("SEARCH ABORTED")
+                return
+            }
+            matches.push(...(await searchBlockText(
+                searchState.searchBlocks[blockIdx],
+                re,
+            )))
+            ++blockIdx
+        }
+        if (abortController.signal.aborted) return;
+
+        if (searchState.buildingSearchBlocks) {
+            onNextBlockBuilt(searchBlocks)
+            return
+        }
+        
+        abortController.abort("Search complete.")
+        if (searchState.matches.length === 0) {
+            removeHighlighting()
+        }
+    }
 
     if (
         searchState.searchBlocks.length === 0 &&
@@ -347,83 +392,44 @@ async function searchRe(...query: string[]) {
     ) {
         console.log("building search blocks")
 
-        searchState.onAllNodesWalked = () => {
-            clearBlocksCacheAfterMs(3000)
-        }
+        searchState.onAllNodesWalked = () => clearBlocksCacheAfterMs(3000)
 
-        searchState.onBlockBuilt = async block => {
-            if (abortController.signal.aborted) {
-                console.log("Searching cancelled in FIRST-build callback")
-                searchState.onBlockBuilt = () => undefined
-                return
-            }
-            searchState.matches.push(...(await searchBlockText(block, re)))
-        }
-
-        // We can't await buildSearchBlocks in case we start a new search before all blocks are built
-        // on the other hand... we're just aborting the abortController local to the current search
-        // so we probably could just await it actually
-        // but the second search wouldn't be able to, that's the issue!
-        searchState.onLastBlockBuilt = () => {
-            abortController.abort()
-            if (searchState.matches.length === 0) {
-                removeHighlighting()
-            }
-        }
-
-        buildSearchBlocks(document.body).then(blocks =>
-            console.log("blocks built", blocks),
-        )
+        onNextBlockBuilt(searchBlocks)
+        buildSearchBlocks(document.body)
     } else {
-        let blockIdx = 0
-        while (blockIdx < searchState.searchBlocks.length) {
-            if (abortController.signal.aborted) return searchState.matches
-            searchState.matches.push(
-                ...(await searchBlockText(
-                    searchState.searchBlocks[blockIdx],
-                    re,
-                )),
-            )
-            ++blockIdx
-        }
-
-        if (searchState.buildingSearchBlocks) {
-            searchState.onBlockBuilt = async block => {
-                if (abortController.signal.aborted) {
-                    console.log("Searching cancelled in MID-build callback")
-                    searchState.onBlockBuilt = () => undefined
-                    return
-                }
-                searchState.matches.push(...(await searchBlockText(block, re)))
-            }
-            searchState.onLastBlockBuilt = () => {
-                abortController.abort()
-                if (searchState.matches.length === 0) {
-                    removeHighlighting()
-                }
-            }
-        } else {
-            clearBlocksCacheAfterMs(3000)
-            // Not so much aborting as completing
-            abortController.abort()
-            if (searchState.matches.length === 0) {
-                removeHighlighting()
-            }
-        }
+        searchBlocks()
     }
 
     // It'd probably be better to return once all matches are found
     // perhaps use a deferred promise for the two mid-build possibilities
-    return searchState.matches
+    // yeah really doesn't make sense to return this yet does it
+    return matches
 }
+
+// const tempSearched = new Set()
+// const tempBlocksSearched = new Set()
 
 async function searchBlockText(block, regex) {
     const abortController = searchState.searchAbortController
 
     const [_fullRange, nodes, normalisedText] = block
     const text = normalisedText.normalised
-    const rawIdxMap = normalisedText.map
+    // const rawIdxMap = normalisedText.map
+    const getRawIndex = normalisedText.getRawIndex
     const matches = []
+
+/*     if (tempBlocksSearched.has(block)) console.error("DUPLICATE BLOCK!")
+    tempBlocksSearched.add(block) */
+
+    // well then... we truly don't search duplicate nodes
+    // so how are we getting duplicate matches...
+/*     for (const node of nodes) {
+        if (tempSearched.has(node)) {
+            console.error("duplicate search node!", node)
+        } else {
+            tempSearched.add(node)
+        }
+    } */
 
     // Might want to instead split into an arbitrary chunk size
     // const lines = text.split(/\r?\n/);
@@ -454,10 +460,12 @@ async function searchBlockText(block, regex) {
 
             // compute absolute indices in the original text
             const normStart = offset + match.index
-            const rawStart = rawIdxMap[normStart]
+            // const rawStart = rawIdxMap[normStart]
+            const rawStart = getRawIndex(normStart)
 
             const normEnd = normStart + match[0].length - 1
-            const rawEnd = rawIdxMap[normEnd] + 1
+            // const rawEnd = rawIdxMap[normEnd] + 1
+            const rawEnd = getRawIndex(normEnd) + 1
 
             // ---- your existing node-mapping logic ----
 
@@ -481,7 +489,7 @@ async function searchBlockText(block, regex) {
             }
             const endOffset = remainingEnd
 
-            // skip disconnected nodes
+            // skip disconnected nodes, we can't see them
             if (!nodes[startNodeIdx].isConnected) {
                 continue
             }
@@ -494,16 +502,25 @@ async function searchBlockText(block, regex) {
             if (startNodeIdx === lastSubstantialIdx || isSubstantial(range)) {
                 lastSubstantialIdx = startNodeIdx
 
-                const nodeMatches = (
+/*                 const nodeMatches = (
                     searchState.uniqueMatchesMap as any
                 ).getOrInsert(range.startContainer, new Set())
                 if (nodeMatches.has(range.startOffset)) {
+                    // riiiight
+                    // so we're getting multiple matches for .
+                    // on chars we've embiggened
+                    // the single char ... to three char ...
+                    // gets the same match for each .
+
+                    console.error("Duplicate Match Found!", range.toString(), range, block)
+
                     continue
                 } else {
                     nodeMatches.add(range.startOffset)
-                }
+}*/
 
                 matches.push(range)
+                // we're all synchronous since the last aborted check, think this one can go
                 if (!abortController.signal.aborted) {
                     if (
                         !searchState.foundFirst &&
@@ -513,7 +530,6 @@ async function searchBlockText(block, regex) {
                     ) {
                         clearHighlights()
                         searchState.foundFirst = true
-                        searchState.activeMatch = range
                         searchState.activeMatchIdx =
                             matches.length + searchState.matches.length - 1
                         setActiveRange(range)
@@ -534,6 +550,16 @@ async function searchBlockText(block, regex) {
     return matches
 }
 
+let nextBlockWaiters = []
+function onNextBlockBuilt(callback) {
+    nextBlockWaiters.push(callback)
+}
+
+function blockBuilt() {
+    nextBlockWaiters.forEach(callback => callback())
+    nextBlockWaiters = []
+}
+
 async function buildSearchBlocks(startNode = document.body) {
     searchState.buildingSearchBlocks = true
     const blocks = []
@@ -550,17 +576,13 @@ async function buildSearchBlocks(startNode = document.body) {
                 blocks.push([
                     currRange,
                     currBlockNodes,
-                    // currBlockNodes.map(n => n.nodeValue).join("")
                     stringNormaliser(
                         currBlockNodes.map(n => n.nodeValue).join(""),
                         whiteSpace,
                         2,
                     ),
                 ])
-                // if (!searchAbortController.signal.aborted) {
-                //     searchState.matches.push(...searchBlockText(blocks[blocks.length - 1]));
-                // }
-                searchState.onBlockBuilt(blocks[blocks.length - 1])
+                blockBuilt()
             }
 
             currBlock = block
@@ -581,15 +603,12 @@ async function buildSearchBlocks(startNode = document.body) {
 
     await walk_iterative(startNode, textNodeCallback)
 
-    console.log("blocks all built", blocks)
-
-    // Can't just await this function because we might change the search query mid-build
-    // so we'd be awaiting for a previous search term in the search function
-    searchState.onLastBlockBuilt()
-    searchState.onLastBlockBuilt = () => undefined
-
     searchState.buildingSearchBlocks = false
-    searchState.onBlockBuilt = () => undefined
+
+    console.log("blocks all built")
+
+    // In case some async stuff causes a miss or something
+    if (nextBlockWaiters.length) blockBuilt()
 
     clearBlocksCacheAfterMs(3000)
 
@@ -602,8 +621,9 @@ async function walk_iterative(startNode, callback) {
     const abortController = searchState.walkingAbortController
 
     const stack = [startNode]
-    // Shadows & slots make it hard to not revisit nodes
+    // Shadows & slots make it hard to not revisit nodes so going the easy route of keeping track of nodes visited
     const walked = new Set()
+    // const calledback = new Set() // temporary, checking for duplicate nodes passed to callback()
     const push = node => {
         if (!walked.has(node)) {
             walked.add(node)
@@ -636,12 +656,15 @@ async function walk_iterative(startNode, callback) {
                 const s = document.createElement("span")
                 node.replaceWith(s)
                 s.append(node)
-                stack.push(node) // Ignoring the walked set with this push
+                stack.push(node) // Ignoring the walked set with this push seeing as we've definitely already walked it
             } else if (
                 !skipTags.has(node.parentElement.tagName) &&
                 isSubstantial(node.parentElement)
             ) {
                 // could also filter out visibility:hidden or display:none parent elements here
+                // let's just check here with a temporary set...
+/*                 if (calledback.has(node)) console.error("Callback Duplicate!", node)
+                calledback.add(node)*/
                 callback(node)
             }
         } else if (node.nodeType === Node.ELEMENT_NODE) {
@@ -909,9 +932,7 @@ function gotoMatch(idx: number) {
 
     const range = searchState.matches[idx]
 
-    // I like this but not by default, maybe add a callback param?
-    /*     let focusElement = range.startContainer.parentElement;
-    focusElement?.focus() */ setActiveRange(range)
+    setActiveRange(range)
     return searchState.matches[idx]
 }
 
@@ -923,6 +944,13 @@ function prev(n: number = 1) {
     return gotoMatch(searchState.activeMatchIdx - n)
 }*/
 
+// Levels maybe better off as flags
+// levels 1, 2 and 3 correspond to:
+// Replace lookalike punctuation chars, strip accents, full NFKC normalisation
+// whiteSpace rule decides whether newline chars \n will be converted to spaces (make it a bool?)
+// some changes could change the size of the string so we also return a map of normalised indices to raw indices
+// the index map will normally be i -> i (unchanged) so we could check whether we need to use it
+// maybe replace it with a function getRawIndex(i) which could be either i=>i or i=>map[i]
 function stringNormaliser(str: string, whiteSpaceRule: string, level) {
     const NORMALISE_LEVELS = {
         none: 0,
@@ -936,9 +964,30 @@ function stringNormaliser(str: string, whiteSpaceRule: string, level) {
     const normChars = []
     const map = [] // map[normIndex] = rawIndex
 
-    const push = (ch, rawPos) => {
+    let unchanged = true
+    let useIdxMap = false
+
+    const pushNoIndex = (ch, _rawPos) => {
         normChars.push(ch)
-        map[normIndex++] = rawPos
+    }
+
+    const pushWithIndex = (ch, rawPos) => {
+        normChars.push(ch)
+        // map[normIndex] = rawPos
+        map.push(rawPos)
+    }
+
+    let push = (_ch, _rawPos) => undefined
+
+    // avoiding some extra work if it's not necessary
+    const pushAllCharsBefore = (idx) => {
+        normChars.push(...str.slice(0, idx))
+    }
+
+    const pushAllIndicesBefore = (idx) => {
+        for (let i = 0; i < idx; ++i) {
+            map.push(i)
+        }
     }
 
     for (let i = 0; i < str.length; i++) {
@@ -966,13 +1015,13 @@ function stringNormaliser(str: string, whiteSpaceRule: string, level) {
         }
 
         // 2. punctuation normalisation
+        // now we do one char at a time we can probably swap this regex for a simple string replace yea?
         if (level >= NORMALISE_LEVELS.punctuation) {
             out = out
                 .replace(/[‘’‚‛]/g, "'")
                 .replace(/[“”„‟]/g, '"')
                 .replace(/[‐‑‒–—―]/g, "-")
-                .replace(/[…]/g, "...")
-            // .replace(/[·•]/g, "*");
+                .replace(/[…]/g, "...") // native finding does NOT match ... to … so this one's debatable
         }
 
         // 3. NFKC compatibility (ligatures etc.)
@@ -980,14 +1029,30 @@ function stringNormaliser(str: string, whiteSpaceRule: string, level) {
             out = out.normalize("NFKC")
         }
 
-        // out may now be multiple characters (e.g. "…" → "..." except not that because it's commented out)
+        if (unchanged && out !== rawChar) {
+            unchanged = false
+            push = pushNoIndex
+            pushAllCharsBefore(i)
+        }
+
+        if (!useIdxMap && rawChar.length !== out.length) {
+            useIdxMap = true;
+            push = pushWithIndex
+            pushAllIndicesBefore(i)
+        }
+
+        // out may now be multiple characters (e.g. "…" → "...") so push every char and the index of the original char
         for (const ch of out) {
             push(ch, i)
+            ++normIndex
         }
     }
 
+    const getRawIndex = useIdxMap ?  i => map[i] : i => i
+
     return {
-        normalised: normChars.join(""),
-        map, // normalisedIndex → rawIndex
+        normalised: unchanged ? str : normChars.join(""),
+        // map, // normalisedIndex → rawIndex
+        getRawIndex,
     }
 }

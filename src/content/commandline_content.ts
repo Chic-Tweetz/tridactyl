@@ -158,7 +158,8 @@ export function showAlternateInput(
 
     const inp = document.createElement("input")
     inp.oninput = _event => {
-        oninput(inp.value)
+        let val = inp.value
+        ;(oninput(inp.value) as any)?.then?.(()=>console.log("oninput finished", val))
     }
     // might be best to change CSS rules from IDs to classes if you wanna do this
     inp.classList.add("tridactyl-input")
@@ -167,14 +168,6 @@ export function showAlternateInput(
         cmdline_iframe.contentDocument
             .querySelector("#tridactyl-colon")
             .classList.add(name)
-    }
-
-    inp.onblur = () => {
-        // actually not sure
-        // normalInput.style.display = ""
-        // hide_and_blur()
-        // oncancel?.(inp.value)
-        // inp.remove()
     }
 
     const cleanup = () => {
@@ -187,6 +180,15 @@ export function showAlternateInput(
         normalInput.style.display = ""
         inp.remove()
         hide_and_blur()
+    }
+
+    inp.onblur = () => {
+        // actually not sure
+        // normalInput.style.display = ""
+        // hide_and_blur()
+        // oncancel?.(inp.value)
+        // inp.remove()
+        cleanup()
     }
 
     // This does seem a bit silly
@@ -212,7 +214,6 @@ export function showAlternateInput(
 
     let next = iter.next()
     while (!next.done) {
-        console.log(next)
         filteredMap.set(next.value[0], next.value[1])
         next = iter.next()
     }
