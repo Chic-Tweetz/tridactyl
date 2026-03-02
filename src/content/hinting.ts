@@ -414,6 +414,38 @@ interface Hintables {
     hintclasses?: string[]
 }
 
+// Creating/removing elements tends to be in DocumentFragments or the entire HUD element
+// but perhaps we can batch class changes in an animation frame request
+const renderState = {
+    isRenderQueued: false,
+    hintsVisibility: [],
+    renderHintsVisibility: false,
+    pushHintsVisibility: hint => {
+        renderState.hintsVisibility.push(hint)
+        render()
+    },
+}
+
+function render() {
+    if (renderState.isRenderQueued) return
+    renderState.isRenderQueued = true
+    requestAnimationFrame(() => {
+        for (const hint of renderState.hintsVisibility) {
+            if (hint.flag.hidden) {
+                hint.target.classList.remove("TridactylHintElem")
+                hint.highlight?.setAttribute("hidden", "")
+                hint.outline?.setAttribute("hidden", "")
+            } else {
+                hint.target.classList.add("TridactylHintElem")
+                hint.highlight?.removeAttribute("hidden")
+                hint.outline?.removeAttribute("hidden")
+            }
+        }
+        renderState.hintsVisibility = []
+        renderState.isRenderQueued = false
+    })
+}
+
 /**
   A convenient javascript interface to hint on specified html elements.
   The return value is a promise resolving to the selected element,
@@ -719,6 +751,7 @@ class Hint {
         public readonly filterData: any,
         private readonly onSelect: HintSelectedCallback,
         classes?: string[],
+        clientRects?: DOMRectList
     ) {
         // We need to compute the offset for elements that are in an iframe
         let offsetTop = 0
@@ -734,7 +767,7 @@ class Hint {
         }
 
         // Find the first visible client rect of the target
-        const clientRects = target.getClientRects()
+        clientRects = clientRects || target.getClientRects()
         let rect = clientRects[0]
         for (const recti of clientRects) {
             if (recti.bottom + offsetTop > 0 && recti.right + offsetLeft > 0) {
@@ -766,7 +799,7 @@ class Hint {
         classes?.forEach(f => this.flag.classList.add(f))
 
         // Add optional overlays
-        if (modeState.highlightHost  || modeState.outlineHost) {
+        if (modeState.highlightHost || modeState.outlineHost) {
             const mainRect = document.createElement("div")
             // Add all rectangles for highlights / outlines
             for (const recti of clientRects) {
@@ -828,6 +861,10 @@ class Hint {
     // If not, do a state machine.
     set hidden(hide: boolean) {
         this.flag.hidden = hide
+        if (hide) this.focused = false
+        renderState.pushHintsVisibility(this)
+
+        /*
         if (hide) {
             this.focused = false
             this.target.classList.remove("TridactylHintElem")
@@ -838,6 +875,7 @@ class Hint {
             this.highlight?.removeAttribute("hidden")
             this.outline?.removeAttribute("hidden")
         }
+        */
     }
 
     set focused(focus: boolean) {
@@ -926,20 +964,35 @@ function buildHintsSimple(
     hintablesArray: Hintables[],
     onSelect: HintSelectedCallback,
 ) {
-    const hintablesfiltered = hintablesArray.map(h => ({ elements: h.elements.filter(el => Hint.isHintable(el)), hintclasses: h.hintclasses }))
+    // Get rects in one loop, create elements in a different loop
+    // maybe reduces layout thrashing
+    // but no probably not because everything's added to a DocumentFragment first I remember now
+    // might still be nice to cache rects (maybe before this even - we get them in DOM.isVisible too)
+    const hintablesfiltered = hintablesArray.map(h => ({
+            elements: h.elements.map(el => ({
+                    el,
+                    rects: el.getClientRects(),
+                }))
+                .filter(({rects}) => rects.length > 0),
+            hintclasses: h.hintclasses
+        })
+    )
     const totalhints = hintablesfiltered.reduce((n, h) => n + h.elements.length, 0)
 
+    // can modeState.hints.length be not 0 here?
     const allnames = Array.from(
         hintnames(totalhints + modeState.hints.length),
     ).slice(modeState.hints.length)
 
+    const hints = modeState.hints
+
     for (const hintables of hintablesfiltered) {
         const names = allnames.slice(modeState.hints.length)
-        for (const [el, name] of izip(hintables.elements, names)) {
+        for (const [{el,rects}, name] of izip(hintables.elements, names)) {
             logger.debug({ el, name })
             modeState.hintchars += name
             modeState.hints.push(
-                new Hint(el, name, null, onSelect, hintables.hintclasses),
+                new Hint(el, name, null, onSelect, hintables.hintclasses, rects),
             )
         }
     }
