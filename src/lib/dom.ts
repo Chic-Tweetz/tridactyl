@@ -212,6 +212,83 @@ export function isVisibleFilter(
     return (elem: Element | Range) => includeInvisible || isVisible(elem)
 }
 
+export async function getVisibleElems(selector = "*") {
+    const frameWins = [window as any].concat(
+        ...getAllDocumentFrames()
+            .filter(frame => {
+                try {
+                    return (
+                        (frame.contentWindow as any).IntersectionObserver &&
+                        isVisible(frame)
+                    )
+                } catch (e) {
+                    return false
+                }
+            })
+            .map(frame => frame.contentWindow),
+    )
+
+    return Promise.all(
+        frameWins.map(async win => {
+            const elems = Array.from(
+                win.document.querySelectorAll(selector),
+            ).concat(...getShadowElementsBySelector(selector, win.document))
+            if (elems.length === 0) {
+                return []
+            }
+
+            return new Promise(resolve => {
+                const visible = []
+                let observer
+                let started = false
+                try {
+                    observer = new win.IntersectionObserver(
+                        entries => {
+                            started = true
+                            for (const entry of entries) {
+                                if (
+                                    entry.isIntersecting &&
+                                    entry.boundingClientRect.width > 3 &&
+                                    entry.boundingClientRect.height > 3
+                                ) {
+                                    visible.push(entry.target)
+                                }
+                            }
+                            resolve(visible)
+                            observer.disconnect()
+                        },
+                        { threshold: 0.01 },
+                    )
+                    elems.forEach(elem => observer.observe(elem))
+                } catch (e) {
+                    resolve([])
+                }
+                setTimeout(() => {
+                    if (!started) {
+                        console.error("observer never observed", elems, win)
+                        observer.disconnect()
+                        resolve([])
+                    }
+                }, 100)
+            })
+        }),
+    ).then(r =>
+        r
+            .flat()
+            // just when I thought it was going well i realised the observer doesn't catch visibility:hidden:(
+            .filter(el => isPainted(el)),
+    )
+}
+
+// No rect checks is the only difference between this and isVisible really
+// could be more thorough (css transforms n stuff) but meeehhh
+function isPainted(elem) {
+    const s = getComputedStyle(elem)
+    return (
+        s.visibility !== "hidden" && s.display !== "none" && s.opacity !== "0"
+    )
+}
+
 // Saka-key caches getComputedStyle. Maybe it's a good idea!
 /* let cgetComputedStyle = cacheDecorator(getComputedStyle) */
 
@@ -335,9 +412,12 @@ export function getSelector(e: HTMLElement) {
 }
 
 /* Get all the elements that match the given selector inside shadow DOM */
-function getShadowElementsBySelector(selector: string) {
+function getShadowElementsBySelector(
+    selector: string,
+    within: Document | ShadowRoot | HTMLElement = document,
+) {
     let elems = []
-    const roots: (Document | ShadowRoot)[] = [document]
+    const roots: (Document | ShadowRoot | HTMLElement)[] = [within]
 
     while (roots.length) {
         const root = roots.pop()
@@ -739,9 +819,10 @@ export function simulateClick(
     let usePopupBlockerWorkaround =
         (target as HTMLAnchorElement).target === "_blank" ||
         (target as HTMLAnchorElement).target === "_new"
-    const href = (target instanceof SVGAElement)
-        ? target.href.animVal
-        : (target as HTMLAnchorElement).href;
+    const href =
+        target instanceof SVGAElement
+            ? target.href.animVal
+            : (target as HTMLAnchorElement).href
     if (href?.startsWith("file:")) {
         // file URLS cannot be opend with browser.tabs.create
         // see https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/tabs/create#url
