@@ -70,8 +70,9 @@ class HintState {
     public textfilter = [""]
     public hintchars = ""
     public filterMode = "flags"
-
     private filteredHints: Hint[] = []
+    public useHintClass: boolean
+    public useActiveHintClass: boolean
 
     constructor(
         public filterFunc: HintFilter,
@@ -83,15 +84,18 @@ class HintState {
         this.hudTranslate.classList.add("TridactylHudTranslation")
         this.hintHost.classList.add("TridactylHintHost")
 
-        const { overlay, overlayoutline } = config.get("hintstyles")
-        if (overlay !== "none") {
+        const hintstyles = config.get("hintstyles")
+        if (hintstyles.overlay !== "none") {
             this.highlightHost = document.createElement("div")
             this.highlightHost.classList.add("TridactylHintHighlightHost")
         }
-        if (overlayoutline !== "none") {
+        if (hintstyles.overlayoutline !== "none") {
             this.outlineHost = document.createElement("div")
             this.outlineHost.classList.add("TridactylHintOutlineHost")
         }
+        // we can completely avoid adding classes to the hint elems
+        this.useHintClass = hintstyles.bg === "all" || hintstyles.outline === "all" || hintstyles.fg === "all"
+        this.useActiveHintClass = this.useHintClass || hintstyles.bg === "active" || hintstyles.outline === "active" || hintstyles.fg === "active"
 
         this.hudTranslate.style.translate = `${-window.scrollX}px ${-window.scrollY}px`
     }
@@ -453,6 +457,39 @@ interface Hintables {
     hintclasses?: string[]
 }
 
+// Creating/removing elements tends to be in DocumentFragments or the entire HUD element
+// but perhaps we can batch class changes in an animation frame request
+const renderState = {
+    isRenderQueued: false,
+    hintsVisibility: [],
+    renderHintsVisibility: false,
+    pushHintsVisibility: hint => {
+        renderState.hintsVisibility.push(hint)
+        render()
+    },
+}
+
+function render() {
+    if (renderState.isRenderQueued) return
+    renderState.isRenderQueued = true
+    requestAnimationFrame(() => {
+        for (const hint of renderState.hintsVisibility) {
+            if (hint.flag.hidden) {
+                hint.target.classList.remove("TridactylHintElem")
+                hint.highlight?.setAttribute("hidden", "")
+                hint.outline?.setAttribute("hidden", "")
+            } else {
+                if (modeState.useHintClass)
+                    hint.target.classList.add("TridactylHintElem")
+                hint.highlight?.removeAttribute("hidden")
+                hint.outline?.removeAttribute("hidden")
+            }
+        }
+        renderState.hintsVisibility = []
+        renderState.isRenderQueued = false
+    })
+}
+
 /**
   A convenient javascript interface to hint on specified html elements.
   The return value is a promise resolving to the selected element,
@@ -571,6 +608,7 @@ export function hintPage(
         reset()
         return
     }
+    modeState.hints.forEach(hint => (hint.hidden = false))
 
     // There are multiple hints. Normally we would just show all of them, but
     // we try to be clever here. Automatically select the first one if all the
@@ -779,6 +817,7 @@ class Hint {
         public readonly filterData: any,
         private readonly onSelect: HintSelectedCallback,
         classes?: string[],
+        clientRects?: DOMRectList
     ) {
         // We need to compute the offset for elements that are in an iframe
         let offsetTop = 0
@@ -794,7 +833,7 @@ class Hint {
         }
 
         // Find the first visible client rect of the target
-        const clientRects = target.getClientRects()
+        clientRects = clientRects || target.getClientRects()
         let rect = clientRects[0]
         for (const recti of clientRects) {
             if (recti.bottom + offsetTop > 0 && recti.right + offsetLeft > 0) {
@@ -827,7 +866,7 @@ class Hint {
         classes?.forEach(f => this.flag.classList.add(f))
 
         // Add optional overlays
-        if (modeState.highlightHost  || modeState.outlineHost) {
+        if (modeState.highlightHost || modeState.outlineHost) {
             const mainRect = document.createElement("div")
             // Add all rectangles for highlights / outlines
             for (const recti of clientRects) {
@@ -857,7 +896,9 @@ class Hint {
             }
 
             if (modeState.outlineHost) {
-                this.outline = this.highlight ? (this.highlight as any).cloneNode(true) : mainRect
+                this.outline = this.highlight
+                    ? (this.highlight as any).cloneNode(true)
+                    : mainRect
                 this.outline.className = "TridactylHintOutline"
                 modeState.outlineHost.appendChild(this.outline)
             }
@@ -869,17 +910,6 @@ class Hint {
         this.y = window.scrollY + top
 
         modeState.hintHost.appendChild(this.flag)
-
-        /*
-        * youtube (shadow DOM / weird rendering stuff they do I don't know)
-        * when doing :hint *
-        * some elements having their classList changed caused other elements
-        * (often with the same IDs... IDK what's going on really)
-        * to have no clientRects when it came time to create their hints
-        * some sort of ... reflow ... rendering optimisation... recalculation... something
-        * these elements also had rects with 0 width and height
-        */
-        // this.hidden = false
     }
 
     public static isHintable(target: Element): boolean {
@@ -900,6 +930,10 @@ class Hint {
     // If not, do a state machine.
     set hidden(hide: boolean) {
         this.flag.hidden = hide
+        if (hide) this.focused = false
+        renderState.pushHintsVisibility(this)
+
+        /*
         if (hide) {
             this.focused = false
             this.target.classList.remove("TridactylHintElem")
@@ -910,11 +944,14 @@ class Hint {
             this.highlight?.removeAttribute("hidden")
             this.outline?.removeAttribute("hidden")
         }
+        */
     }
 
     set focused(focus: boolean) {
         if (focus) {
-            this.target.classList.add("TridactylHintActive")
+            if (modeState.useActiveHintClass)
+                this.target.classList.add("TridactylHintActive")
+
             this.target.classList.remove("TridactylHintElem")
 
             if (this.highlight)
@@ -925,7 +962,9 @@ class Hint {
 
             this.flag.classList.add("TridactylHintSpanActive")
         } else {
-            this.target.classList.add("TridactylHintElem")
+            if (modeState.useHintClass)
+                this.target.classList.add("TridactylHintElem")
+
             this.target.classList.remove("TridactylHintActive")
 
             if (this.highlight)
@@ -992,20 +1031,35 @@ function buildHintsSimple(
     hintablesArray: Hintables[],
     onSelect: HintSelectedCallback,
 ) {
-    const hintablesfiltered = hintablesArray.map(h => ({ elements: h.elements.filter(el => Hint.isHintable(el)), hintclasses: h.hintclasses }))
+    // Get rects in one loop, create elements in a different loop
+    // maybe reduces layout thrashing
+    // but no probably not because everything's added to a DocumentFragment first I remember now
+    // might still be nice to cache rects (maybe before this even - we get them in DOM.isVisible too)
+    const hintablesfiltered = hintablesArray.map(h => ({
+            elements: h.elements.map(el => ({
+                    el,
+                    rects: el.getClientRects(),
+                }))
+                .filter(({rects}) => rects.length > 0),
+            hintclasses: h.hintclasses
+        })
+    )
     const totalhints = hintablesfiltered.reduce((n, h) => n + h.elements.length, 0)
 
+    // can modeState.hints.length be not 0 here?
     const allnames = Array.from(
         hintnames(totalhints + modeState.hints.length),
     ).slice(modeState.hints.length)
 
+    const hints = modeState.hints
+
     for (const hintables of hintablesfiltered) {
         const names = allnames.slice(modeState.hints.length)
-        for (const [el, name] of izip(hintables.elements, names)) {
+        for (const [{el,rects}, name] of izip(hintables.elements, names)) {
             logger.debug({ el, name })
             modeState.hintchars += name
             modeState.hints.push(
-                new Hint(el, name, null, onSelect, hintables.hintclasses),
+                new Hint(el, name, null, onSelect, hintables.hintclasses, rects),
             )
         }
     }
@@ -1049,8 +1103,14 @@ function buildHintsVimperator(
     hintablesArray: Hintables[],
     onSelect: HintSelectedCallback,
 ) {
-    const hintablesfiltered = hintablesArray.map(h => ({ elements: h.elements.filter(el => Hint.isHintable(el)), hintclasses: h.hintclasses }))
-    const totalhints = hintablesfiltered.reduce((n, h) => n + h.elements.length, 0)
+    const hintablesfiltered = hintablesArray.map(h => ({
+        elements: h.elements.filter(el => Hint.isHintable(el)),
+        hintclasses: h.hintclasses,
+    }))
+    const totalhints = hintablesfiltered.reduce(
+        (n, h) => n + h.elements.length,
+        0,
+    )
     const allnames = Array.from(
         hintnames(totalhints + modeState.hints.length),
     ).slice(modeState.hints.length)
@@ -1351,14 +1411,16 @@ function pushSpace() {
 
     @hidden
 */
-export function hintables(
+export async function hintables(
     selectors = DOM.HINTTAGS_selectors,
     withjs = false,
     includeInvisible = false,
 ) {
     const visibleFilter = DOM.isVisibleFilter(includeInvisible)
     const elems = changeHintablesToLargestChild(
-        DOM.getElemsAndStyleShadowHints(selectors, []).filter(visibleFilter),
+        includeInvisible
+            ? DOM.getElemsAndStyleShadowHints(selectors, [])
+            : ((await DOM.getVisibleElems(selectors)) as HTMLElement[]),
     )
     const hintables: Hintables[] = [{ elements: elems }]
     if (withjs) {

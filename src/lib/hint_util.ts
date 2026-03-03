@@ -253,8 +253,11 @@ export class HintConfig implements HintOptions {
                             if (cOrPipeFlagPresent && CFlagPresent) {
                                 result.warnings.push(
                                     "mutually exclusive -c (or -pipe) and -C flags are both specified, last wins, " +
-                                    "default hints will " +
-                                    (result.includeDefaultHintables ? "be" : "not be") + " included",
+                                        "default hints will " +
+                                        (result.includeDefaultHintables
+                                            ? "be"
+                                            : "not be") +
+                                        " included",
                                 )
                             }
 
@@ -370,7 +373,7 @@ export class HintConfig implements HintOptions {
         }
     }
 
-    defaultHintables() {
+    async defaultHintables() {
         // Use the default selectors to find hintable elements
         switch (this.openMode) {
             case OpenMode.YankText:
@@ -423,14 +426,18 @@ export class HintConfig implements HintOptions {
         }
     }
 
-    public hintables() {
-        let hintables = this.includeDefaultHintables ? this.defaultHintables() : []
+    public async hintables() {
+        let hintables = this.includeDefaultHintables
+            ? await this.defaultHintables()
+            : []
         if (this.selectors.length > 0) {
-            hintables = hintables.concat(hinting.hintables(
-                this.selectors.join(" "),
-                this.jshints,
-                this.includeInvisible,
-            ))
+            hintables = hintables.concat(
+                await hinting.hintables(
+                    this.selectors.join(" "),
+                    this.jshints,
+                    this.includeInvisible,
+                ),
+            )
         }
         const textFilter = this.textFilter
         const exclude = this.selectorsExclude.join(" ")
@@ -443,7 +450,7 @@ export class HintConfig implements HintOptions {
             }
             if (exclude) {
                 elements.elements = elements.elements.filter(
-                    element => !element.matches(exclude)
+                    element => !element.matches(exclude),
                 )
             }
         }

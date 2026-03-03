@@ -363,7 +363,7 @@ export async function editor() {
     window.addEventListener("beforeunload", beforeUnloadListener)
 
     let ans
-    const useHtml = await config.getAsync("editorusehtml") == "true"
+    const useHtml = (await config.getAsync("editorusehtml")) == "true"
     try {
         const editor = getEditor(elem, { preferHTML: useHtml })
         const text = await editor.getContent()
@@ -630,13 +630,13 @@ export async function unloadtheme(themename: string) {
  */
 //#background
 export async function colourscheme(...args: string[]) {
-    const option = arg.lib({"--url": String, "--regex": String, "--module": String}, {argv: args, allowNegativePositional: true})
+    const option = arg.lib({ "--url": String, "--regex": String, "--module": String }, { argv: args, allowNegativePositional: true })
     let url = option["--url"]
     const regex = option["--module"] == "reader" ? "moz-extension://.*/static/reader\.html" : option["--regex"]
     const themename = option._[0]
 
     // If this is a builtin theme, no need to bother with slow stuff
-    if (!(Metadata.staticThemes.includes(themename))) {
+    if (!Metadata.staticThemes.includes(themename)) {
         if (themename.search("\\.") >= 0) throw new Error(`Theme name should not contain any dots! (given name: ${themename}).`)
         if (url) {
             if (themename === undefined) throw new Error(`You must provide a theme name!`)
@@ -1906,16 +1906,19 @@ export function home(all: "false" | "true" = "false") {
 */
 //#background
 export async function help(...args: string[]) {
-    const option = arg.lib({
-        "-a": Boolean,
-        "-b": Boolean,
-        "-e": Boolean,
-        "-s": Boolean,
-        "-B": Boolean,
-        "-o": Boolean,
-        "-t": Boolean,
-        "-w": Boolean,
-    }, { argv: args, allowNegativePositional: true })
+    const option = arg.lib(
+        {
+            "-a": Boolean,
+            "-b": Boolean,
+            "-e": Boolean,
+            "-s": Boolean,
+            "-B": Boolean,
+            "-o": Boolean,
+            "-t": Boolean,
+            "-w": Boolean,
+        },
+        { argv: args, allowNegativePositional: true },
+    )
 
     const openInCurrentWindow = option["-o"] || ((await activeTab()).url.startsWith(browser.runtime.getURL("static/docs/")) && !(option["-B"] || option["-t"] || option["-w"]))
     const subject = option._.join(" ")
@@ -1999,7 +2002,8 @@ export async function help(...args: string[]) {
         done = tabopen("-b", url)
     } else if (option["-w"]) {
         done = winopen(url)
-    } else { // option["-t"]
+    } else {
+        // option["-t"]
         done = tabopen(url)
     }
     return done.then(() => undefined)
@@ -2725,8 +2729,8 @@ async function tabIndexSetActive(index: number | string) {
     If increment is specified, move that many tabs forwards.
  */
 //#background
-export async function tabnext(increment = 1) {
-    return tabprev(-increment)
+export async function tabnext(...args: string[]) {
+    return tabprev(...args, "--reverse")
 }
 
 /** Switch to the next tab, wrapping round.
@@ -2752,10 +2756,29 @@ export async function tabnext_gt(index?: number) {
     If increment is specified, move that many tabs backwards.
  */
 //#background
-export async function tabprev(increment = 1) {
+export async function tabprev(...args: string[]) {
+    const argOpt = arg.lib(
+        {
+            "--nowrap": Boolean,
+            "--noisy": Boolean,
+            "--reverse": Boolean,
+        },
+        {
+            argv: args,
+            permissive: true,
+            splitUnknownArguments: false,
+        },
+    )
+    const option = {}
+    option["nowrap"] = Boolean(argOpt["--nowrap"])
+    option["noisy"] = Boolean(argOpt["--noisy"])
+    option["reverse"] = Boolean(argOpt["--reverse"])
+    const increment = (parseInt(argOpt._.join(" "), 10) || 1) * (option["reverse"] ? -1 : 1)
     return browser.tabs.query({ currentWindow: true, hidden: false }).then(tabs => {
         tabs.sort((t1, t2) => t1.index - t2.index)
-        const prevTab = (tabs.findIndex(t => t.active) - increment + tabs.length) % tabs.length
+        const curTab = tabs.findIndex(t => t.active)
+        const prevTab = !option["nowrap"] ? (curTab - increment + tabs.length) % tabs.length : Math.min(Math.max(curTab - increment, 0), tabs.length - 1)
+        // TODO: add fillcmdline_tmp with details here for --noisy (expect it to show on the wrong tab unless you await it correctly)
         return browser.tabs.update(tabs[prevTab].id, { active: true })
     })
 }
@@ -4863,29 +4886,36 @@ export function getAutocmdEvents() {
         - DocEnd: When a webpage unloaded/closed or backward/forward in history. Exactly, the [pagehide event](https://developer.mozilla.org/en-US/docs/Web/API/Window/pagehide_event).
         - TabEnter: When a tab get focus.
         - TabLeft: When a tab lost focus or closed.
+
+        - A supported webRequest event (AuthRequired, BeforeRedirect, BeforeRequest, BeforeSendHeaders, Completed, ErrorOccured, HeadersReceived, ResponseStarted and SendHeaders): the corresponding [WebExtension webRequest event](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/webRequest#Events)
+
+        - The 'HistoryState' event is triggered when a page uses the web history API to change the page location / URI. It should be used in preference to 'UriChange' below since it will use almost no resources. The 'UriChange' event may work on websites where 'HistoryState' does not.
+        - The 'HistoryPushState' is triggered only when a page calls 'history.pushState' to change URI, and 'HistoryReplace' is for 'history.replace'. By the way, the HistoryPopState is not implemented.
+        - The 'UriChange' event is for "single page applications" which change their URIs without triggering DocStart or DocLoad events. It uses a timer to check whether the URI has changed, which has a small impact on battery life on pages matching the `url` parameter. We suggest using it sparingly.
  *
- * The 'HistoryState' event is triggered when a page uses the web history API to change the page location / URI. It should be used in preference to 'UriChange' below since it will use almost no resources. The 'UriChange' event may work on websites where 'HistoryState' does not.
+ * @param url type depends on the event
  *
- * The 'HistoryPushState' is triggered only when a page call 'history.pushState' to change URI, and 'HistoryReplace' is for 'history.replace'. By the way, the HistoryPopState is not implemented.
+        - For most events (DocStart, DocEnd, TabEnter, TabLeft, ...): a JavaScript regex (e.g. `www\.amazon\.co.*`)
+            - We just use [URL.search](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/search)
+        - For TriStart: regular expression that matches the hostname of the computer the autocmd should be run on. This requires the native messenger to be installed, except for the ".*" regular expression which will always be triggered, even without the native messenger.
+        - For webRequest events (AuthRequired, BeforeRedirect, BeforeRequest, BeforeSendHeaders, Completed, ErrorOccured, HeadersReceived, ResponseStarted and SendHeaders): a [URL match pattern](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Match_patterns)
  *
- * The 'UriChange' event is for "single page applications" which change their URIs without triggering DocStart or DocLoad events. It uses a timer to check whether the URI has changed, which has a small impact on battery life on pages matching the `url` parameter. We suggest using it sparingly.
- *
- * @param url For DocStart, DocEnd, TabEnter, and TabLeft: a JavaScript regex (e.g. `www\.amazon\.co.*`)
- *
- * We just use [URL.search](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/String/search).
- *
- * For TriStart: A regular expression that matches the hostname of the computer
- * the autocmd should be run on. This requires the native messenger to be
- * installed, except for the ".*" regular expression which will always be
- * triggered, even without the native messenger.
- *
- * For AuthRequired, BeforeRedirect, BeforeRequest, BeforeSendHeaders, Completed, ErrorOccured, HeadersReceived, ResponseStarted and SendHeaders, a [URL match pattern](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Match_patterns)
- *
- * @param excmd The excmd to run (use [[composite]] to run multiple commands), __except__ for AuthRequired, BeforeRedirect, BeforeRequest, BeforeSendHeaders, Completed, ErrorOccured, HeadersReceived, ResponseStarted and SendHeaders, events where it must be an inline JavaScript function which maps [details objects specific to the event](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/webRequest#Events) to [blocking responses](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/webRequest/BlockingResponse). This JavaScript function will run in the background context.
- *
- * For example: `autocmd BeforeRequest https://www.bbc.co.uk/* () => ({redirectUrl: "https://old.reddit.com"})`. Note the brackets which ensure JavaScript returns a blocking response object rather than interpreting it as a block statement.
- *
- * For DocStart, DocLoad, DocEnd, TabEnter, TabLeft, FullscreenEnter, FullscreenLeft, FullscreenChange and UriChange: magic variables are available which are replaced with the relevant string at runtime:
+ * @param command type depends on the event
+
+        - For most events (DocStart, DocEnd, TabEnter, TabLeft, ...): the excmd to run (use [[composite]] to run multiple commands).
+            - Example for zooming in more on a website:
+              ```
+              autocmd DocStart .*example\.com.* zoom 150 false TRI_FIRED_MOZ_TABID
+              ```
+
+        - For webRequest events (AuthRequired, BeforeRedirect, BeforeRequest, BeforeSendHeaders, Completed, ErrorOccured, HeadersReceived, ResponseStarted and SendHeaders): the text of a javascript function that should accept a [details objects specific to the event](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/webRequest#Events) and return a [blocking response](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/webRequest/BlockingResponse). This JavaScript function will run in the background context.
+            - Example for redirecting from new to old reddit:
+              ```
+              autocmd BeforeRequest https://www.reddit.com/r/* (details) => ({redirectUrl: details.url.replace(/^https:\/\/www\./, "https://old.")})
+              ```
+
+ * For non-webRequest events, magic variables are available which are replaced with the relevant string at runtime:
+
         - `TRI_FIRED_MOZ_TABID`: Provides Mozilla's `tabID` associated with the fired event.
         - `TRI_FIRED_TRI_TABINDEX`: Provides tridactyls internal tab index associated with the fired event.
         - `TRI_FIRED_MOZ_WINID`: Provides Mozilla's `windowId` associated with the fired event.
@@ -4903,17 +4933,19 @@ export function getAutocmdEvents() {
         - `TRI_FIRED_PINNED`: Whether the tab is pinned.
         - `TRI_FIRED_TITLE`: The title of the tab.
         - `TRI_FIRED_URL`: The URL of the document that the tab is displaying.
- *
- * For example: `autocmd DocStart .*example\.com.* zoom 150 false TRI_FIRED_MOZ_TABID`.
- *
+
  * For debugging, use `:set logging.autocmds debug` and check the Firefox web console. `WebRequest` events have no logging.
  *
  */
 //#background
-export function autocmd(event: string, url: string, ...excmd: string[]) {
+export async function autocmd(event: string, url: string, ...excmd: string[]) {
     // rudimentary run time type checking
-    // TODO: Decide on autocmd event names
-    if (!getAutocmdEvents().includes(event)) throw new Error(event + " is not a supported event.")
+    if (!getAutocmdEvents().includes(event)) {
+        throw new Error(event + " is not a supported event.")
+    }
+    if (webrequests.requestEvents.includes(event)) {
+        await webrequests.registerWebRequestAutocmd(event, url, excmd.join(" "))
+    }
     return config.set("autocmds", event, url, excmd.join(" "))
 }
 
@@ -5505,8 +5537,8 @@ export async function hint(...args: string[]): Promise<any> {
         }
     }
 
-    return new Promise((resolve, reject) => {
-        const hintables = config.hintables()
+    return new Promise(async (resolve, reject) => {
+        const hintables = await config.hintables()
 
         // If the user specified a callback, eval it, else use the default
         // action which performs the action matching the open mode
@@ -6575,22 +6607,22 @@ export async function profilerename(oldName: string, newName: string) {
  * Only hint flags will remain, Vimium style.
  */
 export function hintstylesnohighlights() {
-    ["fg","bg","outline","overlay","overlayoutline"].forEach(type => config.set("hintstyles", type, "none"))
+    ;["fg", "bg", "outline", "overlay", "overlayoutline"].forEach(type => config.set("hintstyles", type, "none"))
 }
 
 /**
  * Add highlights over the page when hinting and leave original elements unchanged.
  */
 export function hintstylesoverlays() {
-    ["fg", "bg","outline"].forEach(type => config.set("hintstyles", type, "none"))
-    ;["overlay","overlayoutline"].forEach(type => config.set("hintstyles", type, "all"))
+    ;["fg", "bg", "outline"].forEach(type => config.set("hintstyles", type, "none"))
+    ;["overlay", "overlayoutline"].forEach(type => config.set("hintstyles", type, "all"))
 }
 
 /**
  * Style hintable elements directly when hinting.
  */
 export function hintstylesdirect() {
-    ["fg","bg","outline"].forEach(type => config.set("hintstyles", type, "all"))
-    ;["overlay","overlayoutline"].forEach(type => config.set("hintstyles", type, "none"))
+    ;["fg", "bg", "outline"].forEach(type => config.set("hintstyles", type, "all"))
+    ;["overlay", "overlayoutline"].forEach(type => config.set("hintstyles", type, "none"))
 }
 // }}}
