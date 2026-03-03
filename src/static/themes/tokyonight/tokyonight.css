@@ -349,3 +349,6 @@ td.title {
     color: var(--tritheme-link-fg);
 }
 
+.TridactylSetting span {
+    color: var(--tridactyl-bg);
+}
