@@ -21,7 +21,7 @@ const cmdline_logger = new Logger("cmdline")
 
 // inject the commandline iframe into a content page
 
-let iframe_blocked = false
+// let iframe_blocked = false
 let noiframe = false
 
 let cmdline_iframe: HTMLIFrameElement
@@ -41,20 +41,31 @@ export function makeIframe() {
         if (!cmdline_iframe.contentDocument) {
             console.log("csp blocking iframe functionality")
             noiframe = true
-            Messaging.addListener("commandline_frame", (msg, sender, sendResponse)=>{
-                Messaging.messageOwnTab("stop_buffering_page_keys")
+            Messaging.addListener(
+                "commandline_frame",
+                (msg, _sender, _sendResponse) => {
+                    Messaging.messageOwnTab("stop_buffering_page_keys")
 
-                if (msg.command === "fillcmdline") {
-                    console.log("auto popup-ing")
-                    console.log(msg.args)
-                    // seems trailing spaces are trimmed when messaged so can't handle that here
-                    Messaging.messageOwnTab("controller_content", "acceptExCmd",
-                                            ["popupcmdline" +
-                                                (msg.args[1] ? "" : "_notrail") +
-                                                " " + msg.args[0]])
-                }
-            })
-            Messaging.messageOwnTab("commandline_frame_ready_to_receive_messages")
+                    if (msg.command === "fillcmdline") {
+                        console.log("auto popup-ing")
+                        console.log(msg.args)
+                        // seems trailing spaces are trimmed when messaged so can't handle that here
+                        Messaging.messageOwnTab(
+                            "controller_content",
+                            "acceptExCmd",
+                            [
+                                "popupcmdline" +
+                                    (msg.args[1] ? "" : "_notrail") +
+                                    " " +
+                                    msg.args[0],
+                            ],
+                        )
+                    }
+                },
+            )
+            Messaging.messageOwnTab(
+                "commandline_frame_ready_to_receive_messages",
+            )
         } else {
             // Hijacking this existing if for something completely different:
             // There isn't an actual ex mode, but we could still set the status indicator's text if we focus the cmdline
@@ -62,7 +73,9 @@ export function makeIframe() {
             // (would rather put it all in one place)
             let lastMode = "normal"
             cmdline_iframe.contentWindow.addEventListener("focus", () => {
-                const indicator = document.querySelector(".TridactylStatusIndicator")
+                const indicator = document.querySelector(
+                    ".TridactylStatusIndicator",
+                )
                 if (indicator && indicator.textContent !== "ex") {
                     lastMode = indicator.textContent.split(" ")[0]
                     setTimeout(() => {
@@ -73,7 +86,9 @@ export function makeIframe() {
                 }
             })
             cmdline_iframe.contentWindow.addEventListener("blur", () => {
-                const indicator = document.querySelector(".TridactylStatusIndicator")
+                const indicator = document.querySelector(
+                    ".TridactylStatusIndicator",
+                )
                 if (!indicator) return
                 if (indicator.textContent !== "ex") {
                     lastMode = indicator.textContent.split(" ")[0]
@@ -210,10 +225,7 @@ export function showAlternateInput(
     }
 
     const inp = document.createElement("input")
-    inp.oninput = _event => {
-        let val = inp.value
-        ;(oninput(inp.value) as any)?.then?.(()=>console.log("oninput finished", val))
-    }
+    inp.oninput = _event => oninput(inp.value)
     // might be best to change CSS rules from IDs to classes if you wanna do this
     inp.classList.add("tridactyl-input")
     if (name) {
@@ -323,7 +335,6 @@ function editor_function(
     fn_name: keyof typeof tri_editor,
     ...args
 ) {
-    console.log("text command!", fn_name)
     if (tri_editor[fn_name]) {
         return tri_editor[fn_name](input, ...args)
     } else {
@@ -368,7 +379,7 @@ export function show(hidehover = false) {
 export function hide() {
     try {
         cmdline_iframe.removeAttribute("popover")
-        cmdline_iframe.inert = true;
+        cmdline_iframe.inert = true
         cmdline_iframe.classList.add("hidden")
         cmdline_iframe.setAttribute("style", "height: 0px !important;")
         customCompletions.hide()
@@ -410,7 +421,10 @@ export function executeWithoutCommandLine(fn) {
     return result
 }
 
-export { get_custom_completion, custom_completion_callback } from "@src/content/completions_content"
+export {
+    get_custom_completion,
+    custom_completion_callback,
+} from "@src/content/completions_content"
 
 import * as SELF from "@src/content/commandline_content"
 import { acceptExCmd } from "@src/lib/controller"
