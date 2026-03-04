@@ -63,10 +63,9 @@ const SLICE_MS = 8
 let sliceEnd = performance.now() + SLICE_MS
 
 // iframes get their own highlight registries
-const framesToHighlights = new Map()
+const frames = new Set()
 // all highlight registries stored in these arrays for easy disabling
 const normalHighlightObjects = []
-const activeHighlightObjects = []
 
 // Add an input to the cmdilne iframe to call our search oninput
 // this isn't the only option for incsearch, but I thought I'd try it
@@ -187,23 +186,26 @@ function clearBlocksCacheAfterMs(afterMs = 5000) {
 }
 
 // Add highlight registries to a frame if one doesn't exist, return them either way
+// this no longer really goes with the highlighting method i use now
+// where i replace the entire set each time
 function getOrCreateHighlights(win = window) {
-    if (framesToHighlights.get(win)) return framesToHighlights.get(win)
+    console.log("getorcreate....")
+    if (frames.has(win)) return ({
+        highlights: (win.CSS as any).highlights.get("tridactyl-find"),
+        activeHighlight: (win.CSS as any).highlights.get("tridactyl-find-active"),
+    })
+    console.log("didn't exist yet!")
+
     const hl = new (win as any).Highlight()
     const hla = new (win as any).Highlight()
+
     hl.priority = 1
     hla.priority = 2
     ;(win.CSS as any).highlights.set("tridactyl-find", hl)
     ;(win.CSS as any).highlights.set("tridactyl-find-active", hla)
 
-    framesToHighlights.set(win, {
-        highlights: hl,
-        activeHighlight: hla,
-    })
-
-    normalHighlightObjects.push(hl)
-    activeHighlightObjects.push(hla)
-    return framesToHighlights.get(win)
+    console.log("returning", hl, hla)
+    return { highlights: hl, activeHighlight: hla }
 }
 
 function getComputedHighlightCss() {
@@ -318,7 +320,13 @@ export function overlayAllMatches() {
 }
 
 function areHighlightsVisible() {
-    return !normalHighlightObjects.every(hl => hl.size === 0)
+    const iter = frames.values()
+    let frame = iter.next()
+    while (!frame.done) {
+        if ((frame.value.CSS as any).highlights.get("tridactyl-find").size > 0)
+            return true
+    }
+    return false
 }
 
 export function highlightAllMatches() {
@@ -334,7 +342,6 @@ export function highlightAllMatches() {
 export function highlightMatchRange(from = 0, to = searchState.matches.length) {
     for (let i = 0; i < searchState.matchesPerFrame.length; ++i) {
         let { frame, startIndex } = searchState.matchesPerFrame[i]
-        console.log(frame, startIndex)
         startIndex = Math.max(startIndex, from)
 
         const endIndex = Math.min(to, searchState.matchesPerFrame[i + 1]?.startIndex || searchState.matches.length)
@@ -342,12 +349,14 @@ export function highlightMatchRange(from = 0, to = searchState.matches.length) {
         if (startIndex >= endIndex) continue
     
         const matches = searchState.matches.slice(startIndex, endIndex)
-        console.log(matches)
+
         const hl = new (frame as any).Highlight(
             ...(searchState.matches.slice(startIndex, endIndex))
-            )
+        )
+
         hl.priority = 1
-        frame.CSS.highlights.set(`tridactyl-find`, hl)
+        ;(frame.CSS as any).highlights.set("tridactyl-find", hl)
+        frames.add(frame)
     }
 }
 
@@ -356,14 +365,20 @@ export function getMatches() {
 }
 
 function clearHighlights() {
-    normalHighlightObjects.forEach(hl => {
-        hl.clear()
+    // normalHighlightObjects.forEach(hl => {
+    //     hl.clear()
+    // })
+    frames.forEach(frame => {
+        ((frame as any).CSS as any).highlights.get("tridactyl-find")?.clear()
     })
 }
 
 function clearActiveHighlight() {
-    activeHighlightObjects.forEach(hl => {
-        hl.clear()
+    // activeHighlightObjects.forEach(hl => {
+    //     hl.clear()
+    // })
+    frames.forEach(frame => {
+        ((frame as any).CSS as any).highlights.get("tridactyl-find-active")?.clear()
     })
 }
 
@@ -454,7 +469,7 @@ async function searchRe(...query: string[]) {
     let foundLast = false // for reverse search
 
     const matches = searchState.matches
-    const frames = searchState.matchesPerFrame
+    const framesWithMatches = searchState.matchesPerFrame
 
     let lastBlockFrame = null
     let lastStyledBlockRoot = document
@@ -474,7 +489,7 @@ async function searchRe(...query: string[]) {
                 // pretty sure we can't revisit iframes so just storing last should be fine
                 if (blockFrame !== lastBlockFrame) {
                     lastBlockFrame = blockFrame
-                    frames.push({ frame: blockFrame, startIndex: matches.length })
+                    framesWithMatches.push({ frame: blockFrame, startIndex: matches.length })
                 }
 
                 const blockMatches = await searchBlockText(
@@ -1099,13 +1114,13 @@ function compareRangetoView(range) {
 
 function setActiveRange(range, focus = false) {
     scrollRangeIntoView(range)
-    // if (!isRangeInView(range)) {
-    //     scrollRangeIntoView(range);
-    // }
 
     clearActiveHighlight()
 
     const win = range.startContainer.ownerDocument.defaultView
+
+    // not working now!
+    console.log("getOrCreate next:", getOrCreateHighlights(win))
     const activeHighlight = getOrCreateHighlights(win).activeHighlight
 
     activeHighlight.clear()
