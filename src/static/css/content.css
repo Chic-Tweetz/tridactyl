@@ -61,3 +61,13 @@
     background-color: var(--tridactyl-search-highlight-color) !important;
     z-index: 2147483647 !important;
 }
+
+::highlight(tridactyl-find) {
+  background-color: var(--tridactyl-search-highlight-bg);
+  color: var(--tridactyl-search-highlight-fg);
+}
+
+::highlight(tridactyl-find-active) {
+  background-color: var(--tridactyl-search-active-highlight-bg);
+  color: var(--tridactyl-search-active-highlight-fg);
+}

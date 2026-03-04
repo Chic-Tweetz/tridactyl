@@ -1549,8 +1549,18 @@ export function findselect() {
  * incsearch finding.
  */
 //#content
-export function searchbar() {
-    return finding.searchbar()
+export function searchbar(...args: string[]) {
+    let reverse = false
+    let fromView = false
+    for (const arg of args) {
+        if (args.includes("-?")) {
+            reverse = true
+        }
+        if (args.includes("--search-from-view")) {
+            fromView = true
+        }
+    }
+    return finding.searchbar(reverse, fromView)
 }
 
 /** @hidden */

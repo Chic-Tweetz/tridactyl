@@ -20,6 +20,11 @@
     /* Search highlight */
     --tridactyl-search-highlight-color: yellow;
 
+    --tridactyl-search-highlight-bg: rgb(62, 104, 215);
+    --tridactyl-search-highlight-fg: rgb(200, 211, 245);
+    --tridactyl-search-active-highlight-bg: rgb(255, 150, 108);
+    --tridactyl-search-active-highlight-fg: rgb(27, 29, 43);
+
     /* Hinting */
 
     /* Hint character tags */

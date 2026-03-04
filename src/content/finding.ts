@@ -4,14 +4,24 @@
 // import state from "@src/state"
 // import * as State from "@src/state"
 // import { compute as scrollCompute } from "compute-scroll-into-view"
-import { showAlternateInput } from "./commandline_content"
+import { clear } from "@src/commandline_frame"
+import { showAlternateInput } from "@src/content/commandline_content"
+import { getThemedCssText, getThemedStylesheet } from "@src/content/styling"
 
+// TODO: figure this performance issue out! A bit of a show stopper
+// I see a similar issue with that "hint every word" script i made
+// https://github.com/tridactyl/tridactyl/issues/5329#issuecomment-3902387583
+// is it to do with hinting? walking the DOM? creating ranges? No idea :(
+// It's not the highlight API, it'll still happen if you don't highlight anything
 
 // nasty performance hit if you do a bunch of searches
-// memory usage seems to climb (is it our match ranges?)
-// so something's not being garbage collected somewhere? I guess
-// try doing like 20+ searches for .
-// then do a hint and see how long it takes to register the hint keypresses - very odd
+// try doing like 30+ searches then do some hinting
+// it can take seconds to create the hints and seconds to respond to keypresses
+// I cannot figure out why
+
+// If you're doing a normal search and not testing with "." 200 is
+// probably plenty to see every match on screen
+const MAX_HIGHLIGHTS = 200
 
 // not sure all these are even used, let alone all necessary
 // but may consider making a Finder class or something
@@ -23,14 +33,13 @@ interface SearchState {
     searchQuery: RegExp | string
     matches: Range[]
     searchBlocks: any[]
-    onBlockBuilt: ([]) => Promise<void> | void
-    onLastBlockBuilt: () => Promise<void> | void
     activeMatchIdx: number
-    fromView: boolean
-    foundFirst: boolean
     uniqueMatchesMap: Map<Node, Set<number>>
-    onAllNodesWalked: () => Promise<void> | void
     clearSearchBlocksTimer: number
+    matchesPerFrame: any[]
+    styledRoots: WeakSet<Document | DocumentFragment | ShadowRoot | Node>
+    reverse: boolean
+    fromView: boolean
 }
 
 const searchState: SearchState = {
@@ -40,14 +49,13 @@ const searchState: SearchState = {
     searchQuery: null,
     matches: [],
     searchBlocks: [],
-    onBlockBuilt: () => undefined,
-    onLastBlockBuilt: () => undefined,
     activeMatchIdx: -1,
-    fromView: false,
-    foundFirst: false,
     uniqueMatchesMap: new Map(),
-    onAllNodesWalked: () => undefined,
     clearSearchBlocksTimer: null,
+    matchesPerFrame: [],
+    styledRoots: new WeakSet(),
+    reverse: false,
+    fromView: false,
 }
 
 // Currently we yield every 8ms when searching/building our search blocks, keeps everything responsive
@@ -64,9 +72,11 @@ const activeHighlightObjects = []
 // this isn't the only option for incsearch, but I thought I'd try it
 // because it could be useful to hide inputs in the iframe for other reasons
 // like IME vimperator hinting https://github.com/tridactyl/tridactyl/discussions/5337
-export function searchbar() {
+// this is a bit jank right now!
+export function searchbar(reverse = false, searchFromView = true) {
+    console.log("searchbar! reverse?", reverse, "from view?", searchFromView)
     showAlternateInput(
-        str => searchRe(str),
+        str => jumpToMatch(str, { reverse, searchFromView }),
         () => focusHighlight(searchState.activeMatchIdx, true),
         () => removeHighlighting(),
         "find",
@@ -76,19 +86,72 @@ export function searchbar() {
 // I've renamed/wrapped some functions to match the original finding.ts API
 // but now I'm confused about what does what :)
 export function jumpToMatch(searchQuery, option) {
-    if (option.searchFromView) {
-        console.log("just making the linter happy right now")
-    }
+    searchState.fromView = option.searchFromView || false
+    searchState.reverse = option.reverse || false
     return searchRe(searchQuery)
 }
 
-export function jumpToNextMatch(n: number, _searchFromView = false) {
-    return gotoMatch(searchState.activeMatchIdx + n)
+// search from view should jump to first visible match from previous search I suppose?
+// searchFromView isn't going to work yet
+export function jumpToNextMatch(n: number, searchFromView = false, focus = false) {
+    if (searchFromView) return jumpToNextFromView(n, focus)
+    //return gotoMatch(searchState.activeMatchIdx + n)
+    let idx = searchState.activeMatchIdx + n
+    if (idx < 0) {
+        idx = searchState.matches.length + n
+    } else if (idx >= searchState.matches.length) {
+        idx %= searchState.matches.length
+    }
+    focusHighlight(idx, focus)
 }
 
-export function focusHighlight(index: number, focus = false) {
-    const range = searchState.matches[index]
-    if (range) setActiveRange(range, focus)
+// export function focusHighlight(index: number, focus = false) {
+//     const range = searchState.matches[index]
+//     if (range) setActiveRange(range, focus)
+// }
+
+export function focusHighlight(idx: number, focus = false) {
+    const range = searchState.matches[idx]
+    console.log("range for idx", idx, range)
+    if (!range) return
+    searchState.activeMatchIdx = idx
+    setActiveRange(range, focus)
+    // might be better to shift these when near a boundary rather than every time
+    // so you'd want to keep track of the current highlighted index range
+    highlightAround(idx)
+}
+
+// TODO: figure out: do we need to search backwards from the bottom-right
+// or the top-left as with forward search?
+// this searches from the bottom-right so on-screen matches will count
+export function jumpToNextFromView(n: number = 1, focus = true) {
+    const curr = searchState.matches[searchState.activeMatchIdx]
+    if (isRangeInView(curr)) {
+        jumpToNextMatch(n, false, true)
+        return
+    }
+
+    let idx
+    if (n > 0) {
+        let firstInView = searchState.matches.findIndex(range => compareRangetoView(range) >= 0)
+        if (firstInView >= 0) {
+            idx = firstInView + n - 1
+        } else {
+            idx = n - 1
+        }
+    } else {
+        let lastInView = (searchState.matches as any).findLastIndex(range => compareRangetoView(range) <= 0)
+        if (lastInView >= 0) {    
+            idx = lastInView + n + 1
+        } else {
+            idx = n + 1
+        }
+    }
+    focusHighlight(idx, focus)
+}
+
+export function highlightAround(idx: number) {
+    highlightMatchRange(idx - MAX_HIGHLIGHTS / 2, idx + MAX_HIGHLIGHTS / 2)
 }
 
 export function removeHighlighting() {
@@ -105,6 +168,7 @@ export function stop() {
     searchState.walkingAbortController.abort()
 }
 
+// we need to nullify our search blocks for dynamic pages
 function clearBlocksCache() {
     if (searchState.searchAbortController.signal.aborted) {
         console.log("search blocks cleared")
@@ -122,7 +186,7 @@ function clearBlocksCacheAfterMs(afterMs = 5000) {
     searchState.clearSearchBlocksTimer = setTimeout(clearBlocksCache, afterMs)
 }
 
-// Add highlight registries to a frame
+// Add highlight registries to a frame if one doesn't exist, return them either way
 function getOrCreateHighlights(win = window) {
     if (framesToHighlights.get(win)) return framesToHighlights.get(win)
     const hl = new (win as any).Highlight()
@@ -142,112 +206,153 @@ function getOrCreateHighlights(win = window) {
     return framesToHighlights.get(win)
 }
 
+function getComputedHighlightCss() {
+    const comp = getComputedStyle(document.documentElement)
+    return `::highlight(tridactyl-find) {` +
+        `background-color: ${comp.getPropertyValue("--tridactyl-search-highlight-bg")};` +
+        `color: ${comp.getPropertyValue("--tridactyl-search-highlight-fg")};` +
+    `}` + 
+    `::highlight(tridactyl-find-active) {` +
+        `background-color: ${comp.getPropertyValue("--tridactyl-search-active-highlight-bg")};` +
+        `color: ${comp.getPropertyValue("--tridactyl-search-active-highlight-fg")};` +
+    `}`
+}
+
+let shadowStyleSheet = null
+function styleShadow(shadowRoot: ShadowRoot) {
+    if (searchState.styledRoots.has(shadowRoot)) return
+    try {
+        if (!shadowStyleSheet) {
+            shadowStyleSheet = new CSSStyleSheet()
+            shadowStyleSheet.replaceSync(getComputedHighlightCss())
+        }
+        // I wish it could be easier to style shadow DOMs >:|
+        // window.eval can be blocked and so can shadowRoot.adoptedStyleSheets
+        window.eval(`(root,sheet)=>root.adoptedStyleSheets.push(sheet)`)(shadowRoot, shadowStyleSheet)
+        searchState.styledRoots.add(shadowRoot)
+    } catch (e) {
+        // something's blocked by CSP, but we can still add a <style> element
+        const style = document.createElement("style")
+        style.textContent = getComputedHighlightCss()
+        shadowRoot.appendChild(style)
+        searchState.styledRoots.add(shadowRoot)
+    }
+}
+
 // This should be part of the normal .CSS files
 // we should attempt to share the stylesheet with shadow roots
 // failing that, we should either inject styles as we already do
 // or we should use overlays (perhaps choose using a config setting)
-function addHighlightStyles(addto: Node = document.head) {
-    const root: Document | DocumentFragment | ShadowRoot =
-        addto.getRootNode() as any
-    const win = addto.ownerDocument.defaultView
+export function addHighlightStyles(root: Node | Document | DocumentFragment | ShadowRoot = document, referenceNode?: Node | HTMLElement) {
+    if (searchState.styledRoots.has(root as any)) return
+    const win = (root as Document).defaultView
 
     getOrCreateHighlights(win)
 
-    if (!root.querySelector) {
-        console.warn("This Root Has No queryrryyryr", root, addto)
-    }
-    if (root.querySelector(".TridactylHighlights")) return
     const style = document.createElement("style")
-    style.textContent = `
-::highlight(tridactyl-find) {
-  background-color: rgba(62,104,215,1);
-  color: rgb(200,211,245);
-}
+    style.innerText = getThemedCssText()
 
-::highlight(tridactyl-find-active) {
-  background-color: rgba(255,150,108,1);
-  color: rgb(27,29,43);
-}
-
-input.TridactylFindInput:focus {
-    outline: none;
-    display: inline-flex;
-    color: var(--tridactyl-cmdl-fg);
-}
-
-input.TridactylFindInput {
-    font-family: monospace;
-    border: 1px solid rgb(50,150,200);
-}
-
-input.TridactylFindInput::before {
-    content: "/";
-}
-
-.loader {
-    width: 12px;
-    height: 12px;
-    border: 2px solid #11e85c;
-    border-bottom-color: transparent;
-    border-radius: 50%;
-    display: inline-flex;
-    box-sizing: border-box;
-    animation: rotation 1s linear infinite;
-    }
-
-    @keyframes rotation {
-    0% {
-        transform: rotate(0deg);
-    }
-    100% {
-        transform: rotate(360deg);
-    }
-}
-    
-.loader.blocks {
-    border: 2px solid rgb(255, 140, 0);
-    border-bottom-color: transparent;
-    border-radius: 50%;
-}`
-
-    style.className = "TridactylHighlights"
-
-    const maybeHead = root.querySelector("head")
+    // we should only create and insert a <style> element if we can't inherit a stylesheet
+    // also the top window should have the sytles by default through a .css file
+    const maybeHead = (root as Document).head
     if (maybeHead) maybeHead.appendChild(style)
     else {
-        const firstChild = (root as any).body?.children[0] || root.children
-        if (!firstChild) {
-            ;(addto as any).prepend(style)
+        const firstChild = (root as any).body?.children[0] || (root as any).children[0]
+        
+        // does this make sense
+        if (!firstChild && referenceNode) {
+            if (referenceNode.nodeType !== Node.ELEMENT_NODE) {
+                referenceNode = referenceNode.parentElement
+            }
+            ;(referenceNode as HTMLElement)?.insertAdjacentElement('beforebegin', style)
         } else {
-            root.prepend(style)
+            (root as any).prepend(style)
         }
     }
+    searchState.styledRoots.add(root)
 }
 
+// could use a weak set here instead of only remembering the last root
 let lastStyledRoot = null
 // Add a range to the "tridactyl-find" highlights, adding the css styles if necessary
+// this is the main performance hit by far
+// maybe we could only show a maximum number of highlights around the active highlight
 function highlightRange(range: Range) {
     const root = range.startContainer.getRootNode()
     if (root !== lastStyledRoot) {
-        addHighlightStyles(range.startContainer)
+        addHighlightStyles(root, range.startContainer)
         lastStyledRoot = root
     }
 
     const win = range.startContainer.ownerDocument.defaultView
     const highlights = getOrCreateHighlights(win).highlights
 
+    // might it be faster to create a new Highlight() each time
+    // initialised with a batch of ranges?
     highlights.add(range)
+}
+
+// just checking
+export function overlayAllMatches() {
+    document.querySelectorAll("#TridactylFindHost").forEach(el => el.remove())
+    const host = document.createElement("div")
+    host.id = "TridactylFindHost"
+    host.style.position = "absolute"
+    host.style.top = "0"
+    host.style.left = "0"
+    for (const range of searchState.matches) {
+        const rects = range.getClientRects()
+        for (const rect of rects) {
+            const overlay = document.createElement("div")
+            overlay.style.position = "absolute"
+            overlay.style.left = `${rect.left + window.scrollX}px`
+            overlay.style.top = `${rect.top + window.scrollY}px`
+            overlay.style.width = `${rect.width}px`
+            overlay.style.height = `${rect.height}px`
+            overlay.style.backgroundColor = "rgba(62,104,215,0.5)"
+            overlay.style.pointerEvents = "none"
+            host.appendChild(overlay)
+        }
+    }
+    document.documentElement.appendChild(host)
 }
 
 function areHighlightsVisible() {
     return !normalHighlightObjects.every(hl => hl.size === 0)
 }
 
-function highlightAllMatches() {
-    clearHighlights()
-    searchState.matches.forEach(match => {
-        highlightRange(match)
-    })
+export function highlightAllMatches() {
+    highlightMatchRange(0, searchState.matches.length)
+}
+
+// this is MUCH MUCH faster than adding a single range at a time
+// perhaps batch ranges to be highlighted as you search then call this with requestAnimationFrame or something
+// limit it to some number of highlights around the active highlight
+// move the highlight slice as you move through matches (unless total highlights <= max highlights)
+// to is exclusive
+// having Range in the name is confusing, this is an index range!
+export function highlightMatchRange(from = 0, to = searchState.matches.length) {
+    for (let i = 0; i < searchState.matchesPerFrame.length; ++i) {
+        let { frame, startIndex } = searchState.matchesPerFrame[i]
+        console.log(frame, startIndex)
+        startIndex = Math.max(startIndex, from)
+
+        const endIndex = Math.min(to, searchState.matchesPerFrame[i + 1]?.startIndex || searchState.matches.length)
+        
+        if (startIndex >= endIndex) continue
+    
+        const matches = searchState.matches.slice(startIndex, endIndex)
+        console.log(matches)
+        const hl = new (frame as any).Highlight(
+            ...(searchState.matches.slice(startIndex, endIndex))
+            )
+        hl.priority = 1
+        frame.CSS.highlights.set(`tridactyl-find`, hl)
+    }
+}
+
+export function getMatches() {
+    return searchState.matches
 }
 
 function clearHighlights() {
@@ -262,19 +367,8 @@ function clearActiveHighlight() {
     })
 }
 
-/* function abortSearch() {
-    searchState.searchAbortController.abort()
-}
-
-function abortWalking() {
-    searchState.walkingAbortController.abort()
-}*/
-
 async function searchRe(...query: string[]) {
     searchState.searchAbortController.abort()
-
-    // let searchFromView = true
-    // let reverse = false
 
     let flags = "gi"
     let doubleHyphen = false
@@ -350,97 +444,146 @@ async function searchRe(...query: string[]) {
     const abortController = new AbortController()
     searchState.searchAbortController = abortController
     searchState.matches = []
+    searchState.matchesPerFrame = []
 
     // Surely we can prevent duplicate matches without this...
     searchState.uniqueMatchesMap = new Map()
-    searchState.foundFirst = false
     searchState.searchQuery = re
 
-    const matches = searchState.matches;
+    let foundFirst = false
+    let foundLast = false // for reverse search
 
+    const matches = searchState.matches
+    const frames = searchState.matchesPerFrame
+
+    let lastBlockFrame = null
+    let lastStyledBlockRoot = document
     let blockIdx = 0
 
-    const searchBlocks = async () => {
-        while (blockIdx < searchState.searchBlocks.length) {
-            console.log(re, blockIdx)
+    return new Promise((resolve, _reject) => {
+        const searchBlocks = async () => {
+            while (blockIdx < searchState.searchBlocks.length) {
+                if (abortController.signal.aborted) {
+                    console.log("SEARCH ABORTED")
+                    resolve(matches)
+                }
+
+                const blockRoot = searchState.searchBlocks[blockIdx].nodes[0].getRootNode()
+                const blockFrame = searchState.searchBlocks[blockIdx].nodes[0].ownerDocument.defaultView
+
+                // pretty sure we can't revisit iframes so just storing last should be fine
+                if (blockFrame !== lastBlockFrame) {
+                    lastBlockFrame = blockFrame
+                    frames.push({ frame: blockFrame, startIndex: matches.length })
+                }
+
+                const blockMatches = await searchBlockText(
+                    searchState.searchBlocks[blockIdx],
+                    re,
+                )
+
+                if (blockMatches.length > 0) {
+                    if (lastStyledBlockRoot !== blockRoot) {
+                        lastStyledBlockRoot = blockRoot
+                        styleShadow(blockRoot)
+                    }
+
+                    matches.push(...blockMatches)
+
+                    // if reverse, rect bottom < innerHeight
+                    // probably want to check left/right too
+                    // this (adding reverse/from view) is more complex than expected! making a mess!
+                    if ((!foundFirst && !searchState.reverse) || (!foundLast && searchState.reverse && searchState.fromView)) {
+                        let first
+                        if (!searchState.fromView && !searchState.reverse) first = 0
+                        else {
+                            if (searchState.reverse) {
+                                first = (blockMatches as any).findLastIndex(range => compareRangetoView(range) <= 0)
+                            } else {
+                                first = blockMatches.findIndex(range => compareRangetoView(range) >= 0)
+                            }
+                        }
+
+                        if (first >= 0) {
+                            foundFirst = true
+                            if (!searchState.reverse) {
+                                clearHighlights()
+                                searchState.activeMatchIdx = matches.length - blockMatches.length + first
+                                focusHighlight(searchState.activeMatchIdx, false)
+                            } else {
+                                searchState.activeMatchIdx = matches.length - blockMatches.length + first
+                            }
+                        } else {
+                            if (searchState.reverse && foundFirst) {
+                                foundLast = true
+                                focusHighlight(searchState.activeMatchIdx, false)
+                            }
+                        }
+                    }
+                }
+            
+                ++blockIdx
+            }
+
             if (abortController.signal.aborted) {
-                console.log("SEARCH ABORTED")
+                resolve(matches)
                 return
             }
-            matches.push(...(await searchBlockText(
-                searchState.searchBlocks[blockIdx],
-                re,
-            )))
-            ++blockIdx
-        }
-        if (abortController.signal.aborted) return;
 
-        if (searchState.buildingSearchBlocks) {
+            if (searchState.buildingSearchBlocks) {
+                onNextBlockBuilt(searchBlocks)
+                return
+            }
+            
+            abortController.abort()
+            if (searchState.matches.length === 0) {
+                removeHighlighting()
+            } else {
+                // sort this mess out!
+                if (searchState.reverse && !searchState.fromView) {
+                    searchState.activeMatchIdx = searchState.matches.length - 1
+                    focusHighlight(searchState.activeMatchIdx)
+                } else if (!foundFirst) {
+                    if (searchState.reverse) {
+                        searchState.activeMatchIdx = searchState.matches.length - 1
+                        focusHighlight(searchState.activeMatchIdx)
+                    } else {
+                        searchState.activeMatchIdx = 0
+                        focusHighlight(searchState.activeMatchIdx)
+                    }
+                }
+                highlightAround(searchState.activeMatchIdx)
+            }
+            resolve(matches)
+        }
+
+        if (
+            searchState.searchBlocks.length === 0 &&
+            !searchState.buildingSearchBlocks
+        ) {
+            console.log("building search blocks")
+
             onNextBlockBuilt(searchBlocks)
-            return
+            buildSearchBlocks(document.body)
+        } else {
+            searchBlocks()
         }
-        
-        abortController.abort("Search complete.")
-        if (searchState.matches.length === 0) {
-            removeHighlighting()
-        }
-    }
-
-    if (
-        searchState.searchBlocks.length === 0 &&
-        !searchState.buildingSearchBlocks
-    ) {
-        console.log("building search blocks")
-
-        searchState.onAllNodesWalked = () => clearBlocksCacheAfterMs(3000)
-
-        onNextBlockBuilt(searchBlocks)
-        buildSearchBlocks(document.body)
-    } else {
-        searchBlocks()
-    }
-
-    // It'd probably be better to return once all matches are found
-    // perhaps use a deferred promise for the two mid-build possibilities
-    // yeah really doesn't make sense to return this yet does it
-    return matches
+    })
 }
 
-// const tempSearched = new Set()
-// const tempBlocksSearched = new Set()
-
+// find regex matches within a single one of our blocks
 async function searchBlockText(block, regex) {
     const abortController = searchState.searchAbortController
 
-    const [_fullRange, nodes, normalisedText] = block
+    const {nodes, normalisedText} = block
     const text = normalisedText.normalised
-    // const rawIdxMap = normalisedText.map
     const getRawIndex = normalisedText.getRawIndex
     const matches = []
-
-/*     if (tempBlocksSearched.has(block)) console.error("DUPLICATE BLOCK!")
-    tempBlocksSearched.add(block) */
-
-    // well then... we truly don't search duplicate nodes
-    // so how are we getting duplicate matches...
-/*     for (const node of nodes) {
-        if (tempSearched.has(node)) {
-            console.error("duplicate search node!", node)
-        } else {
-            tempSearched.add(node)
-        }
-    } */
-
-    // Might want to instead split into an arbitrary chunk size
-    // const lines = text.split(/\r?\n/);
 
     // Avoid horrible terrible bad regex mistakes by splitting long strings up
     const CHUNK_SIZE = 1024 // powers of 2 are more cool and gooder
 
     let lastSubstantialIdx = -1
-    // let lineOffset = 0 // running offset into original text
-
-    // console.log("Block search", block, lines, regex);
 
     for (let offset = 0; offset < text.length; offset += CHUNK_SIZE) {
         const chunk = text.slice(offset, offset + CHUNK_SIZE)
@@ -448,7 +591,7 @@ async function searchBlockText(block, regex) {
         let match
 
         while ((match = regex.exec(chunk)) !== null) {
-            // time-slicing
+            // time-slicing, yielding every 8ms atm
             if (performance.now() > sliceEnd) {
                 await new Promise(setTimeout as any)
                 sliceEnd = performance.now() + SLICE_MS
@@ -460,14 +603,10 @@ async function searchBlockText(block, regex) {
 
             // compute absolute indices in the original text
             const normStart = offset + match.index
-            // const rawStart = rawIdxMap[normStart]
             const rawStart = getRawIndex(normStart)
 
             const normEnd = normStart + match[0].length - 1
-            // const rawEnd = rawIdxMap[normEnd] + 1
             const rawEnd = getRawIndex(normEnd) + 1
-
-            // ---- your existing node-mapping logic ----
 
             let startNodeIdx = 0
             let endNodeIdx = 0
@@ -489,12 +628,10 @@ async function searchBlockText(block, regex) {
             }
             const endOffset = remainingEnd
 
-            // skip disconnected nodes, we can't see them
             if (!nodes[startNodeIdx].isConnected) {
                 continue
             }
 
-            // Build the range
             const range = document.createRange()
             range.setStart(nodes[startNodeIdx], startOffset)
             range.setEnd(nodes[endNodeIdx], endOffset)
@@ -502,40 +639,19 @@ async function searchBlockText(block, regex) {
             if (startNodeIdx === lastSubstantialIdx || isSubstantial(range)) {
                 lastSubstantialIdx = startNodeIdx
 
-/*                 const nodeMatches = (
+                // shall i prevent duplicates? Sure
+                // can happen because I change … to ... (anything else?)
+                // there may be a better way to solve this (like just not doing that?)
+                 const nodeMatches = (
                     searchState.uniqueMatchesMap as any
                 ).getOrInsert(range.startContainer, new Set())
                 if (nodeMatches.has(range.startOffset)) {
-                    // riiiight
-                    // so we're getting multiple matches for .
-                    // on chars we've embiggened
-                    // the single char ... to three char ...
-                    // gets the same match for each .
-
-                    console.error("Duplicate Match Found!", range.toString(), range, block)
-
                     continue
                 } else {
                     nodeMatches.add(range.startOffset)
-}*/
+                }
 
                 matches.push(range)
-                // we're all synchronous since the last aborted check, think this one can go
-                if (!abortController.signal.aborted) {
-                    if (
-                        !searchState.foundFirst &&
-                        ((searchState.fromView === true &&
-                            isRangeInView(range)) ||
-                            !searchState.fromView)
-                    ) {
-                        clearHighlights()
-                        searchState.foundFirst = true
-                        searchState.activeMatchIdx =
-                            matches.length + searchState.matches.length - 1
-                        setActiveRange(range)
-                    }
-                    highlightRange(range)
-                }
             }
 
             // prevent zero-length infinite loops
@@ -543,13 +659,13 @@ async function searchBlockText(block, regex) {
                 regex.lastIndex++
             }
         }
-
-        // advance offset by line length + 1 (newline)
-        // offset += chunk.length + 1;
     }
     return matches
 }
 
+// using callbacks so we can search for text as we build search blocks
+// generally building search blocks is pretty quick so maybe we could
+// simplify and just wait for it to finish instead
 let nextBlockWaiters = []
 function onNextBlockBuilt(callback) {
     nextBlockWaiters.push(callback)
@@ -560,6 +676,10 @@ function blockBuilt() {
     nextBlockWaiters = []
 }
 
+// group nodes into true "blocks" - where text nodes are inline within a block
+// block text is normalised so we can search for á with a and such
+// a block is currently represented as an array containing the block's full range,
+// all the nodes in the block, and the normalised text
 async function buildSearchBlocks(startNode = document.body) {
     searchState.buildingSearchBlocks = true
     const blocks = []
@@ -567,37 +687,49 @@ async function buildSearchBlocks(startNode = document.body) {
 
     let currBlock = null
     let currBlockNodes = []
-    let currRange = null
+    // let currRange = null
 
     const textNodeCallback = node => {
         const { block, whiteSpace } = getBlockOwner(node)
         if (currBlock !== block) {
             if (currBlockNodes.length > 0) {
-                blocks.push([
-                    currRange,
+/*                 blocks.push([
+                    // currRange,
                     currBlockNodes,
                     stringNormaliser(
                         currBlockNodes.map(n => n.nodeValue).join(""),
                         whiteSpace,
-                        2,
+                        2, // magic number currently, maybe config setting?
                     ),
-                ])
+                    currBlockNodes[0].getRootNode().defaultView,
+                ]) */
+                blocks.push({
+                    nodes: currBlockNodes,
+                    normalisedText: stringNormaliser(
+                        currBlockNodes.map(n => n.nodeValue).join(""),
+                        whiteSpace,
+                        2, // magic number currently, maybe config setting?
+                    ),
+                })
                 blockBuilt()
             }
 
             currBlock = block
             currBlockNodes = [node]
-            currRange = document.createRange()
+            
+            // is this ever used? It might be important for filtering blocked nodes here
+            // currRange = document.createRange()
             try {
                 // can be blocked: "insecure"
-                currRange.selectNodeContents(node)
+                document.createRange().selectNodeContents(node)
             } catch (e) {
                 currBlock = null
                 currBlockNodes = []
             }
-        } else if (currRange !== null && currBlock !== null) {
+        } else if (/*currRange !== null && */currBlock !== null) {
             currBlockNodes.push(node)
-            currRange.setEnd(node, node.length)
+            // pretty sure we don't need currRange though
+            // currRange.setEnd(node, node.length)
         }
     }
 
@@ -615,6 +747,9 @@ async function buildSearchBlocks(startNode = document.body) {
     return searchState.searchBlocks
 }
 
+// like walking with a TreeWalker but we can go into (same-origin) iframes and shadow DOMs
+// callback is called for text nodes specifically
+// was recursive, made an iterative version... can probably lose the _iterative suffix now it's the only one
 async function walk_iterative(startNode, callback) {
     searchState.walkingAbortController.abort()
     searchState.walkingAbortController = new AbortController()
@@ -630,6 +765,9 @@ async function walk_iterative(startNode, callback) {
             stack.push(node)
         }
     }
+
+    // for searching specifically we don't want invisible nodes
+    // if walk_iterative was repurposed for general walking, probably would give it a filter parameter
     const skipTags = new Set([
         "SCRIPT",
         "STYLE",
@@ -661,10 +799,6 @@ async function walk_iterative(startNode, callback) {
                 !skipTags.has(node.parentElement.tagName) &&
                 isSubstantial(node.parentElement)
             ) {
-                // could also filter out visibility:hidden or display:none parent elements here
-                // let's just check here with a temporary set...
-/*                 if (calledback.has(node)) console.error("Callback Duplicate!", node)
-                calledback.add(node)*/
                 callback(node)
             }
         } else if (node.nodeType === Node.ELEMENT_NODE) {
@@ -678,10 +812,16 @@ async function walk_iterative(startNode, callback) {
             }
         }
     }
-    // Kind of mixing callbacks and promises in a way that makes me suspect it's a smell :)
-    searchState.onAllNodesWalked()
+
+    clearBlocksCacheAfterMs(3000)
+
+    // could return the walked set?
+    // That way this could still be useful if you don't pass a callback
 }
 
+// figure out if a node should be inline with its siblings
+// now also returns the white-space rule so we know whether to replace "\n" with " "
+// I think it should return a bool though, we don't need to know the actual rule elsewhere do we?
 function getBlockOwner(node) {
     let el = node.parentElement
     let whiteSpace = null
@@ -716,6 +856,8 @@ function getBlockOwner(node) {
     return { block: node.ownerDocument.body, whiteSpace }
 }
 
+// untangle slots and shadows so we can walk everything
+// it might nice to keep track of shadows as we go for styling actually
 function getComposedChildren(elem) {
     const out = []
 
@@ -744,6 +886,8 @@ function getComposedChildren(elem) {
     return out
 }
 
+// potentially useful but not used currently
+// this would probably go to lib/dom.ts (along with some other things here)
 /* function getComposedParent(node) {
     if (!node) return null
 
@@ -776,6 +920,7 @@ function getComposedChildren(elem) {
     return null
 }*/
 
+// not quite dom.ts' isVisible or isSubstantial
 function isSubstantial(thing) {
     if (thing instanceof Element) {
         while (typeof thing.getBoundingClientRect !== "function") {
@@ -808,6 +953,7 @@ function isSubstantial(thing) {
     }
     // Can be pure text node in shadow dom (no parent el but a client rect)
     // example: github's timestamps
+    // I was wrapping them in spans but don't fancy messing with the DOM that much
     if (!element) {
         return true
     }
@@ -826,6 +972,8 @@ function isSubstantial(thing) {
 }
 
 // Scrolling needs some smarts I can't think no good
+// - there was an import in the original finding.ts that might be what i'm after
+// scrollCompute, have a look at that
 function scrollRangeIntoView(range) {
     range.startContainer.parentElement?.scrollIntoView()
     let win = range.startContainer.ownerDocument.defaultView
@@ -866,6 +1014,7 @@ function scrollRangeIntoView(range) {
 }
 
 // Hey this doesn't check left/right ... that's what I get for asking an LLM for help
+// TODO: add those left/right checks in
 function isRangeInView(range) {
     let win = range.startContainer.ownerDocument.defaultView
     let rect = range.getBoundingClientRect()
@@ -900,14 +1049,60 @@ function isRangeInView(range) {
     return true
 }
 
+// TODO: find a page with some same-origin iframes so you can check it works at all!
+// rewrite of isRangeInView to let us know in which way a range is out of view (or not)
+// returns 0 if range is in view
+// -1 if range is above or left of view (or compared to its parent iframe(s))
+// 1 if range is below or right of view
+function compareRangetoView(range) {
+    let win = range.startContainer.ownerDocument.defaultView
+    let rect = range.getBoundingClientRect()
+
+    let iframeRect
+    let iframeCompare = 0
+    while (win.frameElement) {
+        const iframe = win.frameElement
+        const parentWin = win.parent
+
+        iframeRect = iframe.getBoundingClientRect()
+
+        // get absolute rect relative to top window view
+        rect = {
+            top: iframeRect.top + rect.top,
+            bottom: iframeRect.top + rect.bottom,
+            height: rect.height,
+        }
+
+        // haven't tested this!
+        if (rect.bottom <= iframeRect.top || rect.right <= iframeRect.left) {
+            iframeCompare = -1
+            break
+        } else if (rect.top >= iframeRect.bottom || rect.left >= iframeRect.right) {
+            iframeCompare = 1
+            break
+        }
+
+        win = parentWin
+    }
+
+    if (iframeRect && iframeCompare === 0) {
+        // is iframe itself before or after view?
+        if (iframeRect.bottom <= 0 || iframeRect.right <= 0) return -1
+        if (iframeRect.top >= window.innerHeight || iframeRect.left >= window.innerWidth) return 1
+        return 0
+    }
+
+    if (rect.bottom <= 0 || rect.right <= 0) return -1
+    if (rect.top >= window.innerHeight || rect.left >= window.innerWidth) return 1
+    return 0
+}
+
 function setActiveRange(range, focus = false) {
     scrollRangeIntoView(range)
     // if (!isRangeInView(range)) {
     //     scrollRangeIntoView(range);
     // }
 
-    // Didn't seem to work
-    // findActiveHighlightObjects.forEach(hl => hl.clear());
     clearActiveHighlight()
 
     const win = range.startContainer.ownerDocument.defaultView
@@ -1024,6 +1219,7 @@ function stringNormaliser(str: string, whiteSpaceRule: string, level) {
                 .replace(/[…]/g, "...") // native finding does NOT match ... to … so this one's debatable
         }
 
+        // I have not tested this one at all :)
         // 3. NFKC compatibility (ligatures etc.)
         if (level >= NORMALISE_LEVELS.full) {
             out = out.normalize("NFKC")
