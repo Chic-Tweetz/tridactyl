@@ -1644,6 +1644,24 @@ export function findselect() {
     selection.addRange(range)
 }
 
+/**
+ * incsearch finding.
+ */
+//#content
+export function searchbar(...args: string[]) {
+    let reverse = false
+    let fromView = false
+    for (const arg of args) {
+        if (args.includes("-?")) {
+            reverse = true
+        }
+        if (args.includes("--search-from-view")) {
+            fromView = true
+        }
+    }
+    return finding.searchbar(reverse, fromView)
+}
+
 /** @hidden */
 //#content_helper
 function history(url_or_num: string, direction: number) {

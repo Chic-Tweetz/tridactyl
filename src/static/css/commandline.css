@@ -42,6 +42,10 @@ input:focus {
     content: ":";
 }
 
+#tridactyl-colon.find::before {
+    content: "/";
+}
+
 /* COMPLETIONS */
 
 #completions {

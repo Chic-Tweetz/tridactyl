@@ -38,8 +38,38 @@ export function hintElemStyles() {
 }
 
 let insertedContainerCss = false
+// Attempting to share stylesheets with shadow DOMs
+// unfortunately, adoptedStyleSheets is often blocked anyway
+let lastCombinedText = null
+let lastSheet = null
+export function getThemedStylesheet() {
+    if (lastSheet) return lastSheet
+    const styleSheet = new CSSStyleSheet()
+    // what do you need to style everything in one go?
+    const cssText = getThemedCssText()
+
+    ;(styleSheet as any).replaceSync(cssText)
+    lastSheet = styleSheet
+    return styleSheet
+}
+
+// This won't work in shadows (which is what i wanted it for) unless you recursively unwrap imports
+// that is possible (there's a CSS parsing library imported somewhere already), but not worth it!
+// just getComputedStyle for whatever you're wanting to share with the shadow methinks
+export function getThemedCssText() {
+    if (lastCombinedText) return lastCombinedText
+    // what do you need to style everything in one go?
+    const defaultCss = `@import url('${browser.runtime.getURL("static/themes/auto/auto.css")}');\n`
+    const hintCss = `@import url('${browser.runtime.getURL("static/css/hint.css")}');\n`
+    const contentCss = `@import url('${browser.runtime.getURL("static/css/content.css")}');\n`
+    const cssText = defaultCss + hintCss + contentCss + customCss.code + "\n" + hintElemCss.code
+    lastCombinedText = cssText
+    return cssText
+}
 
 export async function theme(element) {
+    lastCombinedText = null
+    lastSheet = null
     // Remove any old theme
 
     /**

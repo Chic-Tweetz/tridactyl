@@ -5,6 +5,8 @@ import * as config from "@src/lib/config"
 import { theme } from "@src/content/styling"
 import * as Messaging from "@src/lib/messaging"
 import * as customCompletions from "@src/content/completions_content"
+import * as keyseq from "@src/lib/keyseq"
+import * as tri_editor from "@src/lib/editor"
 const logger = new Logger("messaging")
 const cmdline_logger = new Logger("cmdline")
 
@@ -93,7 +95,10 @@ async function init() {
     noiframe = (await config.getAsync("noiframe")) === "true"
     const notridactyl = await config.getAsync("superignore")
 
-    if (document.contentType != "application/xhtml+xml" && document.contentType.includes("xml")) {
+    if (
+        document.contentType != "application/xhtml+xml" &&
+        document.contentType.includes("xml")
+    ) {
         logger.info("Content type is xml; aborting iframe injection.")
         return
     }
@@ -163,6 +168,168 @@ init().catch(() => {
 export function ensureIframeExists() {
     if (cmdline_iframe && !cmdline_iframe.isConnected) {
         document.documentElement.appendChild(cmdline_iframe)
+    }
+}
+
+/** Got to be in content if you want to supply a callback
+ *  this is for the search bar so we can do incsearch
+ *  but we could also do this for that IME issue
+ *  https://github.com/tridactyl/tridactyl/discussions/5337
+ *
+ *  we're just creating an input element & putting it in place of the normal input
+ *
+ *  oninput only takes a string (the input value) rather than the raw event for simplicity
+ *  onaccept and oncancel will listen for <Enter> or <Escape> (by default)
+ *
+ *  text binds (text.kill_word etc) won't do anything (right now)
+ *  but you can import the editor library and make them work no problem
+ *
+ *  the keybind parsing is pretty janky
+ *  usually it'll take exmaps and filter out most ex. binds
+ *
+ *  but if there's a keymap called ex[name]maps it'll use that
+ *  so you can set up different binds per custom input
+ *
+ *  should probably at least ensure only one "alternate input" can exist
+ */
+export function showAlternateInput(
+    oninput: (arg0: string) => void,
+    onaccept?: (arg0: string) => void,
+    oncancel?: (arg0: string) => void,
+    name = "find",
+) {
+    ensureIframeExists()
+    let normalInput: any
+    try {
+        normalInput =
+            cmdline_iframe.contentDocument.querySelector("#tridactyl-input")
+        normalInput.style.display = "none"
+    } catch (e) {
+        logger.error(e)
+        return null
+    }
+
+    const inp = document.createElement("input")
+    inp.oninput = _event => {
+        let val = inp.value
+        ;(oninput(inp.value) as any)?.then?.(()=>console.log("oninput finished", val))
+    }
+    // might be best to change CSS rules from IDs to classes if you wanna do this
+    inp.classList.add("tridactyl-input")
+    if (name) {
+        inp.classList.add(name)
+        cmdline_iframe.contentDocument
+            .querySelector("#tridactyl-colon")
+            .classList.add(name)
+    }
+
+    const cleanup = () => {
+        if (name) {
+            inp.classList.add(name)
+            cmdline_iframe.contentDocument
+                .querySelector("#tridactyl-colon")
+                .classList.remove(name)
+        }
+        normalInput.style.display = ""
+        inp.remove()
+        hide_and_blur()
+    }
+
+    inp.onblur = () => {
+        // actually not sure
+        // normalInput.style.display = ""
+        // hide_and_blur()
+        // oncancel?.(inp.value)
+        // inp.remove()
+        cleanup()
+    }
+
+    // This does seem a bit silly
+    let keymap
+    try {
+        keymap = keyseq.keyMap("ex" + name + "maps")
+    } catch (e) {
+        keymap = keyseq.keyMap("exmaps")
+    }
+
+    // Don't think we'd want any other ex. binds
+    // but what if you truly wanted to call an ex. command...?
+    const iter = keymap
+        .entries()
+        .filter(
+            ([_keys, cmd]) =>
+                !cmd.startsWith("ex.") ||
+                cmd === "ex.accept_line" ||
+                cmd === "ex.hide_and_clear",
+        )
+
+    const filteredMap = new Map()
+
+    let next = iter.next()
+    while (!next.done) {
+        filteredMap.set(next.value[0], next.value[1])
+        next = iter.next()
+    }
+    keymap = filteredMap
+
+    let keys = []
+    inp.addEventListener(
+        "keydown",
+        e => {
+            e.stopImmediatePropagation()
+            keys.push(keyseq.minimalKeyFromKeyboardEvent(e))
+            const parsed = keyseq.parse(keys, keymap)
+            if (parsed.isMatch) {
+                e.preventDefault()
+                if (parsed.value) {
+                    if (parsed.value === "ex.accept_line") {
+                        cleanup()
+                        setTimeout(() => onaccept?.(inp.value))
+                    } else if (parsed.value === "ex.hide_and_clear") {
+                        normalInput.style.display = ""
+                        cleanup()
+                        // not convinced we're returning focus to the main window in time
+                        setTimeout(() => oncancel?.(inp.value))
+                    } else if (parsed.value.startsWith("text.")) {
+                        const args = parsed.value
+                            .slice("text.".length)
+                            .split(" ")
+                        editor_function(
+                            inp,
+                            args.shift() as keyof typeof tri_editor,
+                            ...args,
+                        )
+                    } else {
+                        acceptExCmd(parsed.value)
+                    }
+                    keys = []
+                }
+            } else {
+                keys = []
+            }
+        },
+        true,
+    )
+
+    normalInput.parentElement.appendChild(inp)
+    show(true)
+    // Doesn't seem to work straight away?
+    setTimeout(() => inp.focus())
+}
+
+// this will work for our custom inputs yes?
+function editor_function(
+    input: HTMLElement,
+    fn_name: keyof typeof tri_editor,
+    ...args
+) {
+    console.log("text command!", fn_name)
+    if (tri_editor[fn_name]) {
+        return tri_editor[fn_name](input, ...args)
+    } else {
+        // The user is using the command line so we can't log message there
+        // logger.error(`No editor function named ${fn_name}!`)
+        console.error(`No editor function named ${fn_name}!`)
     }
 }
 
@@ -246,4 +413,5 @@ export function executeWithoutCommandLine(fn) {
 export { get_custom_completion, custom_completion_callback } from "@src/content/completions_content"
 
 import * as SELF from "@src/content/commandline_content"
+import { acceptExCmd } from "@src/lib/controller"
 Messaging.addListener("commandline_content", Messaging.attributeCaller(SELF))
