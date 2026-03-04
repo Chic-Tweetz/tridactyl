@@ -73,7 +73,6 @@ const normalHighlightObjects = []
 // like IME vimperator hinting https://github.com/tridactyl/tridactyl/discussions/5337
 // this is a bit jank right now!
 export function searchbar(reverse = false, searchFromView = true) {
-    console.log("searchbar! reverse?", reverse, "from view?", searchFromView)
     showAlternateInput(
         str => jumpToMatch(str, { reverse, searchFromView }),
         () => focusHighlight(searchState.activeMatchIdx, true),
@@ -111,7 +110,6 @@ export function jumpToNextMatch(n: number, searchFromView = false, focus = false
 
 export function focusHighlight(idx: number, focus = false) {
     const range = searchState.matches[idx]
-    console.log("range for idx", idx, range)
     if (!range) return
     searchState.activeMatchIdx = idx
     setActiveRange(range, focus)
@@ -170,11 +168,9 @@ export function stop() {
 // we need to nullify our search blocks for dynamic pages
 function clearBlocksCache() {
     if (searchState.searchAbortController.signal.aborted) {
-        console.log("search blocks cleared")
         searchState.searchBlocks = []
         return true
     } else {
-        console.log("search blocks not cleared: abortSignal not present")
         clearBlocksCacheAfterMs(3000)
         return false
     }
@@ -189,12 +185,10 @@ function clearBlocksCacheAfterMs(afterMs = 5000) {
 // this no longer really goes with the highlighting method i use now
 // where i replace the entire set each time
 function getOrCreateHighlights(win = window) {
-    console.log("getorcreate....")
     if (frames.has(win)) return ({
         highlights: (win.CSS as any).highlights.get("tridactyl-find"),
         activeHighlight: (win.CSS as any).highlights.get("tridactyl-find-active"),
     })
-    console.log("didn't exist yet!")
 
     const hl = new (win as any).Highlight()
     const hla = new (win as any).Highlight()
@@ -204,7 +198,6 @@ function getOrCreateHighlights(win = window) {
     ;(win.CSS as any).highlights.set("tridactyl-find", hl)
     ;(win.CSS as any).highlights.set("tridactyl-find-active", hla)
 
-    console.log("returning", hl, hla)
     return { highlights: hl, activeHighlight: hla }
 }
 
@@ -454,8 +447,6 @@ async function searchRe(...query: string[]) {
         return []
     }
 
-    console.log(re, "new search")
-
     const abortController = new AbortController()
     searchState.searchAbortController = abortController
     searchState.matches = []
@@ -479,7 +470,6 @@ async function searchRe(...query: string[]) {
         const searchBlocks = async () => {
             while (blockIdx < searchState.searchBlocks.length) {
                 if (abortController.signal.aborted) {
-                    console.log("SEARCH ABORTED")
                     resolve(matches)
                 }
 
@@ -576,8 +566,6 @@ async function searchRe(...query: string[]) {
             searchState.searchBlocks.length === 0 &&
             !searchState.buildingSearchBlocks
         ) {
-            console.log("building search blocks")
-
             onNextBlockBuilt(searchBlocks)
             buildSearchBlocks(document.body)
         } else {
@@ -611,7 +599,6 @@ async function searchBlockText(block, regex) {
                 await new Promise(setTimeout as any)
                 sliceEnd = performance.now() + SLICE_MS
                 if (abortController.signal.aborted) {
-                    console.log("ABORTED", regex)
                     return matches
                 }
             }
@@ -752,8 +739,6 @@ async function buildSearchBlocks(startNode = document.body) {
 
     searchState.buildingSearchBlocks = false
 
-    console.log("blocks all built")
-
     // In case some async stuff causes a miss or something
     if (nextBlockWaiters.length) blockBuilt()
 
@@ -797,7 +782,6 @@ async function walk_iterative(startNode, callback) {
             await new Promise(setTimeout as any)
             sliceEnd = performance.now() + SLICE_MS
             if (abortController.signal.aborted) {
-                console.log("Walking aborted!")
                 return
             }
         }
@@ -1119,8 +1103,6 @@ function setActiveRange(range, focus = false) {
 
     const win = range.startContainer.ownerDocument.defaultView
 
-    // not working now!
-    console.log("getOrCreate next:", getOrCreateHighlights(win))
     const activeHighlight = getOrCreateHighlights(win).activeHighlight
 
     activeHighlight.clear()
