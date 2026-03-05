@@ -53,7 +53,10 @@ export class MinimalKey {
     readonly metaKey = false
     readonly shiftKey = false
     translated = false
-    constructor(readonly key: string, modifiers?: KeyModifiers) {
+    constructor(
+        readonly key: string,
+        modifiers?: KeyModifiers,
+    ) {
         if (modifiers !== undefined) {
             for (const mod of Object.keys(modifiers)) {
                 if (
@@ -170,7 +173,11 @@ export function stripOnlyModifiers(keyseq) {
     )
 }
 
-export function parse(keyseq: MinimalKey[], map: KeyMap): ParserResponse {
+export function parse(
+    keyseq: MinimalKey[],
+    map: KeyMap,
+    useNumericPrefixes = true,
+): ParserResponse {
     // Remove bare modifiers
     keyseq = stripOnlyModifiers(keyseq)
 
@@ -179,7 +186,11 @@ export function parse(keyseq: MinimalKey[], map: KeyMap): ParserResponse {
 
     // Split into numeric prefix and non-numeric suffix
     let numericPrefix: MinimalKey[]
-    ;[numericPrefix, keyseq] = splitNumericPrefix(keyseq)
+    if (useNumericPrefixes) {
+        ;[numericPrefix, keyseq] = splitNumericPrefix(keyseq)
+    } else {
+        numericPrefix = []
+    }
 
     // If keyseq is a prefix of a key in map, proceed, else try dropping keys
     // from keyseq until it is empty or is a prefix.
