@@ -117,7 +117,7 @@ config.getAsync("superignore").then(async TRI_DISABLE => {
     const metadata = await import("@src/.metadata.generated")
     const { tabTgroup } = await import("@src/lib/tab_groups")
     const completion_providers = await import("@src/completions/providers")
-    const whichkey = await import("@src/content/whichkey")
+    const _whichkey = await import("@src/content/whichkey")
 
     controller.setExCmds({
         "": excmds_content,

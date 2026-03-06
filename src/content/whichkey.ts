@@ -1,12 +1,8 @@
-import {
-    contentState,
-    addContentStateChangedListener,
-} from "@src/content/state_content"
+import { addContentStateChangedListener } from "@src/content/state_content"
 import * as keyseq from "@src/lib/keyseq"
 import * as State from "@src/state"
 import { ownTabId } from "@src/lib/webext"
 import { getAsync } from "@src/lib/config"
-import { parse } from "css"
 import {
     DEFAULTS,
     USERCONFIG,
@@ -299,7 +295,7 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
                     default:
                         hrefToAnchor = "static/docs/modules/_src_excmds_.html#"
                 }
-                let firstCmd = namespace.length
+                const firstCmd = namespace.length
                     ? cmdFirstWord.slice(namespace.length + 1)
                     : cmdFirstWord
 
