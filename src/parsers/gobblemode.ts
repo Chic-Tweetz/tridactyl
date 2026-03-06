@@ -28,6 +28,7 @@ export function init(
         modeState.numKeysOrTerminator = canonicaliseMapstr(numKeysOrTerminator)
     modeState.endCommand = endCommand
     modeState.args = args.join(" ")
+    contentState.whichkey_extra = endCommand
 }
 
 /** Reset state. */

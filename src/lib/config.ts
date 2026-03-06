@@ -1398,6 +1398,12 @@ export class default_config {
      * Internal temporary storage for :reader, mapping UUIDs to base64 encoded html strings of articles
      */
     reader_articles: { [id: string]: string } = {}
+
+    /**
+     * Display key completions in a popup window.
+     * Set to "multi" to show the popup for multi-key binds or all to display it permanently.
+     */
+    whichkey: "all" | "multi" | "none" = "none"
 }
 
 const platform_defaults = {
