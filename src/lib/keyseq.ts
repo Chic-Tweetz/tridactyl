@@ -511,6 +511,44 @@ export function minimalKeyFromKeyboardEvent(
     return result
 }
 
+/**
+ * Convert a MinimalKey to a keystr.
+ */
+export function PrintableKey(k) {
+    let result = k.key
+    if (
+        result === "Control" ||
+        result === "Meta" ||
+        result === "Alt" ||
+        result === "Shift" ||
+        result === "OS"
+    ) {
+        return ""
+    }
+    if (k.key === " ") result = "Space"
+
+    let mod = ""
+    if (k.altKey) {
+        mod += "A"
+    }
+    if (k.ctrlKey) {
+        mod += "C"
+    }
+    if (k.metaKey) {
+        mod += "M"
+    }
+    if (k.shiftKey) {
+        mod += "S"
+    }
+    if (mod.length) {
+        result = mod + "-" + result
+    }
+    if (result.length > 1) {
+        result = "<" + result + ">"
+    }
+    return result
+}
+
 // }}}
 
 browser.storage.onChanged.addListener(changes => {

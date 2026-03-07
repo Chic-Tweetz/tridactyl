@@ -20,10 +20,12 @@ export class PrevInput {
 class ContentState {
     mode: ModeName = "normal"
     suffix = ""
+    typedKeys = []
     group = ""
     current_cmdline = ""
     cmdline_filter = ""
     whichkey_extra = ""
+    parsedKeys = null
 }
 
 export type ContentStateProperty =
@@ -31,8 +33,10 @@ export type ContentStateProperty =
     | "cmdHistory"
     | "prevInputs"
     | "suffix"
+    | "typedKeys"
     | "group"
     | "whichkey_extra"
+    | "parsedKeys"
 
 export type ContentStateChangedCallback = (
     property: ContentStateProperty,
@@ -69,6 +73,10 @@ export const contentState = new Proxy(
             }
             if (property === "mode" && oldValue !== mode) {
                 target["whichkey_extra"] = ""
+            }
+            
+            if (property === "parsedKeys") {
+                console.log("Parsed Keys:", newValue)
             }
             return true
         },

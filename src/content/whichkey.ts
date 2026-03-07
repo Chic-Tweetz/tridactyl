@@ -1,4 +1,15 @@
-import { addContentStateChangedListener } from "@src/content/state_content"
+/**
+ * Add a whichkey style popup to the page.
+ * Uses a state listener (like the mode indicator)
+ * It's a bit silly because we get the parsed keys from the suffix
+ * Turn them back into key sequences
+ * Match them in a keymap...
+ * Basically after parsing a keypress, we recreate it and do it again!
+ * It would be more sensible to send a message/event from the key parser itself
+ * that would require its own solution anyway
+ */
+
+import { addContentStateChangedListener, contentState } from "@src/content/state_content"
 import * as keyseq from "@src/lib/keyseq"
 import * as State from "@src/state"
 import { ownTabId } from "@src/lib/webext"
@@ -83,8 +94,7 @@ async function createIframe() {
 // We DON'T want to get nmaps in our vmaps and stuff
 function getUniqueMaps(mapName) {
     const defUrl = DEFAULTS.subconfigs[window.location.href]?.[mapName] || {}
-    const usrUrl =
-        USERCONFIG.subconfigs?.[window.location.href]?.[mapName] || {}
+    const usrUrl = USERCONFIG.subconfigs?.[window.location.href]?.[mapName] || {}
     const defult = DEFAULTS[mapName] || {}
     const user = USERCONFIG[mapName] || {}
     // priority should be... user URL -> defaultURL -> user -> default ?
@@ -95,6 +105,7 @@ function getUniqueMaps(mapName) {
     )
 }
 
+// TODO: Cache these (+ invalidate cache with config listener)
 function unwrapInherits(mapName) {
     const mapped = new Set()
     const ordered = []
@@ -112,6 +123,15 @@ function unwrapInherits(mapName) {
         if (mapped.has(name)) break
     }
     return ordered
+}
+
+// Now I think we can just filter with .startsWith
+function keyseqsToStrings(keymap) {
+    console.log(Array.from(keymap))
+    return Array.from(keymap as Iterable<[any, any]>)
+        .map(([keys, cmd]: [any, any]) => [
+            keys.reduce((acc: string, key: any) => acc + keyseq.PrintableKey(key), ""),
+            cmd])
 }
 
 // This takes up lots of space because I'm doing a bunch of document.createElement and inline styling
@@ -162,34 +182,16 @@ function createElement(type, opts) {
 }
 
 // TODO: debounce
-let lastExtra
+
 // This is a bit large now isn't it
 async function onStateChanged(property, oldMode, oldValue, newValue) {
     if (level === "none") return
-    let mode = newValue
-    let suffix = ""
-    // hacky workaround to display stuff for gobble (markadd/markjump)
-    // might be nice to have some way to display non-keymap stuff after all
-    let extra = ""
+    if (property !== "mode" && property !== "parsedKeys" && property !== "whichkey_extra") return
 
-    // let result = ""
-    if (property !== "mode") {
-        if (property === "suffix") {
-            mode = oldMode
-            suffix = newValue
-            if (mode === "gobble") {
-                extra = lastExtra
-            }
-        } else if (property === "group") {
-            mode = oldMode
-        } else if (property === "whichkey_extra") {
-            mode = oldMode
-            extra = newValue
-            lastExtra = extra
-        }
-    }
+    const mode = contentState.mode
+    const extra = contentState.whichkey_extra
 
-    if ((mode === "gobble" && extra === "markadd") || extra === "markjump") {
+    if (mode === "gobble" && (extra === "markadd" || extra === "markjump")) {
         const localMarks = await State.getAsync("localMarks")
         const globalMarks = await State.getAsync("globalMarks")
         const currentUrl = location.href.split("#")[0]
@@ -240,138 +242,90 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
         return
     }
 
-    const suffixStripped = suffix.replace(/^[0-9]+/, "")
-    if (suffixStripped !== "" || level === "all") {
-        const pressed = keyseq.canonicaliseMapstr(
-            (suffixStripped as any).replaceAll(
-                /(?<=<[ACMS]+-) (?=>)/g,
-                "Space",
-            ),
-        )
-        const pressedSeq = keyseq.mapstrToKeyseq(pressed)
-
-        let mapsKey
-        if (["normal", "insert", "visual"].includes(mode)) {
-            mapsKey = mode[0] + "maps"
-        } else {
-            mapsKey = mode + "maps"
-        }
-
-        const frag = document.createDocumentFragment()
-
-        frag.appendChild(createTableHeader(mode + " mode " + suffix, false))
-
-        const parseKeyComps = (comps: Iterable<[any, any]>) => {
-            const keystrings = []
-            Array.from(comps).forEach(([ks, cmd]) => {
-                const keystring = ks.reduce(
-                    (acc, cur) => acc + PrintableKey(cur),
-                    "",
-                )
-                const unpressed = keystring.slice(pressed.length)
-                keystrings.push([unpressed, cmd])
-            })
-            return keystrings
-        }
-
-        const keymaps = unwrapInherits(mapsKey)
-        keymaps.push(...unwrapInherits("browsermaps"))
-        const exaliases = confget("exaliases")
-
-        keymaps.forEach(([name, keymap]) => {
-            const comps = keyseq.completions(pressedSeq, keymap)
-            if (comps.size === 0) return
-
-            frag.appendChild(createTableHeader(name === mapsKey ? name : "inerited: " + name, true))
-
-            const keystrings = parseKeyComps(comps)
-
-            keystrings.forEach(([unpressed, cmd]) => {
-                const cmdFirstWord = (cmd as string).split(" ", 1)[0]
-                const cmdRest = (cmd as string).slice(cmdFirstWord.length)
-
-                let hrefToAnchor
-                const namespaceSplit = cmdFirstWord.split(".")
-                const namespace = namespaceSplit.length > 1 ? namespaceSplit[0] : ""
-                const urlPrefix = browser.runtime.getURL("static/docs/modules/_src_")
-                switch (namespace) {
-                    case "hint": hrefToAnchor = urlPrefix + "content_hinting_.html"; break
-                    case "text": hrefToAnchor = urlPrefix + "lib_editor_.html"; break
-                    case "ex": hrefToAnchor = urlPrefix + "commandline_frame_.html"; break
-                    default: hrefToAnchor = urlPrefix + "excmds_.html"
-                }
-                const target = hrefToAnchor === location.href.split("#")[0] ? "_parent" : ` "_blank"`
-                const firstCmd = namespace.length ? cmdFirstWord.slice(namespace.length + 1) : cmdFirstWord
-
-                const href = hrefToAnchor + "#" + (exaliases[cmdFirstWord]
-                    ? exaliases[cmdFirstWord].split(" ", 1)[0] : firstCmd.toLowerCase())
-
-                frag.appendChild(createTableRow(
-                    {
-                        children: [
-                            createElement("span", { className: "KeyPressed", textContent: pressed, },),
-                            createElement("span", { className: "KeyUnpressed", textContent: unpressed, },),
-                        ],
-                    },
-                    {
-                        className: "Command",
-                        children: [
-                            createElement("a", {
-                                textContent: cmdFirstWord,
-                                href,
-                                target,
-                            }),
-                            createElement("span", { textContent: cmdRest })
-                        ]
-                    },
-                ))
-            })
-        })
-
-        whichkeyIframe.style.display = ""
-        replaceTableChildren(frag)
-
+    let mapsKey
+    if (["normal", "insert", "visual"].includes(mode)) {
+        mapsKey = mode[0] + "maps"
     } else {
+        mapsKey = mode + "maps"
+    }
+
+    const pressed = contentState.parsedKeys
+        ? contentState.parsedKeys.keys
+            .reduce((acc, key) => acc + keyseq.PrintableKey(key), "")
+            .replace(/^[0-9]+/, "")
+        : ""
+
+    if (pressed === "" && level !== "all") {
         whichkeyIframe.style.display = "none"
+        return
     }
-}
 
-// copied from controller_content - this is how we recieve keys
-// so i guess we can start by converting keymaps into these too
-// added meta key and Space-ing
-function PrintableKey(k) {
-    let result = k.key
-    if (
-        result === "Control" ||
-        result === "Meta" ||
-        result === "Alt" ||
-        result === "Shift" ||
-        result === "OS"
-    ) {
-        return ""
-    }
-    if (k.key === " ") result = "Space"
+    const keymaps = [...unwrapInherits(mapsKey), ...unwrapInherits("browsermaps")]
+        .map(([name, keymap]) => [
+            name,
+            keyseqsToStrings(keymap)
+                .filter(([keystr, _cmd]) => {
+                    return keystr.startsWith(pressed)
+                })
+            ]
+        )
 
-    let mod = ""
-    if (k.altKey) {
-        mod += "A"
-    }
-    if (k.ctrlKey) {
-        mod += "C"
-    }
-    if (k.metaKey) {
-        mod += "M"
-    }
-    if (k.shiftKey) {
-        mod += "S"
-    }
-    if (mod.length) {
-        result = mod + "-" + result
-    }
-    if (result.length > 1) {
-        result = "<" + result + ">"
-    }
-    return result
+    const frag = document.createDocumentFragment()
+
+    frag.appendChild(createTableHeader(mode + " mode " + pressed, false))
+
+    const exaliases = confget("exaliases")
+
+    keymaps.forEach(([name, keymap]) => {
+        if (keymap.length === 0) return
+
+        frag.appendChild(createTableHeader(name === mapsKey ? name : "inerited: " + name, true))
+
+        keymap.forEach(([keystr, cmd]) => {
+            const unpressed = keystr.slice(pressed.length)
+            const cmdFirstWord = (cmd as string).split(" ", 1)[0]
+            const cmdRest = (cmd as string).slice(cmdFirstWord.length)
+
+            let hrefToAnchor
+            const namespaceSplit = cmdFirstWord.split(".")
+            const namespace = namespaceSplit.length > 1 ? namespaceSplit[0] : ""
+            const urlPrefix = browser.runtime.getURL("static/docs/modules/_src_")
+            switch (namespace) {
+                case "hint": hrefToAnchor = urlPrefix + "content_hinting_.html"; break
+                case "text": hrefToAnchor = urlPrefix + "lib_editor_.html"; break
+                case "ex": hrefToAnchor = urlPrefix + "commandline_frame_.html"; break
+                default: hrefToAnchor = urlPrefix + "excmds_.html"
+            }
+            const target = hrefToAnchor === location.href.split("#")[0] ? "_parent" : ` "_blank"`
+            const firstCmd = namespace.length ? cmdFirstWord.slice(namespace.length + 1) : cmdFirstWord
+
+            const href = hrefToAnchor + "#" + (exaliases[cmdFirstWord]
+                ? exaliases[cmdFirstWord].split(" ", 1)[0] : firstCmd.toLowerCase())
+
+            frag.appendChild(createTableRow(
+                {
+                    children: [
+                        createElement("span", { className: "KeyPressed", textContent: pressed, },),
+                        createElement("span", { className: "KeyUnpressed", textContent: unpressed, },),
+                    ],
+                },
+                {
+                    className: "Command",
+                    children: [
+                        createElement("a", {
+                            textContent: cmdFirstWord,
+                            href,
+                            target,
+                        }),
+                        createElement("span", { textContent: cmdRest })
+                    ]
+                },
+            ))
+        })
+    })
+
+    whichkeyIframe.style.display = ""
+    replaceTableChildren(frag)
 }
 
 addChangeListener("whichkey", configListener)

@@ -7,6 +7,7 @@ import {
     ParserResponse,
     minimalKeyFromKeyboardEvent,
     MinimalKey,
+    PrintableKey,
 } from "@src/lib/keyseq"
 import { deepestShadowRoot } from "@src/lib/dom"
 
@@ -18,40 +19,6 @@ import * as Messaging from "@src/lib/messaging"
 import * as config from "@src/lib/config"
 
 const logger = new Logger("controller")
-
-function PrintableKey(k) {
-    let result = k.key
-    if (
-        result === "Control" ||
-        result === "Meta" ||
-        result === "Alt" ||
-        result === "Shift" ||
-        result === "OS"
-    ) {
-        return ""
-    }
-
-    let mod = ""
-    if (k.altKey) {
-        mod += "A"
-    }
-    if (k.ctrlKey) {
-        mod += "C"
-    }
-    if (k.metaKey) {
-        mod += "M"
-    }
-    if (k.shiftKey) {
-        mod += "S"
-    }
-    if (mod.length) {
-        result = mod + "-" + result
-    }
-    if (result.length > 1) {
-        result = "<" + result + ">"
-    }
-    return result
-}
 
 /**
  * KeyCanceller: keep track of keys that have been cancelled in the keydown
@@ -257,13 +224,16 @@ function* ParserController() {
                     // whichkey: kind of want the keyevents themselves really...
                     const suffix = keyEvents.map(x => PrintableKey(x)).join("")
                     if (previousSuffix !== suffix) {
-                        contentState.suffix = suffix
+                        // contentState.suffix = suffix
                         previousSuffix = suffix
+                        contentState.parsedKeys = response
+
                     }
                     logger.debug("suffix: ", suffix)
                 }
             }
-            contentState.suffix = ""
+            // contentState.suffix = ""
+            contentState.parsedKeys = null
             controller.acceptExCmd(exstr)
         } catch (e) {
             // Rumsfeldian errors are caught here

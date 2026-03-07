@@ -31,6 +31,7 @@ import { getAllDocumentFrames } from "@src/lib/dom"
 
 import state from "@src/state"
 import { EditorCmds as editor } from "@src/content/editor"
+import { whichkey } from "./.excmds_background.generated"
 /* tslint:disable:import-spacing */
 
 config.getAsync("superignore").then(async TRI_DISABLE => {
@@ -369,7 +370,7 @@ config.getAsync("superignore").then(async TRI_DISABLE => {
 
         addContentStateChangedListener(
             async (property, oldMode, oldValue, newValue) => {
-                let mode = newValue
+/*                 let mode = newValue
                 let suffix = ""
                 let result = ""
                 if (property !== "mode") {
@@ -379,7 +380,23 @@ config.getAsync("superignore").then(async TRI_DISABLE => {
                     } else if (property === "group") {
                         mode = oldMode
                     }
+            }*/
+                let mode
+                let suffix
+                if (property === "mode") {
+                    mode = newValue
+                    suffix = ""
+                } else {
+                    mode = oldMode
                 }
+                if (property === "parsedKeys") {
+                    suffix = (newValue?.keys || [])
+                        .reduce((acc, key) => acc + keyseq.PrintableKey(key), "")
+                } else if (property === "whichkey_extra") {
+                    mode = newValue === "" ? oldMode : newValue
+                    suffix = ""
+                }
+                let result = ""
 
                 const privateMode = browser.extension.inIncognitoContext
                     ? "TridactylPrivate"
