@@ -7,7 +7,7 @@
     --tritheme-orange2-rgb: 252, 161, 48;
     --tritheme-orange3-rgb: 255, 150, 108;
     --tritheme-yellow-rgb: 224, 175, 104;
-    --tritheme-green-rgb: 115, 122, 162;
+    --tritheme-green-rgb: 116, 255, 0;
     --tritheme-cyan-rgb: 125, 207, 255;
     --tritheme-lightblue-rgb: 200, 211, 245;
     --tritheme-blue-rgb: 61, 89, 161;
@@ -71,10 +71,21 @@
     --tritheme-moon-magenta: rgb(var(--tritheme-moon-magenta-rgb));
     --tritheme-moon-magenta2: rgb(var(--tritheme-moon-magenta2-rgb));
 
+    /* Text Colours */
+    --tridactyl-fg-normal: var(--tritheme-lightblue);
+    --tridactyl-fg-emphasis: var(--tritheme-cyan);
+    --tridactyl-fg-faint: var(--tritheme-blue);
+    --tridactyl-fg-info: var(--tritheme-moon-blue);
+    --tridactyl-fg-warn: var(--tritheme-orange);
+    --tridactyl-fg-error: var(--tritheme-red);
+    --tridactyl-fg-highlight-1: var(--tritheme-green);
+    --tridactyl-fg-highlight-2: var(--tritheme-moon-yellow);
+    --tridactyl-fg-highlight-3: var(--tritheme-moon-magenta);
+
     /* Generic */
     --tridactyl-font-family: "JetBrains Mono", "SF Mono", monospace;
     --tridactyl-bg: var(--tritheme-darkblue4);
-    --tridactyl-fg: var(--tritheme-lightblue);
+    --tridactyl-fg: var(--tridactyl-fg-normal);
     --tridactyl-private-window-icon-url: url("chrome://global/skin/icons/indicator-private-browsing.svg");
 
     /* Mode indicator */

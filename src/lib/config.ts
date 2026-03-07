@@ -1403,7 +1403,7 @@ export class default_config {
      * Display key completions in a popup window.
      * Set to "multi" to show the popup for multi-key binds or all to display it permanently.
      */
-    whichkey: "all" | "multi" | "none" = "none"
+    whichkey: "all" | "multi" | "none" = "all"
 }
 
 const platform_defaults = {

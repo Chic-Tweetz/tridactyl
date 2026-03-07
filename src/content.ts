@@ -254,6 +254,7 @@ config.getAsync("superignore").then(async TRI_DISABLE => {
         R,
         updates,
         urlutils,
+        _whichkey,
     })
 
     logger.info("Loaded commandline content?", commandline_content)

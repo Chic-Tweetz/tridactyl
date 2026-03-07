@@ -1,0 +1,53 @@
+@import url("../themes/auto/auto.css");
+
+.WhichKeyRoot body {
+    background: var(--tridactyl-cmplt-bg);
+    color: var(--tridactyl-cmplt-fg);
+    font-family: var(--tridactyl-cmplt-font-family), monospace;
+    font-size: var(--tridactyl-cmplt-font-size);
+    margin: 0;
+}
+
+.WhichKey {
+    padding: 8px;
+}
+
+.WhichKey .Header, .WhichKey .Subheader {
+    position: sticky;
+    top: 0;
+    text-align: left;
+}
+
+.WhichKey .Header {
+    color: var(--tridactyl-highlight-3);
+    background: var(--tridactyl-header-first-bg);
+}
+
+.WhichKey .Subheader {
+    color: var(--tridactyl-of-fg);
+    background: var(--tridactyl-of-bg);
+    position: sticky;
+    top: 0;
+}
+
+.WhichKey .KeyPressed {
+    color: var(--tridactyl-fg-faint);
+    text-align: right;
+}
+
+.WhichKey .KeyUnpressed {
+    color: var(--tridactyl-fg-highlight-1);
+    text-align: left;
+}
+
+.WhichKey .Command a {
+    color: var(--tridactyl-fg-highlight-2);
+}
+
+.WhichKey .Command {
+    color: var(--tridactyl-fg-highlight-3);
+}
+
+.WhichKey .Info {
+    color: var(--tridactyl-fg-info);
+}

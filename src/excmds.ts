@@ -145,6 +145,7 @@ import * as toys from "./content/toys"
 import * as hinting from "@src/content/hinting"
 import * as gobbleMode from "@src/parsers/gobblemode"
 import * as nMode from "@src/parsers/nmode"
+import { showWhichKey } from "@src/content/whichkey"
 
 ALL_EXCMDS = {
     "": CTSELF,
@@ -6464,5 +6465,15 @@ export function hintstylesoverlays() {
 export function hintstylesdirect() {
     ["fg","bg","outline"].forEach(type => config.set("hintstyles", type, "all"))
     ;["overlay","overlayoutline"].forEach(type => config.set("hintstyles", type, "none"))
+}
+
+/**
+ * Display a whichkey popup.
+ * Show permanently with "all" or for multi-key binds with "multi".
+ * Disable with "none".
+ */
+//#content
+export function whichkey(level: "all" | "multi" | "none" | "toggle" = "toggle") {
+    showWhichKey(level)
 }
 // }}}

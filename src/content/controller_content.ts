@@ -253,6 +253,8 @@ function* ParserController() {
                 } else {
                     keyEvents = response.keys
                     // show current keyEvents as a suffix of the contentState
+
+                    // whichkey: kind of want the keyevents themselves really...
                     const suffix = keyEvents.map(x => PrintableKey(x)).join("")
                     if (previousSuffix !== suffix) {
                         contentState.suffix = suffix

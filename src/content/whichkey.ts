@@ -2,7 +2,7 @@ import { addContentStateChangedListener } from "@src/content/state_content"
 import * as keyseq from "@src/lib/keyseq"
 import * as State from "@src/state"
 import { ownTabId } from "@src/lib/webext"
-import { getAsync } from "@src/lib/config"
+import { getAsync, removeChangeListener } from "@src/lib/config"
 import {
     DEFAULTS,
     USERCONFIG,
@@ -10,10 +10,13 @@ import {
     addChangeListener,
     get as confget,
 } from "@src/lib/config"
+import { theme } from "./styling"
 
 let whichkeyIframe: HTMLIFrameElement
 
 let level = "none"
+let toggleLevel = "multi"
+
 function init() {
     return createIframe()
         .then(() => listen())
@@ -37,8 +40,6 @@ let completions
 async function createIframe() {
     return new Promise((resolve, reject) => {
         const iframe = document.createElement("iframe")
-
-        // iframe.style.display = "none"
         iframe.style.position = "fixed"
         iframe.style.right = "40px"
         iframe.style.bottom = "40px"
@@ -46,11 +47,22 @@ async function createIframe() {
         iframe.style.height = "460px"
         iframe.style.border = "1px solid rgb(13 185 215)"
         iframe.style.borderRadius = "5px"
+        // maybe place it before cmdline when possible so it doesn't overlap
+        iframe.style.zIndex = "2147483647"
+        iframe.style.display = level === "all" ? "" : "none"
 
         iframe.src = browser.runtime.getURL("static/blank.html")
         iframe.onload = () => {
             if (iframe.contentDocument) {
+                const csslink = document.createElement("link")
+                csslink.rel = "stylesheet"
+                csslink.href = browser.runtime.getURL("static/css/whichkey.css")
+                iframe.contentDocument.head.appendChild(csslink)
+
+                theme(iframe.contentDocument.documentElement)
+                iframe.contentDocument.documentElement.classList.add("WhichKeyRoot")
                 const table = document.createElement("table")
+                table.className = "WhichKey"
                 iframe.contentDocument.body.appendChild(table)
                 completions = table
                 whichkeyIframe = iframe
@@ -59,7 +71,12 @@ async function createIframe() {
                 reject(iframe)
             }
         }
-        document.documentElement.appendChild(iframe)
+        const cmdlineIframe = document.querySelector(`[src="${browser.runtime.getURL("static/commandline.html")}"]`)
+        if (cmdlineIframe) {
+            document.documentElement.insertBefore(iframe, cmdlineIframe)
+        } else {
+            document.documentElement.appendChild(iframe)
+        }
     })
 }
 
@@ -104,6 +121,47 @@ function listen() {
     addContentStateChangedListener(onStateChanged)
 }
 
+function replaceTableChildren(newChildren: DocumentFragment) {
+    completions.replaceChildren(newChildren)
+    const rect = completions.getClientRects()[0]
+    whichkeyIframe.style.width = Math.min(rect.width, 520) + "px"
+}
+
+function createTableHeader(text = "", subheader = true) {
+    const headerThead = document.createElement("thead")
+    const headerRow = document.createElement("tr")
+    const header = document.createElement("th")
+    header.colSpan = 5 // can I just make this a big number
+    header.className = subheader ? "Subheader" : "Header"
+    header.textContent = text
+    headerThead.appendChild(headerRow)
+    headerRow.appendChild(header)
+    return headerThead
+}
+
+// Just making some functions to speed up element creation
+// I bet there's already a library here somewhere to do this
+function createTableRow(...cells) {
+    return createElement("tr", { children: cells.map(cell => createTableCell(cell)) })
+}
+
+function createTableCell(opts) {
+    return createElement("td", opts)
+}
+
+function createElement(type, opts) {
+    const el = document.createElement(type)
+    if (opts.children) {
+        el.replaceChildren(...opts.children)
+        delete opts.children
+    }
+    Object.entries(opts).forEach(([k,v]) => {
+        el[k] = v
+    })
+    return el
+}
+
+// TODO: debounce
 let lastExtra
 // This is a bit large now isn't it
 async function onStateChanged(property, oldMode, oldValue, newValue) {
@@ -138,73 +196,46 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
         const marksForPage = localMarks.get(currentUrl) || []
 
         const frag = document.createDocumentFragment()
-        const header = document.createElement("tr")
-        header.textContent = extra
-        frag.appendChild(header)
+
+        frag.appendChild(createTableHeader(extra, false))
 
         if (extra === "markjump") {
             const beforeMark = await State.getAsync("beforeJumpMark")
             if (beforeMark) {
-                const row = document.createElement("tr")
-                const keyCol = document.createElement("td")
-                const scrollCol = document.createElement("td")
-                keyCol.textContent = "`"
-                scrollCol.textContent =
-                    beforeMark.scrollX + "," + beforeMark.scrollY
-                row.appendChild(keyCol)
+                const row =createTableRow(
+                    { className: "KeyUnpressed", textContent: "`" },
+                    { className: "Command", textContent: beforeMark.scrollX + "," + beforeMark.scrollY },
+                )
+
                 if ((await ownTabId()) !== beforeMark.tabId) {
-                    const urlCol = document.createElement("td")
-                    urlCol.textContent = beforeMark.url
-                    row.appendChild(urlCol)
+                    row.appendChild(createTableCell({ className: "Info", textContent: "beforeMark.url" }))
                 }
-                row.appendChild(scrollCol)
+
                 frag.appendChild(row)
             }
         }
 
-        const localHeader = document.createElement("tr")
-        localHeader.textContent = "local marks"
-        frag.appendChild(localHeader)
+        frag.appendChild(createTableHeader("Local Marks", true))
 
         marksForPage.forEach((scrolls, key) => {
-            const row = document.createElement("tr")
-            const keyCol = document.createElement("td")
-            const scrollCol = document.createElement("td")
-            keyCol.textContent = key
-            ;(scrollCol.textContent as any) =
-                scrolls.scrollX + "," + scrolls.scrollY
-            ;(row as any).replaceChildren(keyCol, scrollCol)
-            frag.appendChild(row)
+            frag.appendChild(createTableRow(
+                { className: "KeyUnpressed", textContent: key },
+                { className: "Command", textContent: scrolls.scrollX + "," + scrolls.scrollY },
+            ))
         })
 
-        const globalHeader = document.createElement("tr")
-        globalHeader.textContent = "global marks"
-        frag.appendChild(globalHeader)
+        frag.appendChild(createTableHeader("Global Marks", true))
 
         globalMarks.forEach((mark, key) => {
-            const { scrollX, scrollY, url } = mark
-            const row = document.createElement("tr")
-            const keyCol = document.createElement("td")
-            const urlCol = document.createElement("td")
-            const scrollCol = document.createElement("td")
-            keyCol.textContent = key
-            urlCol.textContent = url
-            scrollCol.textContent = scrollX + "," + scrollY
-            ;(row as any).replaceChildren(keyCol, urlCol, scrollCol)
-            frag.appendChild(row)
+            frag.appendChild(createTableRow(
+                { className: "KeyUnpressed", textContent: key },
+                { className: "Info", textContent: mark.url },
+                { className: "Command", textContent: mark.scrollX + "," + mark.scrollY },
+            ))
         })
 
-        completions.replaceChildren(frag)
-        const cs = getComputedStyle(document.documentElement)
-        whichkeyIframe.contentDocument.body.style.background =
-            cs.getPropertyValue("--tridactyl-cmplt-bg")
-        whichkeyIframe.contentDocument.body.style.color = cs.getPropertyValue(
-            "--tridactyl-cmplt-fg",
-        )
-        whichkeyIframe.contentDocument.body.style.fontFamily =
-            cs.getPropertyValue("--tridactyl-cmplt-font-family")
-        whichkeyIframe.contentDocument.body.style.fontSize =
-            cs.getPropertyValue("--tridactyl-cmplt-font-size")
+        replaceTableChildren(frag)
+
         whichkeyIframe.style.display = ""
         return
     }
@@ -219,16 +250,16 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
         )
         const pressedSeq = keyseq.mapstrToKeyseq(pressed)
 
-        console.log("suffix:", suffixStripped)
-        console.log("canon:", pressed)
-        console.log("seq:", pressedSeq)
-
         let mapsKey
         if (["normal", "insert", "visual"].includes(mode)) {
             mapsKey = mode[0] + "maps"
         } else {
             mapsKey = mode + "maps"
         }
+
+        const frag = document.createDocumentFragment()
+
+        frag.appendChild(createTableHeader(mode + " mode " + suffix, false))
 
         const parseKeyComps = (comps: Iterable<[any, any]>) => {
             const keystrings = []
@@ -244,91 +275,62 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
         }
 
         const keymaps = unwrapInherits(mapsKey)
-        const frag = document.createDocumentFragment()
+        keymaps.push(...unwrapInherits("browsermaps"))
         const exaliases = confget("exaliases")
 
         keymaps.forEach(([name, keymap]) => {
             const comps = keyseq.completions(pressedSeq, keymap)
             if (comps.size === 0) return
-            const header = document.createElement("tr")
-            header.textContent =
-                name === mapsKey ? name : "inerited from " + name
-            frag.appendChild(header)
+
+            frag.appendChild(createTableHeader(name === mapsKey ? name : "inerited: " + name, true))
+
             const keystrings = parseKeyComps(comps)
 
             keystrings.forEach(([unpressed, cmd]) => {
-                const pressedSpan = document.createElement("span")
-                const unpressedSpan = document.createElement("span")
-                const keysCol = document.createElement("td")
-                const cmdLink = document.createElement("a")
-                const cmdRestSpan = document.createElement("span")
-                const cmdCol = document.createElement("td")
-                const row = document.createElement("tr")
-
-                pressedSpan.style.color = "rgb(99, 109, 166)"
-                unpressedSpan.style.color = "rgb(129, 254, 131)"
-                cmdCol.style.color = "rgb(192, 153, 255)"
-
                 const cmdFirstWord = (cmd as string).split(" ", 1)[0]
                 const cmdRest = (cmd as string).slice(cmdFirstWord.length)
 
-                pressedSpan.textContent = pressed
-                unpressedSpan.textContent = unpressed as string
-
                 let hrefToAnchor
                 const namespaceSplit = cmdFirstWord.split(".")
-                const namespace =
-                    namespaceSplit.length > 1 ? namespaceSplit[0] : ""
+                const namespace = namespaceSplit.length > 1 ? namespaceSplit[0] : ""
+                const urlPrefix = browser.runtime.getURL("static/docs/modules/_src_")
                 switch (namespace) {
-                    case "hint":
-                        hrefToAnchor =
-                            "static/docs/modules/_src_content_hinting_.html#"
-                        break
-                    case "text":
-                        hrefToAnchor =
-                            "static/docs/modules/_src_lib_editor_.html#"
-                        break
-                    case "ex":
-                        hrefToAnchor =
-                            "static/docs/modules/_src_commandline_frame_.html#"
-                        break
-                    default:
-                        hrefToAnchor = "static/docs/modules/_src_excmds_.html#"
+                    case "hint": hrefToAnchor = urlPrefix + "content_hinting_.html"; break
+                    case "text": hrefToAnchor = urlPrefix + "lib_editor_.html"; break
+                    case "ex": hrefToAnchor = urlPrefix + "commandline_frame_.html"; break
+                    default: hrefToAnchor = urlPrefix + "excmds_.html"
                 }
-                const firstCmd = namespace.length
-                    ? cmdFirstWord.slice(namespace.length + 1)
-                    : cmdFirstWord
+                const target = hrefToAnchor === location.href.split("#")[0] ? "_parent" : ` "_blank"`
+                const firstCmd = namespace.length ? cmdFirstWord.slice(namespace.length + 1) : cmdFirstWord
 
-                // for aliases, you'd want to change the link
-                // eg :tabclosealltoright -> :tabcloseallto
-                cmdLink.href = browser.runtime.getURL(
-                    hrefToAnchor +
-                        (exaliases[cmdFirstWord]
-                            ? exaliases[cmdFirstWord].split(" ", 1)[0]
-                            : firstCmd.toLowerCase()),
-                )
-                cmdLink.target = "_blank"
-                cmdLink.textContent = cmdFirstWord
-                cmdRestSpan.textContent = cmdRest
-                ;(cmdCol as any).replaceChildren(cmdLink, cmdRestSpan)
-                ;(keysCol as any).replaceChildren(pressedSpan, unpressedSpan)
-                ;(row as any).replaceChildren(keysCol, cmdCol)
-                frag.appendChild(row)
+                const href = hrefToAnchor + "#" + (exaliases[cmdFirstWord]
+                    ? exaliases[cmdFirstWord].split(" ", 1)[0] : firstCmd.toLowerCase())
+
+                frag.appendChild(createTableRow(
+                    {
+                        children: [
+                            createElement("span", { className: "KeyPressed", textContent: pressed, },),
+                            createElement("span", { className: "KeyUnpressed", textContent: unpressed, },),
+                        ],
+                    },
+                    {
+                        className: "Command",
+                        children: [
+                            createElement("a", {
+                                textContent: cmdFirstWord,
+                                href,
+                                target,
+                            }),
+                            createElement("span", { textContent: cmdRest })
+                        ]
+                    },
+                ))
             })
         })
 
         whichkeyIframe.style.display = ""
-        const cs = getComputedStyle(document.documentElement)
-        whichkeyIframe.contentDocument.body.style.background =
-            cs.getPropertyValue("--tridactyl-cmplt-bg")
-        whichkeyIframe.contentDocument.body.style.color = cs.getPropertyValue(
-            "--tridactyl-cmplt-fg",
-        )
-        whichkeyIframe.contentDocument.body.style.fontFamily =
-            cs.getPropertyValue("--tridactyl-cmplt-font-family")
-        whichkeyIframe.contentDocument.body.style.fontSize =
-            cs.getPropertyValue("--tridactyl-cmplt-font-size")
-        completions.replaceChildren(frag)
+        replaceTableChildren(frag)
+
     } else {
         whichkeyIframe.style.display = "none"
     }
@@ -372,12 +374,38 @@ function PrintableKey(k) {
     return result
 }
 
-addChangeListener("whichkey", (_old, neww) => {
-    level = neww
+addChangeListener("whichkey", configListener)
+
+function configListener(_oldLevel, newLevel) {
+    setLevel(newLevel, false)
+}
+
+export function showWhichKey(howMuch) {
+    setLevel(howMuch, true)
+}
+
+function setLevel(newLevel, overrideConfig = false) {
+    console.log("oldlevel ", level)
+    // level = newLevel
+    if (newLevel === "toggle") {
+        if (level === "none") {
+            level = toggleLevel
+        } else {
+            level = "none"
+        }
+    } else {
+        if (newLevel !== "none") toggleLevel = newLevel
+        level = newLevel
+    }
+    console.log("new level", level, "toggle?", toggleLevel)
     if (whichkeyIframe) {
         if (level === "none") whichkeyIframe.style.display = "none"
         if (level === "all") whichkeyIframe.style.display = ""
     } else if (level !== "none") {
         init()
     }
-})
+    if (overrideConfig) {
+        removeChangeListener("whichkey", configListener)
+    }
+}
+

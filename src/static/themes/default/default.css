@@ -1,14 +1,25 @@
 :root {
+    /* Text Colours */
+    --tridactyl-fg-normal: black;
+    --tridactyl-fg-emphasis: #45a1ff;
+    --tridactyl-fg-faint: #b1b1b3;
+    --tridactyl-fg-info: #008ea4;
+    --tridactyl-fg-warn: #ff9400;
+    --tridactyl-fg-error: #ff0039;
+    --tridactyl-fg-highlight-1: #12bc00;
+    --tridactyl-fg-highlight-2: #9400ff;
+    --tridactyl-fg-highlight-3: #ff7de9;
+
     /* Generic */
     --tridactyl-font-family: monospace;
     --tridactyl-font-family-sans: sans-serif;
     --tridactyl-font-size: 12pt;
     --tridactyl-small-font-size: calc(var(--tridactyl-font-size) * 0.75);
     --tridactyl-bg: white;
-    --tridactyl-fg: black;
+    --tridactyl-fg: var(--tridactyl-fg-normal);
     --tridactyl-logo: url("moz-extension://__MSG_@@extension_id__/static/logo/Tridactyl_64px.png");
     --tridactyl-scrollbar-color: auto;
-
+    
     /* Mode indicator */
     --tridactyl-status-font-family: var(--tridactyl-font-family);
     --tridactyl-status-font-size: var(--tridactyl-small-font-size);
