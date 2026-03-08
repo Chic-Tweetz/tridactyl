@@ -6472,11 +6472,13 @@ export function hintstylesdirect() {
 }
 
 /**
- * Display a whichkey popup. Toggle display with "toggle".
- * Show permanently with "all" or for multi-key binds with "multi".
- * Disable with "none".
- * This command will override the whichkey config setting for the tab it's used in.
- * For initial behaviour, use :set whichkey [all | multi | none]
+ * Show or disable a whichkey popup.
+ * 
+ * Toggle with `:whichkey toggle` or simply `:whichkey`
+ * Show always with `:whichkey all`
+ * Show only for multiple-key binds with `:whichkey multi`
+ * Disable with `:whichkey none`
+ * Set default behaviour with `:set whichkey none | multi | all`
  */
 //#content
 export function whichkey(level: "all" | "multi" | "none" | "toggle" = "toggle") {
