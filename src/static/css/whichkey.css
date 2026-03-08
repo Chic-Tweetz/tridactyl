@@ -19,7 +19,7 @@
 }
 
 .WhichKey .Header {
-    color: var(--tridactyl-highlight-3);
+    color: var(--tridactyl-fg-highlight-3);
     background: var(--tridactyl-header-first-bg);
 }
 
@@ -28,6 +28,20 @@
     background: var(--tridactyl-of-bg);
     position: sticky;
     top: 0;
+}
+
+.WhichKey tr:nth-child(2n) {
+    background: color-mix(var(--tridactyl-cmplt-bg), cyan 10%);
+}
+
+.WhichKey .Keyseq {
+    min-width: 50px;
+    max-width: 150px;
+    text-align: left;
+}
+
+.WhichKey .KeyPressed, .WhichKey .KeyUnpressed {
+    white-space: nowrap;
 }
 
 .WhichKey .KeyPressed {

@@ -137,7 +137,6 @@ export interface ParserResponse {
     exstr?: string
     isMatch?: boolean
     numericPrefix?: number
-    possibleMappings?: KeyMap // This is what whichkey wants if it's enabled
 }
 
 function splitNumericPrefix(
@@ -217,7 +216,7 @@ export function parse(keyseq: MinimalKey[], map: KeyMap): ParserResponse {
     // command, numericPrefix is a numeric prefix of that. We want to
     // preserve that whole thing, so concat them back together before
     // returning.
-    return { keys: numericPrefix.concat(keyseq), isMatch: keyseq.length > 0, possibleMappings }
+    return { keys: numericPrefix.concat(keyseq), isMatch: keyseq.length > 0 }
 }
 
 /** True if seq1 is a prefix or equal to seq2 */

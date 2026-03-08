@@ -221,19 +221,15 @@ function* ParserController() {
                     keyEvents = response.keys
                     // show current keyEvents as a suffix of the contentState
 
-                    // whichkey: kind of want the keyevents themselves really...
                     const suffix = keyEvents.map(x => PrintableKey(x)).join("")
                     if (previousSuffix !== suffix) {
-                        // contentState.suffix = suffix
+                        contentState.suffix = suffix
                         previousSuffix = suffix
-                        contentState.parsedKeys = response
-
                     }
                     logger.debug("suffix: ", suffix)
                 }
             }
-            // contentState.suffix = ""
-            contentState.parsedKeys = null
+            contentState.suffix = ""
             controller.acceptExCmd(exstr)
         } catch (e) {
             // Rumsfeldian errors are caught here

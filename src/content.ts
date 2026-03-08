@@ -389,9 +389,8 @@ config.getAsync("superignore").then(async TRI_DISABLE => {
                 } else {
                     mode = oldMode
                 }
-                if (property === "parsedKeys") {
-                    suffix = (newValue?.keys || [])
-                        .reduce((acc, key) => acc + keyseq.PrintableKey(key), "")
+                if (property === "suffix") {
+                    suffix = newValue
                 } else if (property === "whichkey_extra") {
                     mode = newValue === "" ? oldMode : newValue
                     suffix = ""

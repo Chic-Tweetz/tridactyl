@@ -1,12 +1,10 @@
 /**
  * Add a whichkey style popup to the page.
  * Uses a state listener (like the mode indicator)
- * It's a bit silly because we get the parsed keys from the suffix
- * Turn them back into key sequences
- * Match them in a keymap...
- * Basically after parsing a keypress, we recreate it and do it again!
- * It would be more sensible to send a message/event from the key parser itself
- * that would require its own solution anyway
+ * Filters keymaps using the suffix. Which means we filter the keypresses twice.
+ * (once for the actual keypress and again here).
+ * But I do want to separate inherited keymaps out.
+ * And I don't know how to do that if I don't re-filter here, so that's just the way it is.
  */
 
 import { addContentStateChangedListener, contentState } from "@src/content/state_content"
@@ -39,6 +37,7 @@ function init() {
 getAsync("whichkey").then(show => {
     if (show !== "none") {
         level = show
+        toggleLevel = show
         init().then(() => {
             if (level === "all") {
                 onStateChanged("mode", "normal", "normal", "normal")
@@ -77,6 +76,10 @@ async function createIframe() {
                 iframe.contentDocument.body.appendChild(table)
                 completions = table
                 whichkeyIframe = iframe
+
+                // It would be nice to be able to scroll / filter the iframe with key presses
+                // but for now, if you click a link or something, return focus to the main window
+                iframe.contentWindow.addEventListener("focus", () => window.focus())
                 resolve(iframe)
             } else {
                 reject(iframe)
@@ -115,10 +118,13 @@ function unwrapInherits(mapName) {
         const maps = getUniqueMaps(name)
         const nextname = maps["🕷🕷INHERITS🕷🕷"]
         if (nextname) delete maps["🕷🕷INHERITS🕷🕷"]
-        ordered.push([
-            name,
-            keyseq.mapstrMapToKeyMap(new Map(Object.entries(maps))),
-        ])
+        const keymap = keyseq.mapstrMapToKeyMap(new Map(Object.entries(maps)))
+        if (keymap.size) {
+            ordered.push([
+                name,
+                keymap,
+            ])
+        }
         name = nextname
         if (mapped.has(name)) break
     }
@@ -127,24 +133,27 @@ function unwrapInherits(mapName) {
 
 // Now I think we can just filter with .startsWith
 function keyseqsToStrings(keymap) {
-    console.log(Array.from(keymap))
     return Array.from(keymap as Iterable<[any, any]>)
         .map(([keys, cmd]: [any, any]) => [
-            keys.reduce((acc: string, key: any) => acc + keyseq.PrintableKey(key), ""),
+            keys.map(key => keyseq.PrintableKey(key)),
             cmd])
 }
 
 // This takes up lots of space because I'm doing a bunch of document.createElement and inline styling
 // neaten those up and it'd be a lot nicer
-
+let stateChangeDebounceTimer = -1
+let debounceMs = 50
 function listen() {
-    addContentStateChangedListener(onStateChanged)
+    addContentStateChangedListener((...args) => {
+        clearTimeout(stateChangeDebounceTimer)
+        setTimeout(() => onStateChanged(...args), debounceMs)
+    })
 }
 
 function replaceTableChildren(newChildren: DocumentFragment) {
     completions.replaceChildren(newChildren)
     const rect = completions.getClientRects()[0]
-    whichkeyIframe.style.width = Math.min(rect.width, 520) + "px"
+    whichkeyIframe.style.width = Math.max(Math.min(rect.width, 350), 250) + "px"
 }
 
 function createTableHeader(text = "", subheader = true) {
@@ -182,11 +191,13 @@ function createElement(type, opts) {
 }
 
 // TODO: debounce
-
+let thinger = 0
 // This is a bit large now isn't it
 async function onStateChanged(property, oldMode, oldValue, newValue) {
+    const thisthinger = thinger++
+    console.log(contentState, property, oldValue, newValue, "STATE CHANGE " + thinger)
     if (level === "none") return
-    if (property !== "mode" && property !== "parsedKeys" && property !== "whichkey_extra") return
+    // if (property !== "mode" && property !== "suffix" && property !== "whichkey_extra") return
 
     const mode = contentState.mode
     const extra = contentState.whichkey_extra
@@ -205,7 +216,7 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
             const beforeMark = await State.getAsync("beforeJumpMark")
             if (beforeMark) {
                 const row =createTableRow(
-                    { className: "KeyUnpressed", textContent: "`" },
+                    { className: "Keyseq KeyUnpressed", textContent: "`" },
                     { className: "Command", textContent: beforeMark.scrollX + "," + beforeMark.scrollY },
                 )
 
@@ -221,7 +232,7 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
 
         marksForPage.forEach((scrolls, key) => {
             frag.appendChild(createTableRow(
-                { className: "KeyUnpressed", textContent: key },
+                { className: "Keyseq KeyUnpressed", textContent: key },
                 { className: "Command", textContent: scrolls.scrollX + "," + scrolls.scrollY },
             ))
         })
@@ -230,15 +241,30 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
 
         globalMarks.forEach((mark, key) => {
             frag.appendChild(createTableRow(
-                { className: "KeyUnpressed", textContent: key },
-                { className: "Info", textContent: mark.url },
+                { className: "Keyseq KeyUnpressed", textContent: key },
                 { className: "Command", textContent: mark.scrollX + "," + mark.scrollY },
+                { className: "Info", textContent: mark.url },
             ))
         })
 
         replaceTableChildren(frag)
 
         whichkeyIframe.style.display = ""
+        return
+    }
+
+    if (mode === "gobble" && extra === "quickmark") {
+        const frag = document.createDocumentFragment()
+        ;(frag as any).replaceChildren(
+            createTableHeader("Quickmark", false),
+            ...Object.entries(confget("nmaps"))
+                .filter(([k, cmd]) => k.startsWith("go") && (cmd as string).startsWith("open "))
+                .map(([k, cmd]) => createTableRow(
+                    { className: "KeyUnpressed", textContent: k.slice(2), },
+                    { className: "Info", textContent: (cmd as string).slice(5), })
+                )
+        )
+        replaceTableChildren(frag)
         return
     }
 
@@ -249,11 +275,7 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
         mapsKey = mode + "maps"
     }
 
-    const pressed = contentState.parsedKeys
-        ? contentState.parsedKeys.keys
-            .reduce((acc, key) => acc + keyseq.PrintableKey(key), "")
-            .replace(/^[0-9]+/, "")
-        : ""
+    const pressed = contentState.suffix || ""
 
     if (pressed === "" && level !== "all") {
         whichkeyIframe.style.display = "none"
@@ -264,8 +286,8 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
         .map(([name, keymap]) => [
             name,
             keyseqsToStrings(keymap)
-                .filter(([keystr, _cmd]) => {
-                    return keystr.startsWith(pressed)
+                .filter(([keystrs, _cmd]) => {
+                    return keystrs.join("").startsWith(pressed)
                 })
             ]
         )
@@ -276,13 +298,46 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
 
     const exaliases = confget("exaliases")
 
+    console.log("THINGER?", thisthinger)
+    try {
+        let yikes = keymaps[0][1][0][0]
+    } catch (e) {
+        console.log(thisthinger, "failed to get keymaps[0][1][0][0]")
+        console.log(keymaps)
+    }
+
+    const firstBind = keymaps[0][1][0][0]
+    let toSlice = pressed.length
+    let unpressedStart = 0
+    while (toSlice > 0) {
+        toSlice -= firstBind[unpressedStart].length
+        ++unpressedStart
+    }
+    const pressedSpans: any = document.createDocumentFragment()
+    pressedSpans.replaceChildren(...firstBind.slice(0, unpressedStart)
+        .flatMap(str => [
+            createElement("span", { className: "KeyPressed", textContent: str }),
+            document.createElement("wbr"),
+        ]))
+
     keymaps.forEach(([name, keymap]) => {
         if (keymap.length === 0) return
 
         frag.appendChild(createTableHeader(name === mapsKey ? name : "inerited: " + name, true))
 
-        keymap.forEach(([keystr, cmd]) => {
-            const unpressed = keystr.slice(pressed.length)
+        keymap.forEach(([keystrs, cmd]) => {
+            // pressed will be the same every time so you should move this out of the loop
+            // let toSlice = pressed.length
+            // let unpressedStart = 0
+            // while (toSlice > 0) {
+            //     toSlice -= keystrs[unpressedStart].length
+            //     ++unpressedStart
+            // }
+            
+            const unpressedSpans = keystrs.slice(unpressedStart)
+                .flatMap(str => [createElement("span", { className: "KeyUnpressed", textContent: str }), document.createElement("wbr")])
+
+            // const unpressed = keystrs.join("").slice(pressed.length)
             const cmdFirstWord = (cmd as string).split(" ", 1)[0]
             const cmdRest = (cmd as string).slice(cmdFirstWord.length)
 
@@ -304,9 +359,11 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
 
             frag.appendChild(createTableRow(
                 {
+                    className: "Keyseq",
                     children: [
-                        createElement("span", { className: "KeyPressed", textContent: pressed, },),
-                        createElement("span", { className: "KeyUnpressed", textContent: unpressed, },),
+                        // createElement("span", { className: "KeyPressed", textContent: pressed, },),
+                        // createElement("span", { className: "KeyUnpressed", textContent: unpressed, },),
+                        pressedSpans.cloneNode(true), ...unpressedSpans
                     ],
                 },
                 {
@@ -358,7 +415,7 @@ function setLevel(newLevel, overrideConfig = false) {
     } else if (level !== "none") {
         init()
     }
-    if (overrideConfig) {
+    if (overrideConfig && newLevel !== "toggle") {
         removeChangeListener("whichkey", configListener)
     }
 }
