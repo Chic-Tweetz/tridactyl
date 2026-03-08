@@ -2477,7 +2477,7 @@ input:not([disabled]):not([readonly]):-moz-any(
  [type='tel'],
  [type='color']
 ),
-textarea:not([disabled]):not([readonly]),
+textarea:not([disabled]):not([readonly]):not([aria-readonly='true']),
 object,
 [role='application'],
 [contenteditable][role='textbox']:not([contenteditable='false'])
