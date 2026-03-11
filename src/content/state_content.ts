@@ -69,10 +69,6 @@ export const contentState = new Proxy(
                 listener(property, mode, oldValue, newValue)
             }
 
-            if (property === "mode" && oldValue !== mode) {
-                target["whichkey_extra"] = ""
-            }
-
             return true
         },
     },

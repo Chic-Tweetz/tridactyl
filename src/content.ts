@@ -370,7 +370,7 @@ config.getAsync("superignore").then(async TRI_DISABLE => {
 
         addContentStateChangedListener(
             async (property, oldMode, oldValue, newValue) => {
-/*                 let mode = newValue
+                /*                 let mode = newValue
                 let suffix = ""
                 let result = ""
                 if (property !== "mode") {
@@ -381,7 +381,12 @@ config.getAsync("superignore").then(async TRI_DISABLE => {
                         mode = oldMode
                     }
             }*/
-                let mode
+                const mode =
+                    contentState.mode === "gobble"
+                        ? "gobble|" + contentState.whichkey_extra
+                        : contentState.mode
+                const suffix = contentState.suffix
+                /* 
                 let suffix
                 if (property === "mode") {
                     mode = newValue
@@ -392,9 +397,9 @@ config.getAsync("superignore").then(async TRI_DISABLE => {
                 if (property === "suffix") {
                     suffix = newValue
                 } else if (property === "whichkey_extra") {
-                    mode = newValue === "" ? oldMode : newValue
+                    mode = newValue === "" ? oldMode : oldMode + "|" + newValue
                     suffix = ""
-                }
+                } */
                 let result = ""
 
                 const privateMode = browser.extension.inIncognitoContext

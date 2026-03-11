@@ -81,6 +81,16 @@
     --tridactyl-fg-highlight-1: var(--tritheme-green);
     --tridactyl-fg-highlight-2: var(--tritheme-moon-yellow);
     --tridactyl-fg-highlight-3: var(--tritheme-moon-magenta);
+    --tridactyl-fg-header: var(--tritheme-lightblue);
+    --tridactyl-fg-subheader: var(--tritheme-lightblue);
+    --tridactyl-fg-selection: var(--tritheme-moon-yellow);
+
+    /* Background Colours */
+    --tridactyl-bg-base: var(--tritheme-darkblue4);
+    --tridactyl-bg-contrast-low: #252841;
+    --tridactyl-bg-contrast-mid: #131523;
+    --tridactyl-bg-contrast-high: #080a1c;
+    --tridactyl-bg-selection: var(--tritheme-moon-orange);
 
     /* Generic */
     --tridactyl-font-family: "JetBrains Mono", "SF Mono", monospace;
@@ -268,4 +278,3 @@ td.title {
 :root.TridactylOwnNamespace a {
     color: var(--tritheme-link-fg);
 }
-

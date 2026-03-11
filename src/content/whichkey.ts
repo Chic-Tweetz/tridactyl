@@ -7,7 +7,10 @@
  * And I don't know how to do that if I don't re-filter here, so that's just the way it is.
  */
 
-import { addContentStateChangedListener, contentState } from "@src/content/state_content"
+import {
+    addContentStateChangedListener,
+    contentState,
+} from "@src/content/state_content"
 import * as keyseq from "@src/lib/keyseq"
 import * as State from "@src/state"
 import { ownTabId } from "@src/lib/webext"
@@ -70,7 +73,9 @@ async function createIframe() {
                 iframe.contentDocument.head.appendChild(csslink)
 
                 theme(iframe.contentDocument.documentElement)
-                iframe.contentDocument.documentElement.classList.add("WhichKeyRoot")
+                iframe.contentDocument.documentElement.classList.add(
+                    "WhichKeyRoot",
+                )
                 const table = document.createElement("table")
                 table.className = "WhichKey"
                 iframe.contentDocument.body.appendChild(table)
@@ -79,13 +84,17 @@ async function createIframe() {
 
                 // It would be nice to be able to scroll / filter the iframe with key presses
                 // but for now, if you click a link or something, return focus to the main window
-                iframe.contentWindow.addEventListener("focus", () => window.focus())
+                iframe.contentWindow.addEventListener("focus", () =>
+                    window.focus(),
+                )
                 resolve(iframe)
             } else {
                 reject(iframe)
             }
         }
-        const cmdlineIframe = document.querySelector(`[src="${browser.runtime.getURL("static/commandline.html")}"]`)
+        const cmdlineIframe = document.querySelector(
+            `[src="${browser.runtime.getURL("static/commandline.html")}"]`,
+        )
         if (cmdlineIframe) {
             document.documentElement.insertBefore(iframe, cmdlineIframe)
         } else {
@@ -97,7 +106,8 @@ async function createIframe() {
 // We DON'T want to get nmaps in our vmaps and stuff
 function getUniqueMaps(mapName) {
     const defUrl = DEFAULTS.subconfigs[window.location.href]?.[mapName] || {}
-    const usrUrl = USERCONFIG.subconfigs?.[window.location.href]?.[mapName] || {}
+    const usrUrl =
+        USERCONFIG.subconfigs?.[window.location.href]?.[mapName] || {}
     const defult = DEFAULTS[mapName] || {}
     const user = USERCONFIG[mapName] || {}
     // priority should be... user URL -> defaultURL -> user -> default ?
@@ -108,45 +118,160 @@ function getUniqueMaps(mapName) {
     )
 }
 
-// TODO: Cache these (+ invalidate cache with config listener)
-function unwrapInherits(mapName) {
+// Now we get keymaps and separate their 🕷🕷INHERITS🕷🕷 maps out
+// Then map their key sequences to a single bind-style key string
+// That's the important one, so it's what we'll cache
+// Changes to any map we've found will invalidate the cache
+// TODO: check if :bindurl triggers this callback, otherwise listen for "subconfigs" too
+let keystringsToCmdsCache = new Map()
+const keymapConfigListeners = new Set()
+function addKeymapConfigListener(mapName) {
+    if (keymapConfigListeners.has(mapName)) return
+    keymapConfigListeners.add(mapName)
+    addChangeListener(mapName, () => {
+        console.log("keystrings map cache cleared")
+        keystringsToCmdsCache = new Map()
+    })
+}
+
+function getFilteredBinds(mapName, pressed = "") {
+    return pressed === ""
+        ? getBindsForMapName(mapName)
+        : getBindsForMapName(mapName).map(([name, keymap]) => [
+              name,
+              keymap.filter(([bind, _cmd]) =>
+                  bind.join("").startsWith(pressed),
+              ),
+          ])
+}
+
+// Pass unwrapInherits result, that's an array of arrays: [mapName, keyMap]
+function getBindsForMapName(mapName) {
+    console.log("getBindsForMapName", mapName)
+    if (keystringsToCmdsCache.has(mapName)) {
+        console.log(mapName, "was cached!")
+        return keystringsToCmdsCache.get(mapName)
+    }
+    console.log(mapName, "was NOT cached")
+    const keystrMap = unwrapInherits(mapName).map(([name, keymap]) => [
+        name,
+        keyseqsToStrings(keymap),
+    ])
+    keystringsToCmdsCache.set(mapName, keystrMap)
+    return keystrMap
+}
+
+// Separate 🕷🕷INHERITS🕷🕷 from keymaps and return all maps in order of inheritance
+// Usually there's 0 or 1 🕷🕷INHERITS🕷🕷 keys, but a user could add some themselves
+// also adds browsermaps binds to the end of the list as they're always available
+function unwrapInherits(mapName, includeBrowserMaps = true) {
     const mapped = new Set()
     const ordered = []
+    let wantBrowserMaps = includeBrowserMaps
     let name = mapName
     while (name) {
+        addKeymapConfigListener(name)
         mapped.add(name)
         const maps = getUniqueMaps(name)
         const nextname = maps["🕷🕷INHERITS🕷🕷"]
         if (nextname) delete maps["🕷🕷INHERITS🕷🕷"]
         const keymap = keyseq.mapstrMapToKeyMap(new Map(Object.entries(maps)))
         if (keymap.size) {
-            ordered.push([
-                name,
-                keymap,
-            ])
+            ordered.push([name, keymap])
         }
         name = nextname
-        if (mapped.has(name)) break
+        if (mapped.has(name) || !name) {
+            if (includeBrowserMaps) {
+                name = "browsermaps"
+                includeBrowserMaps = false
+            } else break
+        }
     }
     return ordered
 }
 
 // Now I think we can just filter with .startsWith
 function keyseqsToStrings(keymap) {
-    return Array.from(keymap as Iterable<[any, any]>)
-        .map(([keys, cmd]: [any, any]) => [
+    return Array.from(keymap as Iterable<[any, any]>).map(
+        ([keys, cmd]: [any, any]) => [
             keys.map(key => keyseq.PrintableKey(key)),
-            cmd])
+            cmd,
+        ],
+    )
 }
+
+let excmdHelpDocFrag = null
+async function queryExcmdHelp(
+    excmd: string,
+    transform: (HTMLElement) => any = el => el,
+) {
+    if (!excmdHelpDocFrag) {
+        const html = await fetch(
+            browser.runtime.getURL("static/docs/modules/_src_excmds_.html"),
+        ).then(f => f.text())
+        const template = document.createElement("template")
+        template.innerHTML = html
+        excmdHelpDocFrag = template.content
+        console.log("fetched help", excmdHelpDocFrag)
+    }
+
+    const section = excmdHelpDocFrag.querySelector(
+        `[name='${excmd}']`,
+    ).parentElement
+    console.log(excmd, "help", section)
+    const transformed = transform(section)
+    console.log("transformed!", transformed)
+    return transform(section)
+}
+
+let hintFlagsHelp: Map<string, string> = null
+function hintFlagsToHelpDescription(flag) {
+    if (!hintFlagsHelp) {
+        hintFlagsHelp = new Map()
+        queryExcmdHelp(
+            "hint",
+            hintSection =>
+                new Map(
+                    Array.from(
+                        hintSection.querySelectorAll(".tsd-parameters li"),
+                    )
+                        .map(li => (li as HTMLElement).textContent.trim())
+                        .filter(text => text.startsWith("-"))
+                        .map(text => {
+                            let flagKey = text.split(" ", 1)[0].slice(1)
+                            if (flagKey[1] === "*") {
+                                flagKey = flagKey.slice(0, 1)
+                            }
+                            return [
+                                flagKey,
+                                text.slice(flagKey.length + 1).trim(),
+                            ]
+                        }),
+                ),
+        ).then(map => (hintFlagsHelp = map))
+    }
+    console.log(
+        "have hint flag?",
+        "'" + flag + "'",
+        hintFlagsHelp,
+        hintFlagsHelp.get(flag),
+    )
+    return hintFlagsHelp.get(flag)
+}
+
+hintFlagsToHelpDescription("hint")
 
 // This takes up lots of space because I'm doing a bunch of document.createElement and inline styling
 // neaten those up and it'd be a lot nicer
 let stateChangeDebounceTimer = -1
-let debounceMs = 50
+let debounceMs = 100
 function listen() {
     addContentStateChangedListener((...args) => {
         clearTimeout(stateChangeDebounceTimer)
-        setTimeout(() => onStateChanged(...args), debounceMs)
+        stateChangeDebounceTimer = setTimeout(
+            () => onStateChanged(...args),
+            debounceMs,
+        )
     })
 }
 
@@ -171,7 +296,9 @@ function createTableHeader(text = "", subheader = true) {
 // Just making some functions to speed up element creation
 // I bet there's already a library here somewhere to do this
 function createTableRow(...cells) {
-    return createElement("tr", { children: cells.map(cell => createTableCell(cell)) })
+    return createElement("tr", {
+        children: cells.map(cell => createTableCell(cell)),
+    })
 }
 
 function createTableCell(opts) {
@@ -184,24 +311,22 @@ function createElement(type, opts) {
         el.replaceChildren(...opts.children)
         delete opts.children
     }
-    Object.entries(opts).forEach(([k,v]) => {
+    Object.entries(opts).forEach(([k, v]) => {
         el[k] = v
     })
     return el
 }
 
-// TODO: debounce
-let thinger = 0
 // This is a bit large now isn't it
 async function onStateChanged(property, oldMode, oldValue, newValue) {
-    const thisthinger = thinger++
-    console.log(contentState, property, oldValue, newValue, "STATE CHANGE " + thinger)
+    console.log(contentState, property, oldValue, newValue, "STATE CHANGE ")
     if (level === "none") return
     // if (property !== "mode" && property !== "suffix" && property !== "whichkey_extra") return
 
     const mode = contentState.mode
     const extra = contentState.whichkey_extra
 
+    // Display existing marks and their urls & scroll locations
     if (mode === "gobble" && (extra === "markadd" || extra === "markjump")) {
         const localMarks = await State.getAsync("localMarks")
         const globalMarks = await State.getAsync("globalMarks")
@@ -215,13 +340,22 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
         if (extra === "markjump") {
             const beforeMark = await State.getAsync("beforeJumpMark")
             if (beforeMark) {
-                const row =createTableRow(
+                const row = createTableRow(
                     { className: "Keyseq KeyUnpressed", textContent: "`" },
-                    { className: "Command", textContent: beforeMark.scrollX + "," + beforeMark.scrollY },
+                    {
+                        className: "Command",
+                        textContent:
+                            beforeMark.scrollX + "," + beforeMark.scrollY,
+                    },
                 )
 
                 if ((await ownTabId()) !== beforeMark.tabId) {
-                    row.appendChild(createTableCell({ className: "Info", textContent: "beforeMark.url" }))
+                    row.appendChild(
+                        createTableCell({
+                            className: "Info",
+                            textContent: "beforeMark.url",
+                        }),
+                    )
                 }
 
                 frag.appendChild(row)
@@ -231,20 +365,30 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
         frag.appendChild(createTableHeader("Local Marks", true))
 
         marksForPage.forEach((scrolls, key) => {
-            frag.appendChild(createTableRow(
-                { className: "Keyseq KeyUnpressed", textContent: key },
-                { className: "Command", textContent: scrolls.scrollX + "," + scrolls.scrollY },
-            ))
+            frag.appendChild(
+                createTableRow(
+                    { className: "Keyseq KeyUnpressed", textContent: key },
+                    {
+                        className: "Command",
+                        textContent: scrolls.scrollX + "," + scrolls.scrollY,
+                    },
+                ),
+            )
         })
 
         frag.appendChild(createTableHeader("Global Marks", true))
 
         globalMarks.forEach((mark, key) => {
-            frag.appendChild(createTableRow(
-                { className: "Keyseq KeyUnpressed", textContent: key },
-                { className: "Command", textContent: mark.scrollX + "," + mark.scrollY },
-                { className: "Info", textContent: mark.url },
-            ))
+            frag.appendChild(
+                createTableRow(
+                    { className: "Keyseq KeyUnpressed", textContent: key },
+                    {
+                        className: "Command",
+                        textContent: mark.scrollX + "," + mark.scrollY,
+                    },
+                    { className: "Info", textContent: mark.url },
+                ),
+            )
         })
 
         replaceTableChildren(frag)
@@ -253,20 +397,34 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
         return
     }
 
+    // Display existing quickmarks and their keys
     if (mode === "gobble" && extra === "quickmark") {
         const frag = document.createDocumentFragment()
         ;(frag as any).replaceChildren(
             createTableHeader("Quickmark", false),
             ...Object.entries(confget("nmaps"))
-                .filter(([k, cmd]) => k.startsWith("go") && (cmd as string).startsWith("open "))
-                .map(([k, cmd]) => createTableRow(
-                    { className: "KeyUnpressed", textContent: k.slice(2), },
-                    { className: "Info", textContent: (cmd as string).slice(5), })
+                .filter(
+                    ([k, cmd]) =>
+                        k.startsWith("go") &&
+                        (cmd as string).startsWith("open "),
                 )
+                .map(([k, cmd]) =>
+                    createTableRow(
+                        { className: "KeyUnpressed", textContent: k.slice(2) },
+                        {
+                            className: "Info",
+                            textContent: (cmd as string).slice(5),
+                        },
+                    ),
+                ),
         )
         replaceTableChildren(frag)
         return
     }
+
+    // We have no other special gobble displays
+    // We could have such displays be configurable mind you
+    if (mode === "gobble") return
 
     let mapsKey
     if (["normal", "insert", "visual"].includes(mode)) {
@@ -282,15 +440,17 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
         return
     }
 
-    const keymaps = [...unwrapInherits(mapsKey), ...unwrapInherits("browsermaps")]
-        .map(([name, keymap]) => [
-            name,
-            keyseqsToStrings(keymap)
-                .filter(([keystrs, _cmd]) => {
-                    return keystrs.join("").startsWith(pressed)
-                })
-            ]
-        )
+    // const keymaps = [...unwrapInherits(mapsKey), ...unwrapInherits("browsermaps")]
+    //     .map(([name, keymap]) => [
+    //         name,
+    //         keyseqsToStrings(keymap)
+    //             .filter(([keystrs, _cmd]) => {
+    //                 return keystrs.join("").startsWith(pressed)
+    //             })
+    //         ]
+    //     )
+
+    const keymaps = getFilteredBinds(mapsKey, pressed)
 
     const frag = document.createDocumentFragment()
 
@@ -298,12 +458,17 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
 
     const exaliases = confget("exaliases")
 
-    console.log("THINGER?", thisthinger)
     try {
         let yikes = keymaps[0][1][0][0]
     } catch (e) {
-        console.log(thisthinger, "failed to get keymaps[0][1][0][0]")
-        console.log(keymaps)
+        console.error(
+            "we tried to index a keymap when we shouldn't",
+            keymaps,
+            contentState,
+            property,
+            oldValue,
+            newValue,
+        )
     }
 
     const firstBind = keymaps[0][1][0][0]
@@ -314,70 +479,123 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
         ++unpressedStart
     }
     const pressedSpans: any = document.createDocumentFragment()
-    pressedSpans.replaceChildren(...firstBind.slice(0, unpressedStart)
-        .flatMap(str => [
-            createElement("span", { className: "KeyPressed", textContent: str }),
-            document.createElement("wbr"),
-        ]))
+
+    // It's nicer if we don't let multi-char binds break
+    // Keys/modifier combos like <AS-Backspace> for example
+    pressedSpans.replaceChildren(
+        ...firstBind
+            .slice(0, unpressedStart)
+            .flatMap(str => [
+                createElement("span", {
+                    className: "KeyPressed",
+                    textContent: str,
+                }),
+                document.createElement("wbr"),
+            ]),
+    )
 
     keymaps.forEach(([name, keymap]) => {
         if (keymap.length === 0) return
 
-        frag.appendChild(createTableHeader(name === mapsKey ? name : "inerited: " + name, true))
+        frag.appendChild(
+            createTableHeader(
+                name === mapsKey ? name : "inerited: " + name,
+                true,
+            ),
+        )
 
-        keymap.forEach(([keystrs, cmd]) => {
-            // pressed will be the same every time so you should move this out of the loop
-            // let toSlice = pressed.length
-            // let unpressedStart = 0
-            // while (toSlice > 0) {
-            //     toSlice -= keystrs[unpressedStart].length
-            //     ++unpressedStart
-            // }
-            
-            const unpressedSpans = keystrs.slice(unpressedStart)
-                .flatMap(str => [createElement("span", { className: "KeyUnpressed", textContent: str }), document.createElement("wbr")])
+        // Separate pressed keys & unpressed keys
+        // Get the first word for bound commands and add a link to its entry in the help/docs
+        keymap.forEach(async ([keystrs, cmd]) => {
+            const unpressedSpans = keystrs
+                .slice(unpressedStart)
+                .flatMap(str => [
+                    createElement("span", {
+                        className: "KeyUnpressed",
+                        textContent: str,
+                    }),
+                    document.createElement("wbr"),
+                ])
 
-            // const unpressed = keystrs.join("").slice(pressed.length)
             const cmdFirstWord = (cmd as string).split(" ", 1)[0]
             const cmdRest = (cmd as string).slice(cmdFirstWord.length)
 
             let hrefToAnchor
             const namespaceSplit = cmdFirstWord.split(".")
             const namespace = namespaceSplit.length > 1 ? namespaceSplit[0] : ""
-            const urlPrefix = browser.runtime.getURL("static/docs/modules/_src_")
+            const urlPrefix = browser.runtime.getURL(
+                "static/docs/modules/_src_",
+            )
             switch (namespace) {
-                case "hint": hrefToAnchor = urlPrefix + "content_hinting_.html"; break
-                case "text": hrefToAnchor = urlPrefix + "lib_editor_.html"; break
-                case "ex": hrefToAnchor = urlPrefix + "commandline_frame_.html"; break
-                default: hrefToAnchor = urlPrefix + "excmds_.html"
+                case "hint":
+                    hrefToAnchor = urlPrefix + "content_hinting_.html"
+                    break
+                case "text":
+                    hrefToAnchor = urlPrefix + "lib_editor_.html"
+                    break
+                case "ex":
+                    hrefToAnchor = urlPrefix + "commandline_frame_.html"
+                    break
+                default:
+                    hrefToAnchor = urlPrefix + "excmds_.html"
             }
-            const target = hrefToAnchor === location.href.split("#")[0] ? "_parent" : ` "_blank"`
-            const firstCmd = namespace.length ? cmdFirstWord.slice(namespace.length + 1) : cmdFirstWord
 
-            const href = hrefToAnchor + "#" + (exaliases[cmdFirstWord]
-                ? exaliases[cmdFirstWord].split(" ", 1)[0] : firstCmd.toLowerCase())
+            const target =
+                hrefToAnchor === location.href.split("#")[0]
+                    ? "_parent"
+                    : ` "_blank"`
+            const firstCmd = namespace.length
+                ? cmdFirstWord.slice(namespace.length + 1)
+                : cmdFirstWord
 
-            frag.appendChild(createTableRow(
-                {
-                    className: "Keyseq",
-                    children: [
-                        // createElement("span", { className: "KeyPressed", textContent: pressed, },),
-                        // createElement("span", { className: "KeyUnpressed", textContent: unpressed, },),
-                        pressedSpans.cloneNode(true), ...unpressedSpans
-                    ],
-                },
-                {
-                    className: "Command",
-                    children: [
-                        createElement("a", {
-                            textContent: cmdFirstWord,
-                            href,
-                            target,
+            const href =
+                hrefToAnchor +
+                "#" +
+                (exaliases[cmdFirstWord]
+                    ? exaliases[cmdFirstWord].split(" ", 1)[0]
+                    : firstCmd.toLowerCase())
+
+            const extraEls = []
+            if (cmdFirstWord === "hint" && cmdRest.startsWith(" -")) {
+                console.log("hint with arg:", cmdRest.split(" ", 2)[1])
+                const docstr = hintFlagsToHelpDescription(
+                    cmdRest.split("-", 2)[1],
+                )
+                if (docstr) {
+                    console.log("have docstring:", docstr)
+                    extraEls.push(
+                        createElement("span", {
+                            className: "Info",
+                            textContent: docstr,
                         }),
-                        createElement("span", { textContent: cmdRest })
-                    ]
-                },
-            ))
+                    )
+                    console.log(extraEls)
+                }
+            }
+
+            frag.appendChild(
+                createTableRow(
+                    {
+                        className: "Keyseq",
+                        children: [
+                            pressedSpans.cloneNode(true),
+                            ...unpressedSpans,
+                        ],
+                    },
+                    {
+                        className: "Command",
+                        children: [
+                            createElement("a", {
+                                textContent: cmdFirstWord,
+                                href,
+                                target,
+                            }),
+                            createElement("span", { textContent: cmdRest }),
+                            ...extraEls,
+                        ],
+                    },
+                ),
+            )
         })
     })
 
@@ -385,9 +603,9 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
     replaceTableChildren(frag)
 }
 
-addChangeListener("whichkey", configListener)
+addChangeListener("whichkey", whichkeyConfigListener)
 
-function configListener(_oldLevel, newLevel) {
+function whichkeyConfigListener(_oldLevel, newLevel) {
     setLevel(newLevel, false)
 }
 
@@ -416,7 +634,6 @@ function setLevel(newLevel, overrideConfig = false) {
         init()
     }
     if (overrideConfig && newLevel !== "toggle") {
-        removeChangeListener("whichkey", configListener)
+        removeChangeListener("whichkey", whichkeyConfigListener)
     }
 }
-
