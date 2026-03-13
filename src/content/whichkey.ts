@@ -15,19 +15,13 @@ import * as keyseq from "@src/lib/keyseq"
 import * as State from "@src/state"
 import { ownTabId } from "@src/lib/webext"
 import { getAsync, removeChangeListener } from "@src/lib/config"
-import {
-    DEFAULTS,
-    USERCONFIG,
-    mergeDeepCull,
-    addChangeListener,
-    get as confget,
-} from "@src/lib/config"
+import * as config from "@src/lib/config"
 import { theme } from "./styling"
 
 let whichkeyIframe: HTMLIFrameElement
-
-let level = "none"
-let toggleLevel = "multi"
+let level = "none" // none | multi | all
+let toggleLevel = "multi" // level to be set when :whichkey toggles it on
+let completions
 
 function init() {
     return createIframe()
@@ -49,7 +43,7 @@ getAsync("whichkey").then(show => {
     }
 })
 
-let completions
+// Currently hard-coding position/size which we'd certainly want to be customisable
 async function createIframe() {
     return new Promise((resolve, reject) => {
         const iframe = document.createElement("iframe")
@@ -60,22 +54,27 @@ async function createIframe() {
         iframe.style.height = "460px"
         iframe.style.border = "1px solid rgb(13 185 215)"
         iframe.style.borderRadius = "5px"
-        // maybe place it before cmdline when possible so it doesn't overlap
         iframe.style.zIndex = "2147483647"
+        ;(iframe.style as any).colorScheme = "light dark"
         iframe.style.display = level === "all" ? "" : "none"
 
+        // Made blank.html with the idea that it could be used for anything
         iframe.src = browser.runtime.getURL("static/blank.html")
         iframe.onload = () => {
             if (iframe.contentDocument) {
+                // We can inject our .css files without having to
+                // include <link>s (or <script>s) in the blank.html src
+                // so that's a nice way of styling a general purpose blank.html iframe
                 const csslink = document.createElement("link")
                 csslink.rel = "stylesheet"
                 csslink.href = browser.runtime.getURL("static/css/whichkey.css")
                 iframe.contentDocument.head.appendChild(csslink)
 
+                // Along with theme() for applying colour schemes
                 theme(iframe.contentDocument.documentElement)
-                iframe.contentDocument.documentElement.classList.add(
-                    "WhichKeyRoot",
-                )
+                iframe.contentDocument.documentElement.classList.add("WhichKeyRoot")
+                
+                // Displaying binds in a table seems good to me
                 const table = document.createElement("table")
                 table.className = "WhichKey"
                 iframe.contentDocument.body.appendChild(table)
@@ -83,7 +82,8 @@ async function createIframe() {
                 whichkeyIframe = iframe
 
                 // It would be nice to be able to scroll / filter the iframe with key presses
-                // but for now, if you click a link or something, return focus to the main window
+                // but for now, if you click a link (excmd binds will link to the help page) or something,
+                // return focus to the main window
                 iframe.contentWindow.addEventListener("focus", () =>
                     window.focus(),
                 )
@@ -92,6 +92,7 @@ async function createIframe() {
                 reject(iframe)
             }
         }
+        // Inserting before the cmdline so the cmdline should appear on top
         const cmdlineIframe = document.querySelector(
             `[src="${browser.runtime.getURL("static/commandline.html")}"]`,
         )
@@ -103,60 +104,93 @@ async function createIframe() {
     })
 }
 
-// We DON'T want to get nmaps in our vmaps and stuff
+// config.get() would give the entire keymap including inherited binds
+// config.getURL would probably be fine... still sorting out the inherits manually here anyway
+// this will give us the unique mode binds with "🕷🕷INHERITS🕷🕷" keys we can use
 function getUniqueMaps(mapName) {
-    const defUrl = DEFAULTS.subconfigs[window.location.href]?.[mapName] || {}
+    // Just trying to avoid config.getDeepProperty which would interfere with the inherits 
+    // function _getURL(conf, url, target) {
+    //     Object.keys(conf.subconfigs)
+    //         // Keep only the ones that have a match
+    //         .filter(
+    //             k =>
+    //                 url.match(k) &&
+    //                 getDeepProperty(conf.subconfigs[k], target) !==
+    //                     undefined,
+    //         )
+    //         // Sort them from lowest to highest priority, default to a priority of 10
+    //         .sort(
+    //             (k1, k2) =>
+    //                 (conf.subconfigs[k1].priority || 10) -
+    //                 (conf.subconfigs[k2].priority || 10),
+    //         )
+    //         // Merge their corresponding value if they're objects, otherwise return the last value
+    //         .reduce((acc, curKey) => {
+    //             const curVal = getDeepProperty(
+    //                 conf.subconfigs[curKey],
+    //                 target,
+    //             )
+    //             if (acc instanceof Object && curVal instanceof Object)
+    //                 return mergeDeep(acc, curVal)
+    //             return curVal
+    //         }, undefined as any)
+    // }
+    
+
+
+    Object.keys(config.DEFAULTS.subconfigs)
+    const defUrl = config.DEFAULTS.subconfigs[window.location.href]?.[mapName] || {}
     const usrUrl =
-        USERCONFIG.subconfigs?.[window.location.href]?.[mapName] || {}
-    const defult = DEFAULTS[mapName] || {}
-    const user = USERCONFIG[mapName] || {}
-    // priority should be... user URL -> defaultURL -> user -> default ?
+        config.USERCONFIG.subconfigs?.[window.location.href]?.[mapName] || {}
+    const defult = config.DEFAULTS[mapName] || {}
+    const user = config.USERCONFIG[mapName] || {}
+    // priority should be... user URL -> default URL -> user -> default ?
     // I think?
-    return mergeDeepCull(
-        mergeDeepCull(mergeDeepCull(defult, user), defUrl),
+    // It might be nice to indicate when it's an url bind actually...
+    return config.mergeDeepCull(
+        config.mergeDeepCull(config.mergeDeepCull(defult, user), defUrl),
         usrUrl,
     )
 }
 
-// Now we get keymaps and separate their 🕷🕷INHERITS🕷🕷 maps out
-// Then map their key sequences to a single bind-style key string
-// That's the important one, so it's what we'll cache
-// Changes to any map we've found will invalidate the cache
+// Caching the maps with strings instead of minimal keys as that's what's used to filter them
 // TODO: check if :bindurl triggers this callback, otherwise listen for "subconfigs" too
 let keystringsToCmdsCache = new Map()
 const keymapConfigListeners = new Set()
 function addKeymapConfigListener(mapName) {
     if (keymapConfigListeners.has(mapName)) return
     keymapConfigListeners.add(mapName)
-    addChangeListener(mapName, () => {
+    config.addChangeListener(mapName, () => {
         console.log("keystrings map cache cleared")
         keystringsToCmdsCache = new Map()
     })
 }
 
+// Pass a map name ("nmaps", "imaps", "inputmaps"...) and a PrintableKey-style string
+// to filter only the binds beginning with that string
 function getFilteredBinds(mapName, pressed = "") {
     return pressed === ""
         ? getBindsForMapName(mapName)
-        : getBindsForMapName(mapName).map(([name, keymap]) => [
+        : getBindsForMapName(mapName).map(({name, urlBinds, binds}) => ({
               name,
-              keymap.filter(([bind, _cmd]) =>
-                  bind.join("").startsWith(pressed),
-              ),
-          ])
+              binds: binds.filter(([bind, _cmd]) => bind.join("").startsWith(pressed)),
+              urlBinds: urlBinds.filter(([bind, _cmd]) => bind.join("").startsWith(pressed)),
+    }))
 }
 
-// Pass unwrapInherits result, that's an array of arrays: [mapName, keyMap]
+// Returns an array of arrays of map names with PrintableKey-style keymaps,
+// where each item beyond the first is inherited
+// eg [["vmaps", {...}], ["nmaps", {...}], ["browsermaps", {...}]]
+// which is a bit convoluted and tricky to unravel so should probably neaten it up
 function getBindsForMapName(mapName) {
-    console.log("getBindsForMapName", mapName)
     if (keystringsToCmdsCache.has(mapName)) {
-        console.log(mapName, "was cached!")
         return keystringsToCmdsCache.get(mapName)
     }
-    console.log(mapName, "was NOT cached")
-    const keystrMap = unwrapInherits(mapName).map(([name, keymap]) => [
+    const keystrMap = unwrapInherits(mapName).map(({name, urlBinds, binds}) => ({
         name,
-        keyseqsToStrings(keymap),
-    ])
+        urlBinds: keyseqsToStrings(urlBinds),
+        binds: keyseqsToStrings(binds),
+    }))
     keystringsToCmdsCache.set(mapName, keystrMap)
     return keystrMap
 }
@@ -164,33 +198,74 @@ function getBindsForMapName(mapName) {
 // Separate 🕷🕷INHERITS🕷🕷 from keymaps and return all maps in order of inheritance
 // Usually there's 0 or 1 🕷🕷INHERITS🕷🕷 keys, but a user could add some themselves
 // also adds browsermaps binds to the end of the list as they're always available
+// function unwrapInherits(mapName, includeBrowserMaps = true) {
+//     const mapped = new Set()
+//     const ordered = []
+//     let wantBrowserMaps = includeBrowserMaps
+//     let name = mapName
+//     while (name) {
+//         addKeymapConfigListener(name)
+//         mapped.add(name)
+//         const maps = getUniqueMaps(name)
+//         const nextname = maps["🕷🕷INHERITS🕷🕷"]
+//         if (nextname) delete maps["🕷🕷INHERITS🕷🕷"]
+//         const keymap = keyseq.mapstrMapToKeyMap(new Map(Object.entries(maps)))
+//         if (keymap.size) {
+//             ordered.push([name, keymap])
+//         }
+//         name = nextname
+//         if (mapped.has(name) || !name) {
+//             if (includeBrowserMaps) {
+//                 name = "browsermaps"
+//                 includeBrowserMaps = false
+//             } else break
+//         }
+//     }
+//     return ordered
+// }
+
 function unwrapInherits(mapName, includeBrowserMaps = true) {
-    const mapped = new Set()
-    const ordered = []
-    let wantBrowserMaps = includeBrowserMaps
-    let name = mapName
-    while (name) {
-        addKeymapConfigListener(name)
-        mapped.add(name)
-        const maps = getUniqueMaps(name)
-        const nextname = maps["🕷🕷INHERITS🕷🕷"]
-        if (nextname) delete maps["🕷🕷INHERITS🕷🕷"]
-        const keymap = keyseq.mapstrMapToKeyMap(new Map(Object.entries(maps)))
-        if (keymap.size) {
-            ordered.push([name, keymap])
-        }
-        name = nextname
-        if (mapped.has(name) || !name) {
-            if (includeBrowserMaps) {
-                name = "browsermaps"
-                includeBrowserMaps = false
-            } else break
+    let maps = [];
+    while (mapName) {
+        maps.push({
+            name: mapName,
+            urlBinds: config.getURL(window.location.href, [mapName]) || {},
+            binds: config.get(mapName),
+        });
+        const map = maps[maps.length - 1]
+		Object.keys(map.urlBinds).forEach(bind => delete map.binds[bind]);
+        mapName = map.binds["🕷🕷INHERITS🕷🕷"]
+        delete map.binds["🕷🕷INHERITS🕷🕷"]
+        if (!mapName && includeBrowserMaps) {
+            includeBrowserMaps = false
+            mapName = "browsermaps"
         }
     }
-    return ordered
+    for (let i = 0; i < maps.length - 1; ++i) {
+        maps[i].binds = keyseq.mapstrMapToKeyMap(new Map(
+            Object.entries(maps[i].binds).filter(([bind, cmd]) => maps[i + 1].binds[bind] !== cmd) as any)
+        )
+        maps[i].urlBinds = keyseq.mapstrMapToKeyMap(
+            new Map(Object.entries(maps[i].urlBinds).filter(([bind, cmd]) => maps[i + 1].urlBinds[bind] !== cmd) as any)
+        )
+    }
+
+    maps[maps.length - 1].urlBinds = keyseq.mapstrMapToKeyMap(
+        new Map(
+            Object.entries(maps[maps.length - 1].urlBinds
+        ))
+    )
+    maps[maps.length - 1].binds = keyseq.mapstrMapToKeyMap(
+        new Map(
+            Object.entries(maps[maps.length - 1].binds
+        ))
+    )
+
+    return maps;
 }
 
-// Now I think we can just filter with .startsWith
+// Convert MinimalKey arrays to PrintableKey arrays
+// this lets us filter them by our content state suffix
 function keyseqsToStrings(keymap) {
     return Array.from(keymap as Iterable<[any, any]>).map(
         ([keys, cmd]: [any, any]) => [
@@ -200,7 +275,18 @@ function keyseqsToStrings(keymap) {
     )
 }
 
-let excmdHelpDocFrag = null
+// Just exploring ideas
+// This lets us get strings from the help pages 
+// currently by fetch()ing that page - can we access that data otherwise?
+// (like we can get with "@src/.metadata.generated")
+let excmdHelpDocFrag = null // essentially storing all the elements of the excmds help page in here
+
+// transform is passed the top element of the excmd's help entry
+// which can be used to find text... like the text in the <li>s explaining what hint args do
+// I think what would be nicer is some config object that has some nice whichkey-friendly strings in it
+// You could use that to document binds or aliases
+// eg :composite and :js binds/aliases aren't necessarily self documenting
+// yes I do think that would be better... this was fun though
 async function queryExcmdHelp(
     excmd: string,
     transform: (HTMLElement) => any = el => el,
@@ -211,20 +297,23 @@ async function queryExcmdHelp(
         ).then(f => f.text())
         const template = document.createElement("template")
         template.innerHTML = html
+        // can now query excmdHelpDocFrag like it's the document in the help pages
         excmdHelpDocFrag = template.content
-        console.log("fetched help", excmdHelpDocFrag)
     }
 
+    // Ideally this element has all the bits we're after for the given excmd
     const section = excmdHelpDocFrag.querySelector(
         `[name='${excmd}']`,
     ).parentElement
-    console.log(excmd, "help", section)
-    const transformed = transform(section)
-    console.log("transformed!", transformed)
+
     return transform(section)
 }
 
+// Parse the list explaining each :hint arg and map the flags to their explanation
 let hintFlagsHelp: Map<string, string> = null
+// Pass a hint flag (eg "-b") and get that flag's explanation (ideally)
+// Not complete (won't work with :hint -qb for instance) and probably won't complete
+// Because I prefer the idea of a documentation config object I reckon
 function hintFlagsToHelpDescription(flag) {
     if (!hintFlagsHelp) {
         hintFlagsHelp = new Map()
@@ -239,6 +328,7 @@ function hintFlagsToHelpDescription(flag) {
                         .filter(text => text.startsWith("-"))
                         .map(text => {
                             let flagKey = text.split(" ", 1)[0].slice(1)
+                            // -J* and -q*
                             if (flagKey[1] === "*") {
                                 flagKey = flagKey.slice(0, 1)
                             }
@@ -250,19 +340,12 @@ function hintFlagsToHelpDescription(flag) {
                 ),
         ).then(map => (hintFlagsHelp = map))
     }
-    console.log(
-        "have hint flag?",
-        "'" + flag + "'",
-        hintFlagsHelp,
-        hintFlagsHelp.get(flag),
-    )
+
     return hintFlagsHelp.get(flag)
 }
 
 hintFlagsToHelpDescription("hint")
 
-// This takes up lots of space because I'm doing a bunch of document.createElement and inline styling
-// neaten those up and it'd be a lot nicer
 let stateChangeDebounceTimer = -1
 let debounceMs = 100
 function listen() {
@@ -275,6 +358,8 @@ function listen() {
     })
 }
 
+// Some HTML element helpers follow
+// I wouldn't be surprised if a nice library for this sort of thing is already imported
 function replaceTableChildren(newChildren: DocumentFragment) {
     completions.replaceChildren(newChildren)
     const rect = completions.getClientRects()[0]
@@ -293,8 +378,6 @@ function createTableHeader(text = "", subheader = true) {
     return headerThead
 }
 
-// Just making some functions to speed up element creation
-// I bet there's already a library here somewhere to do this
 function createTableRow(...cells) {
     return createElement("tr", {
         children: cells.map(cell => createTableCell(cell)),
@@ -317,16 +400,122 @@ function createElement(type, opts) {
     return el
 }
 
-// This is a bit large now isn't it
-async function onStateChanged(property, oldMode, oldValue, newValue) {
-    console.log(contentState, property, oldValue, newValue, "STATE CHANGE ")
-    if (level === "none") return
-    // if (property !== "mode" && property !== "suffix" && property !== "whichkey_extra") return
+// I've messed about with too much and am now confused
+// Have to pass the length of the "pressed" string now
+// Also we need to get exaliases within here
+// Maybe we should have most of this stuff in the cache ready to go?
+// Oh and I need to pass in pressedSpans
+// Yeah this needs a big tidy up
+function keystrMapsToElems(keystrMap, pressedLength = 0, pressedSpans = document.createDocumentFragment()) : HTMLElement[] {
+    const exaliases = config.get("exaliases")
+    return keystrMap.map(([keystrs, cmd]) => {
+        const unpressedSpans = keystrs
+            .slice(pressedLength)
+            .flatMap(str => [
+                createElement("span", {
+                    className: "KeyUnpressed",
+                    textContent: str,
+                }),
+                document.createElement("wbr"),
+            ])
 
+        const cmdFirstWord = (cmd as string).split(" ", 1)[0]
+        const cmdRest = (cmd as string).slice(cmdFirstWord.length)
+
+        let hrefToAnchor
+        const namespaceSplit = cmdFirstWord.split(".")
+        const namespace = namespaceSplit.length > 1 ? namespaceSplit[0] : ""
+        const urlPrefix = browser.runtime.getURL("static/docs/modules/_src_")
+        switch (namespace) {
+            case "hint":
+                hrefToAnchor = urlPrefix + "content_hinting_.html"
+                break
+            case "text":
+                hrefToAnchor = urlPrefix + "lib_editor_.html"
+                break
+            case "ex":
+                hrefToAnchor = urlPrefix + "commandline_frame_.html"
+                break
+            default:
+                hrefToAnchor = urlPrefix + "excmds_.html"
+        }
+
+        const target =
+            hrefToAnchor === location.href.split("#")[0]
+                ? `"_parent"`
+                : `"_blank"`
+        const firstCmd = namespace.length
+            ? cmdFirstWord.slice(namespace.length + 1)
+            : cmdFirstWord
+
+        const href =
+            hrefToAnchor +
+            "#" +
+            (exaliases[cmdFirstWord]
+                ? exaliases[cmdFirstWord].split(" ", 1)[0]
+                : firstCmd.toLowerCase())
+
+        // Also get help text for hint args
+        // will probably replace this with something less specific
+        // like customisable doc strings in a config object
+        const extraEls = []
+        if (cmdFirstWord === "hint" && cmdRest.startsWith(" -")) {
+            const docstr = hintFlagsToHelpDescription(
+                cmdRest.split("-", 2)[1],
+            )
+            if (docstr) {
+                extraEls.push(
+                    createElement("span", {
+                        className: "Info",
+                        textContent: " " + docstr,
+                    }),
+                )
+            }
+        }
+
+        return createTableRow(
+            {
+                className: "Keyseq",
+                children: [
+                    pressedSpans.cloneNode(true),
+                    ...unpressedSpans,
+                ],
+            },
+            {
+                className: "Command",
+                children: [
+                    createElement("a", {
+                        textContent: cmdFirstWord,
+                        href,
+                        target,
+                    }),
+                    createElement("span", { textContent: cmdRest }),
+                    ...extraEls,
+                ],
+            },
+        )     
+    })
+}
+
+// Update the popup when keys are pressed or mode changes
+// Currently I've hardcoded several specific cases
+// The main one being displaying keybinds for the current mode
+// The other two being markjump/markadd and quickmark, where existing marks are shown
+async function onStateChanged(property, oldMode, oldValue, newValue) {
+    if (level === "none") return
+
+    // Just grabbing straight from the contentState object rather than using the callback's args
+    // Is that alright? I'm certainly finding it easier
     const mode = contentState.mode
+
+    // currently whichkey_extra is only ever set by :gobble,
+    // to the name of the excmd :gobble will call when it's done
+    // (this is also a nice addition for the modeindicator which can show things like "gobble|markadd")
     const extra = contentState.whichkey_extra
 
     // Display existing marks and their urls & scroll locations
+    // Scroll locations are probably useless info... but you never know
+    // just gives us something to display in our fancy new whichkey box
     if (mode === "gobble" && (extra === "markadd" || extra === "markjump")) {
         const localMarks = await State.getAsync("localMarks")
         const globalMarks = await State.getAsync("globalMarks")
@@ -402,7 +591,7 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
         const frag = document.createDocumentFragment()
         ;(frag as any).replaceChildren(
             createTableHeader("Quickmark", false),
-            ...Object.entries(confget("nmaps"))
+            ...Object.entries(config.get("nmaps"))
                 .filter(
                     ([k, cmd]) =>
                         k.startsWith("go") &&
@@ -426,6 +615,7 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
     // We could have such displays be configurable mind you
     if (mode === "gobble") return
 
+    // The name of the keymap we'll use
     let mapsKey
     if (["normal", "insert", "visual"].includes(mode)) {
         mapsKey = mode[0] + "maps"
@@ -433,6 +623,7 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
         mapsKey = mode + "maps"
     }
 
+    // PrintableKey-style suffix, the key(s) that have been pressed so far
     const pressed = contentState.suffix || ""
 
     if (pressed === "" && level !== "all") {
@@ -440,42 +631,26 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
         return
     }
 
-    // const keymaps = [...unwrapInherits(mapsKey), ...unwrapInherits("browsermaps")]
-    //     .map(([name, keymap]) => [
-    //         name,
-    //         keyseqsToStrings(keymap)
-    //             .filter(([keystrs, _cmd]) => {
-    //                 return keystrs.join("").startsWith(pressed)
-    //             })
-    //         ]
-    //     )
-
     const keymaps = getFilteredBinds(mapsKey, pressed)
 
     const frag = document.createDocumentFragment()
 
     frag.appendChild(createTableHeader(mode + " mode " + pressed, false))
 
-    const exaliases = confget("exaliases")
+    // const exaliases = config.get("exaliases")
 
-    try {
-        let yikes = keymaps[0][1][0][0]
-    } catch (e) {
-        console.error(
-            "we tried to index a keymap when we shouldn't",
-            keymaps,
-            contentState,
-            property,
-            oldValue,
-            newValue,
-        )
-    }
+    console.log(keymaps)
 
-    const firstBind = keymaps[0][1][0][0]
+    const firstBind = keymaps.find(km => km.binds.length > 0 || km.urlBinds.length > 0)
+
+    if (!firstBind) return
+
+    console.log("FIRST BIND", firstBind)
+    const firstBindKeystrs = firstBind.binds.length > 0 ? firstBind.binds[0][0] : firstBind.urlBinds[0][0]
     let toSlice = pressed.length
     let unpressedStart = 0
     while (toSlice > 0) {
-        toSlice -= firstBind[unpressedStart].length
+        toSlice -= firstBindKeystrs[unpressedStart].length
         ++unpressedStart
     }
     const pressedSpans: any = document.createDocumentFragment()
@@ -483,7 +658,7 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
     // It's nicer if we don't let multi-char binds break
     // Keys/modifier combos like <AS-Backspace> for example
     pressedSpans.replaceChildren(
-        ...firstBind
+        ...firstBindKeystrs
             .slice(0, unpressedStart)
             .flatMap(str => [
                 createElement("span", {
@@ -494,116 +669,34 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
             ]),
     )
 
-    keymaps.forEach(([name, keymap]) => {
-        if (keymap.length === 0) return
+    keymaps.forEach(({ name, urlBinds, binds }) => {
+        if (binds.length === 0 && urlBinds.length === 0) return
 
-        frag.appendChild(
-            createTableHeader(
-                name === mapsKey ? name : "inerited: " + name,
-                true,
-            ),
-        )
-
-        // Separate pressed keys & unpressed keys
-        // Get the first word for bound commands and add a link to its entry in the help/docs
-        keymap.forEach(async ([keystrs, cmd]) => {
-            const unpressedSpans = keystrs
-                .slice(unpressedStart)
-                .flatMap(str => [
-                    createElement("span", {
-                        className: "KeyUnpressed",
-                        textContent: str,
-                    }),
-                    document.createElement("wbr"),
-                ])
-
-            const cmdFirstWord = (cmd as string).split(" ", 1)[0]
-            const cmdRest = (cmd as string).slice(cmdFirstWord.length)
-
-            let hrefToAnchor
-            const namespaceSplit = cmdFirstWord.split(".")
-            const namespace = namespaceSplit.length > 1 ? namespaceSplit[0] : ""
-            const urlPrefix = browser.runtime.getURL(
-                "static/docs/modules/_src_",
-            )
-            switch (namespace) {
-                case "hint":
-                    hrefToAnchor = urlPrefix + "content_hinting_.html"
-                    break
-                case "text":
-                    hrefToAnchor = urlPrefix + "lib_editor_.html"
-                    break
-                case "ex":
-                    hrefToAnchor = urlPrefix + "commandline_frame_.html"
-                    break
-                default:
-                    hrefToAnchor = urlPrefix + "excmds_.html"
-            }
-
-            const target =
-                hrefToAnchor === location.href.split("#")[0]
-                    ? "_parent"
-                    : ` "_blank"`
-            const firstCmd = namespace.length
-                ? cmdFirstWord.slice(namespace.length + 1)
-                : cmdFirstWord
-
-            const href =
-                hrefToAnchor +
-                "#" +
-                (exaliases[cmdFirstWord]
-                    ? exaliases[cmdFirstWord].split(" ", 1)[0]
-                    : firstCmd.toLowerCase())
-
-            const extraEls = []
-            if (cmdFirstWord === "hint" && cmdRest.startsWith(" -")) {
-                console.log("hint with arg:", cmdRest.split(" ", 2)[1])
-                const docstr = hintFlagsToHelpDescription(
-                    cmdRest.split("-", 2)[1],
-                )
-                if (docstr) {
-                    console.log("have docstring:", docstr)
-                    extraEls.push(
-                        createElement("span", {
-                            className: "Info",
-                            textContent: docstr,
-                        }),
-                    )
-                    console.log(extraEls)
-                }
-            }
-
+        if (urlBinds.length > 0) {
             frag.appendChild(
-                createTableRow(
-                    {
-                        className: "Keyseq",
-                        children: [
-                            pressedSpans.cloneNode(true),
-                            ...unpressedSpans,
-                        ],
-                    },
-                    {
-                        className: "Command",
-                        children: [
-                            createElement("a", {
-                                textContent: cmdFirstWord,
-                                href,
-                                target,
-                            }),
-                            createElement("span", { textContent: cmdRest }),
-                            ...extraEls,
-                        ],
-                    },
+                createTableHeader(
+                    "url " + (name === mapsKey ? name : "inerited: " + name),
+                    true,
                 ),
             )
-        })
+            frag.append(...keystrMapsToElems(urlBinds, unpressedStart, pressedSpans))
+        }
+        if (binds.length > 0) {
+            frag.appendChild(
+                createTableHeader(
+                    name === mapsKey ? name : "inerited: " + name,
+                    true,
+                ),
+            )
+            frag.append(...keystrMapsToElems(binds, unpressedStart, pressedSpans))
+        }
     })
 
     whichkeyIframe.style.display = ""
     replaceTableChildren(frag)
 }
 
-addChangeListener("whichkey", whichkeyConfigListener)
+config.addChangeListener("whichkey", whichkeyConfigListener)
 
 function whichkeyConfigListener(_oldLevel, newLevel) {
     setLevel(newLevel, false)
@@ -614,8 +707,6 @@ export function showWhichKey(howMuch) {
 }
 
 function setLevel(newLevel, overrideConfig = false) {
-    console.log("oldlevel ", level)
-    // level = newLevel
     if (newLevel === "toggle") {
         if (level === "none") {
             level = toggleLevel
@@ -626,7 +717,6 @@ function setLevel(newLevel, overrideConfig = false) {
         if (newLevel !== "none") toggleLevel = newLevel
         level = newLevel
     }
-    console.log("new level", level, "toggle?", toggleLevel)
     if (whichkeyIframe) {
         if (level === "none") whichkeyIframe.style.display = "none"
         if (level === "all") whichkeyIframe.style.display = ""
