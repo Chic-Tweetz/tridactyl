@@ -381,10 +381,16 @@ config.getAsync("superignore").then(async TRI_DISABLE => {
                         mode = oldMode
                     }
             }*/
-                const mode =
-                    contentState.mode === "gobble"
-                        ? "gobble|" + contentState.whichkey_extra
-                        : contentState.mode
+                let mode
+                if (contentState.pseudo_mode !== "") {
+                    if (contentState.mode === "gobble") {
+                        mode = "gobble|" + contentState.pseudo_mode
+                    } else {
+                        mode = contentState.pseudo_mode
+                    }
+                } else {
+                    mode = contentState.mode
+                }
                 const suffix = contentState.suffix
                 /* 
                 let suffix
@@ -396,7 +402,7 @@ config.getAsync("superignore").then(async TRI_DISABLE => {
                 }
                 if (property === "suffix") {
                     suffix = newValue
-                } else if (property === "whichkey_extra") {
+                } else if (property === "pseudo_mode") {
                     mode = newValue === "" ? oldMode : oldMode + "|" + newValue
                     suffix = ""
                 } */

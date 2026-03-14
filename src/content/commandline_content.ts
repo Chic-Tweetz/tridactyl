@@ -3,6 +3,7 @@
 import Logger from "@src/lib/logging"
 import * as config from "@src/lib/config"
 import { theme } from "@src/content/styling"
+import { contentState } from "@src/content/state_content"
 const logger = new Logger("messaging")
 const cmdline_logger = new Logger("cmdline")
 
@@ -30,6 +31,17 @@ export function makeIframe() {
     )
     cmdline_iframe.setAttribute("id", "cmdline_iframe")
     cmdline_iframe.setAttribute("loading", "lazy")
+    cmdline_iframe.addEventListener("load", () => {
+        try {
+            const win = cmdline_iframe.contentWindow
+            win.addEventListener("focus", () => {
+                contentState.pseudo_mode = "ex"
+            })
+            win.addEventListener("blur", () => {
+                if (contentState.pseudo_mode === "ex") contentState.pseudo_mode = ""
+            })
+        } catch (e) {}
+    })
 }
 makeIframe()
 

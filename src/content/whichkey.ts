@@ -48,9 +48,9 @@ async function createIframe() {
     return new Promise((resolve, reject) => {
         const iframe = document.createElement("iframe")
         iframe.style.position = "fixed"
-        iframe.style.right = "40px"
+        iframe.style.left = "10%"
         iframe.style.bottom = "40px"
-        iframe.style.width = "250px"
+        iframe.style.width = "80%"
         iframe.style.height = "460px"
         iframe.style.border = "1px solid rgb(13 185 215)"
         iframe.style.borderRadius = "5px"
@@ -93,7 +93,7 @@ async function createIframe() {
             }
         }
         // Inserting before the cmdline so the cmdline should appear on top
-        const cmdlineIframe = document.querySelector(
+        const cmdlineIframe: HTMLIFrameElement = document.querySelector(
             `[src="${browser.runtime.getURL("static/commandline.html")}"]`,
         )
         if (cmdlineIframe) {
@@ -108,36 +108,6 @@ async function createIframe() {
 // config.getURL would probably be fine... still sorting out the inherits manually here anyway
 // this will give us the unique mode binds with "🕷🕷INHERITS🕷🕷" keys we can use
 function getUniqueMaps(mapName) {
-    // Just trying to avoid config.getDeepProperty which would interfere with the inherits 
-    // function _getURL(conf, url, target) {
-    //     Object.keys(conf.subconfigs)
-    //         // Keep only the ones that have a match
-    //         .filter(
-    //             k =>
-    //                 url.match(k) &&
-    //                 getDeepProperty(conf.subconfigs[k], target) !==
-    //                     undefined,
-    //         )
-    //         // Sort them from lowest to highest priority, default to a priority of 10
-    //         .sort(
-    //             (k1, k2) =>
-    //                 (conf.subconfigs[k1].priority || 10) -
-    //                 (conf.subconfigs[k2].priority || 10),
-    //         )
-    //         // Merge their corresponding value if they're objects, otherwise return the last value
-    //         .reduce((acc, curKey) => {
-    //             const curVal = getDeepProperty(
-    //                 conf.subconfigs[curKey],
-    //                 target,
-    //             )
-    //             if (acc instanceof Object && curVal instanceof Object)
-    //                 return mergeDeep(acc, curVal)
-    //             return curVal
-    //         }, undefined as any)
-    // }
-    
-
-
     Object.keys(config.DEFAULTS.subconfigs)
     const defUrl = config.DEFAULTS.subconfigs[window.location.href]?.[mapName] || {}
     const usrUrl =
@@ -153,8 +123,7 @@ function getUniqueMaps(mapName) {
     )
 }
 
-// Caching the maps with strings instead of minimal keys as that's what's used to filter them
-// TODO: check if :bindurl triggers this callback, otherwise listen for "subconfigs" too
+// Invalidate cache when a key map changes
 let keystringsToCmdsCache = new Map()
 const keymapConfigListeners = new Set()
 function addKeymapConfigListener(mapName) {
@@ -163,6 +132,20 @@ function addKeymapConfigListener(mapName) {
     config.addChangeListener(mapName, () => {
         console.log("keystrings map cache cleared")
         keystringsToCmdsCache = new Map()
+        if (whichkeyIframe.style.display !== "none")
+            onStateChanged()
+    })
+}
+
+function addBindUrlListener() {
+    config.addChangeListener("subconfigs", (_oldValue, newValue) => {
+        const affectsThisTab = !Object.keys(newValue).every(url => !url.match(window.location.href))
+        if (affectsThisTab) {
+            console.log("subconfigs changed, scrapping cache")
+            keystringsToCmdsCache = new Map()
+            if (whichkeyIframe.style.display !== "none")
+                onStateChanged()
+        }
     })
 }
 
@@ -195,35 +178,12 @@ function getBindsForMapName(mapName) {
     return keystrMap
 }
 
-// Separate 🕷🕷INHERITS🕷🕷 from keymaps and return all maps in order of inheritance
-// Usually there's 0 or 1 🕷🕷INHERITS🕷🕷 keys, but a user could add some themselves
-// also adds browsermaps binds to the end of the list as they're always available
-// function unwrapInherits(mapName, includeBrowserMaps = true) {
-//     const mapped = new Set()
-//     const ordered = []
-//     let wantBrowserMaps = includeBrowserMaps
-//     let name = mapName
-//     while (name) {
-//         addKeymapConfigListener(name)
-//         mapped.add(name)
-//         const maps = getUniqueMaps(name)
-//         const nextname = maps["🕷🕷INHERITS🕷🕷"]
-//         if (nextname) delete maps["🕷🕷INHERITS🕷🕷"]
-//         const keymap = keyseq.mapstrMapToKeyMap(new Map(Object.entries(maps)))
-//         if (keymap.size) {
-//             ordered.push([name, keymap])
-//         }
-//         name = nextname
-//         if (mapped.has(name) || !name) {
-//             if (includeBrowserMaps) {
-//                 name = "browsermaps"
-//                 includeBrowserMaps = false
-//             } else break
-//         }
-//     }
-//     return ordered
-// }
-
+// Get keymaps, but separate out inherited binds (eg vmaps inherits nmaps)
+// and separate url binds too, to return an array of objects the form
+// [{ name, urlBinds, binds }...]
+// where "name" is the map name in order of inherits found, eg for vmaps:
+// [{ name: "vmaps", urlBinds: {...}, binds: {...}, { name: "nmaps", binds: {...}, urlBinds: {...} },]
+// by default, browsermaps is added to the end of any array as they're available in any mode
 function unwrapInherits(mapName, includeBrowserMaps = true) {
     let maps = [];
     while (mapName) {
@@ -234,8 +194,11 @@ function unwrapInherits(mapName, includeBrowserMaps = true) {
         });
         const map = maps[maps.length - 1]
 		Object.keys(map.urlBinds).forEach(bind => delete map.binds[bind]);
+
+        addKeymapConfigListener(mapName)
         mapName = map.binds["🕷🕷INHERITS🕷🕷"]
         delete map.binds["🕷🕷INHERITS🕷🕷"]
+
         if (!mapName && includeBrowserMaps) {
             includeBrowserMaps = false
             mapName = "browsermaps"
@@ -356,6 +319,7 @@ function listen() {
             debounceMs,
         )
     })
+    addBindUrlListener()
 }
 
 // Some HTML element helpers follow
@@ -363,7 +327,7 @@ function listen() {
 function replaceTableChildren(newChildren: DocumentFragment) {
     completions.replaceChildren(newChildren)
     const rect = completions.getClientRects()[0]
-    whichkeyIframe.style.width = Math.max(Math.min(rect.width, 350), 250) + "px"
+    // whichkeyIframe.style.width = Math.max(Math.min(rect.width, 350), 250) + "px"
 }
 
 function createTableHeader(text = "", subheader = true) {
@@ -501,17 +465,17 @@ function keystrMapsToElems(keystrMap, pressedLength = 0, pressedSpans = document
 // Currently I've hardcoded several specific cases
 // The main one being displaying keybinds for the current mode
 // The other two being markjump/markadd and quickmark, where existing marks are shown
-async function onStateChanged(property, oldMode, oldValue, newValue) {
+async function onStateChanged(property?, oldMode?, oldValue?, newValue?) {
     if (level === "none") return
 
     // Just grabbing straight from the contentState object rather than using the callback's args
     // Is that alright? I'm certainly finding it easier
-    const mode = contentState.mode
+    let mode: string = contentState.mode // just gonna see what this does for me...
 
-    // currently whichkey_extra is only ever set by :gobble,
+    // currently pseudo_mode is only ever set by :gobble,
     // to the name of the excmd :gobble will call when it's done
     // (this is also a nice addition for the modeindicator which can show things like "gobble|markadd")
-    const extra = contentState.whichkey_extra
+    const extra = contentState.pseudo_mode
 
     // Display existing marks and their urls & scroll locations
     // Scroll locations are probably useless info... but you never know
@@ -614,6 +578,8 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
     // We have no other special gobble displays
     // We could have such displays be configurable mind you
     if (mode === "gobble") return
+    if (extra && property !== "mode") mode = extra
+    // if (extra !== "") mode = extra
 
     // The name of the keymap we'll use
     let mapsKey
@@ -635,8 +601,6 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
 
     const frag = document.createDocumentFragment()
 
-    frag.appendChild(createTableHeader(mode + " mode " + pressed, false))
-
     // const exaliases = config.get("exaliases")
 
     console.log(keymaps)
@@ -655,8 +619,8 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
     }
     const pressedSpans: any = document.createDocumentFragment()
 
-    // It's nicer if we don't let multi-char binds break
-    // Keys/modifier combos like <AS-Backspace> for example
+    // It's nicer if we don't split multi-char over multiple lines
+    // as in for long keys/modifier combos like <AS-Backspace>
     pressedSpans.replaceChildren(
         ...firstBindKeystrs
             .slice(0, unpressedStart)
@@ -668,6 +632,18 @@ async function onStateChanged(property, oldMode, oldValue, newValue) {
                 document.createElement("wbr"),
             ]),
     )
+
+    // I don't like the "pretty" symbols after all
+    // frag.appendChild(
+    //     createTableHeader(mode + " mode " + 
+    //         Array.from(pressedSpans.children)
+    //             .map(span => prettyPrint((span as HTMLElement).textContent))
+    //             .join("")
+    //         , false
+    //     )
+    // )
+
+    frag.appendChild(createTableHeader(mode + " mode " + pressed, false))
 
     keymaps.forEach(({ name, urlBinds, binds }) => {
         if (binds.length === 0 && urlBinds.length === 0) return
@@ -726,4 +702,26 @@ function setLevel(newLevel, overrideConfig = false) {
     if (overrideConfig && newLevel !== "toggle") {
         removeChangeListener("whichkey", whichkeyConfigListener)
     }
+}
+
+// felt cute might use this in the header row like "normal mode ␣" idk
+function prettyPrint(angledString) {
+    if (!angledString.startsWith("<") || !angledString.endsWith(">")) return angledString
+    if (angledString.indexOf("-") === -1) angledString = angledString.slice(1, angledString.length - 1)
+    const swaps = [
+        ["Space", "␣"],
+        ["Enter", "⏎"],
+        ["ArrowUp", "↑"],
+        ["ArrowDown", "↓"],
+        ["ArrowLeft", "←"],
+        ["ArrowRight", "→"],
+        ["Backspace", "⌫"],
+        ["Delete", "␡"],
+        ["Escape", "⎋"],
+        ["Tab", "↹"],
+    ]
+    for (const [long, short] of swaps) {
+        if (angledString.includes(long)) return angledString.replace(long, short)
+    }
+    return angledString
 }

@@ -28,18 +28,20 @@ export function init(
         modeState.numKeysOrTerminator = canonicaliseMapstr(numKeysOrTerminator)
     modeState.endCommand = endCommand
     modeState.args = args.join(" ")
-    contentState.whichkey_extra = endCommand
+    contentState.pseudo_mode = endCommand
 }
 
 /** Reset state. */
 function reset() {
     modeState = undefined
+    contentState.pseudo_mode = ""
     contentState.mode = "normal"
 }
 
 /** Receive keypress. If applicable, execute a command. */
 export function parser(keys: MinimalKey[]) {
     function exec() {
+        contentState.pseudo_mode = ""
         const exstr = [
             modeState.endCommand,
             modeState.keyCombination,

@@ -23,7 +23,7 @@ class ContentState {
     group = ""
     current_cmdline = ""
     cmdline_filter = ""
-    whichkey_extra = ""
+    pseudo_mode = ""
 }
 
 export type ContentStateProperty =
@@ -33,7 +33,7 @@ export type ContentStateProperty =
     | "suffix"
     | "typedKeys"
     | "group"
-    | "whichkey_extra"
+    | "pseudo_mode"
 
 export type ContentStateChangedCallback = (
     property: ContentStateProperty,
