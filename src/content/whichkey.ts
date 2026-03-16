@@ -22,14 +22,10 @@ let whichkeyIframe: HTMLIFrameElement
 let level = "none" // none | multi | all
 let toggleLevel = "multi" // level to be set when :whichkey toggles it on
 let completions
-
-function init() {
-    return createIframe()
-        .then(() => listen())
-        .catch(() => {
-            console.error("couldn't create whichkey iframe")
-        })
-}
+let keystringsToCmdsCache = new Map()
+const keymapConfigListeners = new Set()
+let stateChangeDebounceTimer = -1
+let debounceMs = 100
 
 getAsync("whichkey").then(show => {
     if (show !== "none") {
@@ -43,6 +39,14 @@ getAsync("whichkey").then(show => {
     }
 })
 
+function init() {
+    return createIframe()
+        .then(() => listen())
+        .catch(() => {
+            console.error("couldn't create whichkey iframe")
+        })
+}
+
 // Currently hard-coding position/size which we'd certainly want to be customisable
 async function createIframe() {
     return new Promise((resolve, reject) => {
@@ -55,7 +59,7 @@ async function createIframe() {
         iframe.style.border = "1px solid rgb(13 185 215)"
         iframe.style.borderRadius = "5px"
         iframe.style.zIndex = "2147483647"
-        ;(iframe.style as any).colorScheme = "light dark"
+        ;(iframe.style as any).colorScheme = "light dark" // Allow transparency
         iframe.style.display = level === "all" ? "" : "none"
 
         // Made blank.html with the idea that it could be used for anything
@@ -104,28 +108,19 @@ async function createIframe() {
     })
 }
 
-// config.get() would give the entire keymap including inherited binds
-// config.getURL would probably be fine... still sorting out the inherits manually here anyway
-// this will give us the unique mode binds with "🕷🕷INHERITS🕷🕷" keys we can use
-function getUniqueMaps(mapName) {
-    Object.keys(config.DEFAULTS.subconfigs)
-    const defUrl = config.DEFAULTS.subconfigs[window.location.href]?.[mapName] || {}
-    const usrUrl =
-        config.USERCONFIG.subconfigs?.[window.location.href]?.[mapName] || {}
-    const defult = config.DEFAULTS[mapName] || {}
-    const user = config.USERCONFIG[mapName] || {}
-    // priority should be... user URL -> default URL -> user -> default ?
-    // I think?
-    // It might be nice to indicate when it's an url bind actually...
-    return config.mergeDeepCull(
-        config.mergeDeepCull(config.mergeDeepCull(defult, user), defUrl),
-        usrUrl,
-    )
+// Update whichkey display after keypresses
+function listen() {
+    addContentStateChangedListener((...args) => {
+        clearTimeout(stateChangeDebounceTimer)
+        stateChangeDebounceTimer = setTimeout(
+            () => onStateChanged(...args),
+            debounceMs,
+        )
+    })
+    addBindUrlListener()
 }
 
 // Invalidate cache when a key map changes
-let keystringsToCmdsCache = new Map()
-const keymapConfigListeners = new Set()
 function addKeymapConfigListener(mapName) {
     if (keymapConfigListeners.has(mapName)) return
     keymapConfigListeners.add(mapName)
@@ -137,6 +132,7 @@ function addKeymapConfigListener(mapName) {
     })
 }
 
+// Invalidate cache after :bindurl if it affects the current url
 function addBindUrlListener() {
     config.addChangeListener("subconfigs", (_oldValue, newValue) => {
         const affectsThisTab = !Object.keys(newValue).every(url => !url.match(window.location.href))
@@ -204,6 +200,8 @@ function unwrapInherits(mapName, includeBrowserMaps = true) {
             mapName = "browsermaps"
         }
     }
+
+    // Remove duplicates from inherited binds and convert config objects to KeyMaps
     for (let i = 0; i < maps.length - 1; ++i) {
         maps[i].binds = keyseq.mapstrMapToKeyMap(new Map(
             Object.entries(maps[i].binds).filter(([bind, cmd]) => maps[i + 1].binds[bind] !== cmd) as any)
@@ -212,7 +210,6 @@ function unwrapInherits(mapName, includeBrowserMaps = true) {
             new Map(Object.entries(maps[i].urlBinds).filter(([bind, cmd]) => maps[i + 1].urlBinds[bind] !== cmd) as any)
         )
     }
-
     maps[maps.length - 1].urlBinds = keyseq.mapstrMapToKeyMap(
         new Map(
             Object.entries(maps[maps.length - 1].urlBinds
@@ -309,18 +306,6 @@ function hintFlagsToHelpDescription(flag) {
 
 hintFlagsToHelpDescription("hint")
 
-let stateChangeDebounceTimer = -1
-let debounceMs = 100
-function listen() {
-    addContentStateChangedListener((...args) => {
-        clearTimeout(stateChangeDebounceTimer)
-        stateChangeDebounceTimer = setTimeout(
-            () => onStateChanged(...args),
-            debounceMs,
-        )
-    })
-    addBindUrlListener()
-}
 
 // Some HTML element helpers follow
 // I wouldn't be surprised if a nice library for this sort of thing is already imported
@@ -364,14 +349,17 @@ function createElement(type, opts) {
     return el
 }
 
-// I've messed about with too much and am now confused
-// Have to pass the length of the "pressed" string now
-// Also we need to get exaliases within here
-// Maybe we should have most of this stuff in the cache ready to go?
-// Oh and I need to pass in pressedSpans
-// Yeah this needs a big tidy up
-function keystrMapsToElems(keystrMap, pressedLength = 0, pressedSpans = document.createDocumentFragment()) : HTMLElement[] {
+// This could use some tidying up now
+// Reconsider how we get all the strings we want (keymaps, "docs" config, ... )
+// As well as the work we do in here - the excmd help url, strings per span...
+// I suspect a lot of that can be cached along with the keymaps
+// Then this function should just convert strings we've already built to elements
+function keystrMapsToElems(keystrMap, pressedLength = 0, pressedSpans = document.createDocumentFragment(), mapName: "nmaps") : HTMLElement[] {
     const exaliases = config.get("exaliases")
+
+    // TODO: if you keep this "docs" config stuff, cache it with the rest of the keymap stuff
+    const docs = config.get("docs")
+
     return keystrMap.map(([keystrs, cmd]) => {
         const unpressedSpans = keystrs
             .slice(pressedLength)
@@ -431,10 +419,48 @@ function keystrMapsToElems(keystrMap, pressedLength = 0, pressedSpans = document
                 extraEls.push(
                     createElement("span", {
                         className: "Info",
-                        textContent: " " + docstr,
+                        textContent: " " + docstr + " ",
                     }),
                 )
             }
+        }
+
+        // just real quick here for checkin
+        // yeah i quite like it actually
+        // maybe worth doing well
+        if (docs["excmds"]?.[cmdFirstWord]) {
+            // no args eg :hint
+            // would be nice to have a way to only display this string if there are explicitly no args
+            if (typeof docs["excmds"][cmdFirstWord] === "string") {
+                extraEls.push(
+                    createElement("span", {
+                        className: "Info",
+                        textContent: " " + docs["excmds"][cmdFirstWord] + " ",
+                    }),
+                )
+            } else {
+                // args eg :hint -qb
+                for (const args in docs["excmds"][cmdFirstWord]) {
+                    if (RegExp(args).test(cmd)) {
+                        extraEls.push(
+                            createElement("span", {
+                                className: "Info",
+                                textContent: " " + docs["excmds"][cmdFirstWord][args] + " ",
+                            }),
+                        )
+                    }
+                }
+            }
+        }
+        // would have to ensure binds and docs' binds are formatted the same
+        // mainly(?) the order of modifiers in bracket expressions <AS-UpArrow> and the like
+        if (docs[mapName]?.[keystrs.join("")]) {
+            extraEls.push(
+                createElement("span", {
+                    className: "Info",
+                    textContent: " " + docs[mapName][keystrs.join("")] + " ",
+                }),
+            )
         }
 
         return createTableRow(
@@ -448,13 +474,13 @@ function keystrMapsToElems(keystrMap, pressedLength = 0, pressedSpans = document
             {
                 className: "Command",
                 children: [
+                    ...extraEls,
                     createElement("a", {
                         textContent: cmdFirstWord,
                         href,
                         target,
                     }),
                     createElement("span", { textContent: cmdRest }),
-                    ...extraEls,
                 ],
             },
         )     
@@ -506,7 +532,7 @@ async function onStateChanged(property?, oldMode?, oldValue?, newValue?) {
                     row.appendChild(
                         createTableCell({
                             className: "Info",
-                            textContent: "beforeMark.url",
+                            textContent: beforeMark.url,
                         }),
                     )
                 }
@@ -603,13 +629,10 @@ async function onStateChanged(property?, oldMode?, oldValue?, newValue?) {
 
     // const exaliases = config.get("exaliases")
 
-    console.log(keymaps)
-
     const firstBind = keymaps.find(km => km.binds.length > 0 || km.urlBinds.length > 0)
 
     if (!firstBind) return
 
-    console.log("FIRST BIND", firstBind)
     const firstBindKeystrs = firstBind.binds.length > 0 ? firstBind.binds[0][0] : firstBind.urlBinds[0][0]
     let toSlice = pressed.length
     let unpressedStart = 0
@@ -643,7 +666,8 @@ async function onStateChanged(property?, oldMode?, oldValue?, newValue?) {
     //     )
     // )
 
-    frag.appendChild(createTableHeader(mode + " mode " + pressed, false))
+    const header = config.get("docs").headings[mode]?.[pressed] || mode + " mode " + pressed
+    frag.appendChild(createTableHeader(header, false))
 
     keymaps.forEach(({ name, urlBinds, binds }) => {
         if (binds.length === 0 && urlBinds.length === 0) return
@@ -655,7 +679,7 @@ async function onStateChanged(property?, oldMode?, oldValue?, newValue?) {
                     true,
                 ),
             )
-            frag.append(...keystrMapsToElems(urlBinds, unpressedStart, pressedSpans))
+            frag.append(...keystrMapsToElems(urlBinds, unpressedStart, pressedSpans, name))
         }
         if (binds.length > 0) {
             frag.appendChild(
@@ -664,7 +688,7 @@ async function onStateChanged(property?, oldMode?, oldValue?, newValue?) {
                     true,
                 ),
             )
-            frag.append(...keystrMapsToElems(binds, unpressedStart, pressedSpans))
+            frag.append(...keystrMapsToElems(binds, unpressedStart, pressedSpans, name))
         }
     })
 

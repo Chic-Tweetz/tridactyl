@@ -1404,6 +1404,55 @@ export class default_config {
      * Set to "multi" to show the popup for multi-key binds or all to display it permanently.
      */
     whichkey: "all" | "multi" | "none" = "all"
+
+    /**
+     * Docs to serve as an explanation for binds or commands.
+     * Displayed in the whichkey popup.
+     * Not entirely sure this is worth it.
+     * Might be able to use the excmds part for custom cmdline docs
+     * like for non-obvious :composite or :js commands
+     * thinking about the excmds part... don't really want spaces in config keys soo
+     * excmds will have to be subobjects instead
+     * where you can add your patterns for command args
+     * perhaps if there was a unified excmd arg parser this would be simpler
+     * anyway let's just see if this has legs
+     * I quite like it actually...
+     * how about whichkey headings depending on the prefix...
+     */
+    docs = {
+        vmaps: {
+            w: "start of next [w]ord",
+            e: "[e]nd of next word",
+        },
+        excmds: {
+            hint: {
+                "-q": "[q]uick",
+                "-\\S*b": "[b]ackground tab",
+                "-\\S*i": "view [i]mage",
+                "-\\S*I": "view [I]mage in new tab",
+                "-\\S*k": "[k]ill irreversibly",
+                "-\\S*K": "[K]ill (restore with elemenunhide)",
+                "-\\S*y": "[y]ank link",
+                "-\\S*Y": "[Y]ank image url",
+                "-\\S*p": "yank text",
+                "-\\S*P": "yank title/alt text",
+                "-\\S*r": "[r]ead with text-to-speech",
+                "-\\S*s": "[s]ave",
+                "-\\S*S": "[S]ave image",
+                "-\\S*a": "save [a]s",
+                "-\\S*A": "Save image [a]s",
+            },
+        },
+        headings: {
+            normal: {
+                g: "goto",
+                gx: "close tabs",
+                ";": "hint",
+                ";g": "quick hints",
+                y: "yank",
+            }
+        },
+    }
 }
 
 const platform_defaults = {
