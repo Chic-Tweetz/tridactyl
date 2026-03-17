@@ -47,13 +47,118 @@ const modifiers = new Map([
     ["M", "metaKey"],
     ["S", "shiftKey"],
 ])
+
+// MacOS alted chars to base. Letter, number & punctuation keys and their shifted versions.
+const altChars = {
+    å: "a",
+    "∫": "b",
+    ç: "c",
+    "∂": "d",
+    ƒ: "f",
+    "©": "g",
+    "˙": "h",
+    "∆": "j",
+    "˚": "k",
+    "¬": "l",
+    µ: "m",
+    ø: "o",
+    π: "p",
+    œ: "q",
+    "®": "r",
+    ß: "s",
+    "†": "t",
+    "√": "v",
+    "∑": "w",
+    "≈": "x",
+    "¥": "y",
+    Ω: "z",
+    º: "0",
+    "¡": "1",
+    "€": "2",
+    "#": "3",
+    "¢": "4",
+    "∞": "5",
+    "§": "6",
+    "¶": "7",
+    "•": "8",
+    ª: "9",
+    Å: "A",
+    ı: "B",
+    Ç: "C",
+    Î: "D",
+    "‰": "E",
+    Ï: "F",
+    Ì: "G",
+    Ó: "H",
+    È: "I",
+    Ô: "J",
+    "": "K",
+    Ò: "L",
+    "˜": "M",
+    ˆ: "N",
+    Ø: "O",
+    "∏": "P",
+    Œ: "Q",
+    Â: "R",
+    Í: "S",
+    Ê: "T",
+    Ë: "U",
+    "◊": "V",
+    "„": "W",
+    Ù: "X",
+    Á: "Y",
+    Û: "Z",
+    "‚": ")",
+    "⁄": "!",
+    "™": "@",
+    "‹": "£",
+    "›": "$",
+    ﬁ: "%",
+    ﬂ: "^",
+    "‡": "&",
+    "°": "*",
+    "·": "(",
+    "–": "-",
+    "≠": "=",
+    "“": "[",
+    "‘": "]",
+    "…": ";",
+    æ: "'",
+    "«": "\\",
+    "≤": ",",
+    "≥": ".",
+    "÷": "/",
+    "—": "_",
+    "±": "+",
+    "”": '"',
+    "»": "|",
+    "¯": "<",
+    "˘": ">",
+    "¿": "?",
+    Ÿ: "~",
+}
+
+// <A-e|i|n|o|u> all produce KeyEvents with key: "Dead" so the keyCode is needed.
+const altDeadKeyCodes = { 69: "e", 73: "i", 78: "n", 79: "o", 95: "u" }
+
+function normaliseAltChar(keyEvent) {
+    if (!keyEvent.altKey) return keyEvent.key
+    if (keyEvent.key === "Dead") {
+        return altDeadKeyCodes[keyEvent.keyCode] || keyEvent.key
+    }
+    return altChars[keyEvent.key] || keyEvent.key
+}
+
 export class MinimalKey {
     readonly altKey = false
     readonly ctrlKey = false
     readonly metaKey = false
     readonly shiftKey = false
     translated = false
-    constructor(readonly key: string, modifiers?: KeyModifiers) {
+    constructor(
+        readonly key: string,
+        modifiers?: KeyModifiers,
+    ) {
         if (modifiers !== undefined) {
             for (const mod of Object.keys(modifiers)) {
                 if (
@@ -502,7 +607,13 @@ export function minimalKeyFromKeyboardEvent(
         return new MinimalKey(newkey, modifiers)
     }
 
-    const result = new MinimalKey(keyEvent.key, modifiers)
+    let key
+    if (keyEvent.altKey && config.get("macaltcompat") === "true") {
+        key = normaliseAltChar(keyEvent)
+    } else {
+        key = keyEvent.key
+    }
+    const result = new MinimalKey(key, modifiers)
     if (config.get("usekeytranslatemap") === "true") {
         const translationmap = config.get("keytranslatemap")
         return result.translate(translationmap)
