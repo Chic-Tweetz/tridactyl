@@ -5695,7 +5695,6 @@ export async function hint(...args: string[]): Promise<any> {
                           DOM.simulateClick(elem)
                       }
                   }
-
                   return elem
               }
 
