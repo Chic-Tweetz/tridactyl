@@ -1,34 +1,11 @@
 :root {
-    /* I intend to use these for whichkey, but they can be general purpose */
-    /* It's a bit more descriptive than just fg, cmplt-fg etc */
-    /* Text Colours */
-    --tridactyl-fg-normal: black;
-    --tridactyl-fg-header: black;
-    --tridactyl-fg-subheader: black;
-    --tridactyl-fg-selection: black;
-    --tridactyl-fg-emphasis: #0a75d4;
-    --tridactyl-fg-faint: #bfc6cd;
-    --tridactyl-fg-info: #008ea4;
-    --tridactyl-fg-warn: #ff9400;
-    --tridactyl-fg-error: #ff0039;
-    --tridactyl-fg-highlight-1: #1db658;
-    --tridactyl-fg-highlight-2: #c038e5;
-    --tridactyl-fg-highlight-3: #6e99f4;
-
-    /* Background Colours */
-    --tridactyl-bg-base: white;
-    --tridactyl-bg-contrast-low: #f3f4f4;
-    --tridactyl-bg-contrast-mid: #ededed;
-    --tridactyl-bg-contrast-high: #cccccc;
-    --tridactyl-bg-selection: #ffec8b;
-
     /* Generic */
     --tridactyl-font-family: monospace;
     --tridactyl-font-family-sans: sans-serif;
     --tridactyl-font-size: 12pt;
     --tridactyl-small-font-size: calc(var(--tridactyl-font-size) * 0.75);
-    --tridactyl-bg: var(--tridactyl-bg-base);
-    --tridactyl-fg: var(--tridactyl-fg-normal);
+    --tridactyl-bg: white;
+    --tridactyl-fg: black;
     --tridactyl-logo: url("moz-extension://__MSG_@@extension_id__/static/logo/Tridactyl_64px.png");
     --tridactyl-scrollbar-color: auto;
 
@@ -139,8 +116,8 @@
 
     /*option focused*/
 
-    --tridactyl-of-fg: var(--tridactyl-fg-selection);
-    --tridactyl-of-bg: var(--tridactyl-bg-selection);
+    --tridactyl-of-fg: var(--tridactyl-fg);
+    --tridactyl-of-bg: #ffec8b;
 
     /*new tab spoiler box*/
     --tridactyl-highlight-box-bg: rgba(0, 0, 0, 0.07);
@@ -171,4 +148,37 @@
     --tridactyl-container-color-purple: #af51f5;
 
     --tridactyl-externaledit-bg: var(--tridactyl-logo) no-repeat center;
+
+    /* I intend to use these for whichkey, but they can be general purpose
+     * It's a bit more descriptive than just fg, cmplt-fg etc
+     */
+    /* Text Colours */
+    --tridactyl-fg-normal: var(--tridactyl-fg);
+    --tridactyl-fg-header: var(--tridactyl-fg);
+    --tridactyl-fg-subheader: var(--tridactyl-cmplt-fg);
+    --tridactyl-fg-selection: var(--tridactyl-of-fg);
+    --tridactyl-fg-emphasis: #0a75d4;
+    --tridactyl-fg-faint: #bfc6cd;
+    --tridactyl-fg-info: #008ea4;
+    --tridactyl-fg-warn: #ff9400;
+    --tridactyl-fg-error: #ff0039;
+    --tridactyl-fg-highlight-1: #1db658;
+    --tridactyl-fg-highlight-2: #c038e5;
+    --tridactyl-fg-highlight-3: #6e99f4;
+
+    /* Background Colours */
+    --tridactyl-bg-base: var(--tridactyl-bg);
+    --tridactyl-bg-contrast-low: color-mix(
+        var(--tridactyl-bg),
+        var(--tridactyl-fg) 3.5%
+    );
+    --tridactyl-bg-contrast-mid: color-mix(
+        var(--tridactyl-bg),
+        var(--tridactyl-fg) 10%
+    );
+    --tridactyl-bg-contrast-high: color-mix(
+        var(--tridactyl-bg),
+        var(--tridactyl-fg) 25%
+    );
+    --tridactyl-bg-selection: var(--tridactyl-of-bg);
 }

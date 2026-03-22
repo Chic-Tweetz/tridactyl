@@ -52,6 +52,7 @@ async function createIframe() {
     return new Promise((resolve, reject) => {
         const iframe = document.createElement("iframe")
         iframe.style.position = "fixed"
+        iframe.style.opacity = "0.9"
         iframe.style.left = "10%"
         iframe.style.bottom = "40px"
         iframe.style.width = "80%"
@@ -76,8 +77,10 @@ async function createIframe() {
 
                 // Along with theme() for applying colour schemes
                 theme(iframe.contentDocument.documentElement)
-                iframe.contentDocument.documentElement.classList.add("WhichKeyRoot")
-                
+                iframe.contentDocument.documentElement.classList.add(
+                    "WhichKeyRoot",
+                )
+
                 // Displaying binds in a table seems good to me
                 const table = document.createElement("table")
                 table.className = "WhichKey"
@@ -125,22 +128,20 @@ function addKeymapConfigListener(mapName) {
     if (keymapConfigListeners.has(mapName)) return
     keymapConfigListeners.add(mapName)
     config.addChangeListener(mapName, () => {
-        console.log("keystrings map cache cleared")
         keystringsToCmdsCache = new Map()
-        if (whichkeyIframe.style.display !== "none")
-            onStateChanged()
+        if (whichkeyIframe.style.display !== "none") onStateChanged()
     })
 }
 
 // Invalidate cache after :bindurl if it affects the current url
 function addBindUrlListener() {
     config.addChangeListener("subconfigs", (_oldValue, newValue) => {
-        const affectsThisTab = !Object.keys(newValue).every(url => !url.match(window.location.href))
+        const affectsThisTab = !Object.keys(newValue).every(
+            url => !url.match(window.location.href),
+        )
         if (affectsThisTab) {
-            console.log("subconfigs changed, scrapping cache")
             keystringsToCmdsCache = new Map()
-            if (whichkeyIframe.style.display !== "none")
-                onStateChanged()
+            if (whichkeyIframe.style.display !== "none") onStateChanged()
         }
     })
 }
@@ -150,11 +151,15 @@ function addBindUrlListener() {
 function getFilteredBinds(mapName, pressed = "") {
     return pressed === ""
         ? getBindsForMapName(mapName)
-        : getBindsForMapName(mapName).map(({name, urlBinds, binds}) => ({
+        : getBindsForMapName(mapName).map(({ name, urlBinds, binds }) => ({
               name,
-              binds: binds.filter(([bind, _cmd]) => bind.join("").startsWith(pressed)),
-              urlBinds: urlBinds.filter(([bind, _cmd]) => bind.join("").startsWith(pressed)),
-    }))
+              binds: binds.filter(([bind, _cmd]) =>
+                  bind.join("").startsWith(pressed),
+              ),
+              urlBinds: urlBinds.filter(([bind, _cmd]) =>
+                  bind.join("").startsWith(pressed),
+              ),
+          }))
 }
 
 // Returns an array of arrays of map names with PrintableKey-style keymaps,
@@ -165,11 +170,13 @@ function getBindsForMapName(mapName) {
     if (keystringsToCmdsCache.has(mapName)) {
         return keystringsToCmdsCache.get(mapName)
     }
-    const keystrMap = unwrapInherits(mapName).map(({name, urlBinds, binds}) => ({
-        name,
-        urlBinds: keyseqsToStrings(urlBinds),
-        binds: keyseqsToStrings(binds),
-    }))
+    const keystrMap = unwrapInherits(mapName).map(
+        ({ name, urlBinds, binds }) => ({
+            name,
+            urlBinds: keyseqsToStrings(urlBinds),
+            binds: keyseqsToStrings(binds),
+        }),
+    )
     keystringsToCmdsCache.set(mapName, keystrMap)
     return keystrMap
 }
@@ -181,15 +188,15 @@ function getBindsForMapName(mapName) {
 // [{ name: "vmaps", urlBinds: {...}, binds: {...}, { name: "nmaps", binds: {...}, urlBinds: {...} },]
 // by default, browsermaps is added to the end of any array as they're available in any mode
 function unwrapInherits(mapName, includeBrowserMaps = true) {
-    let maps = [];
+    let maps = []
     while (mapName) {
         maps.push({
             name: mapName,
             urlBinds: config.getURL(window.location.href, [mapName]) || {},
             binds: config.get(mapName),
-        });
+        })
         const map = maps[maps.length - 1]
-		Object.keys(map.urlBinds).forEach(bind => delete map.binds[bind]);
+        Object.keys(map.urlBinds).forEach(bind => delete map.binds[bind])
 
         addKeymapConfigListener(mapName)
         mapName = map.binds["🕷🕷INHERITS🕷🕷"]
@@ -203,25 +210,29 @@ function unwrapInherits(mapName, includeBrowserMaps = true) {
 
     // Remove duplicates from inherited binds and convert config objects to KeyMaps
     for (let i = 0; i < maps.length - 1; ++i) {
-        maps[i].binds = keyseq.mapstrMapToKeyMap(new Map(
-            Object.entries(maps[i].binds).filter(([bind, cmd]) => maps[i + 1].binds[bind] !== cmd) as any)
+        maps[i].binds = keyseq.mapstrMapToKeyMap(
+            new Map(
+                Object.entries(maps[i].binds).filter(
+                    ([bind, cmd]) => maps[i + 1].binds[bind] !== cmd,
+                ) as any,
+            ),
         )
         maps[i].urlBinds = keyseq.mapstrMapToKeyMap(
-            new Map(Object.entries(maps[i].urlBinds).filter(([bind, cmd]) => maps[i + 1].urlBinds[bind] !== cmd) as any)
+            new Map(
+                Object.entries(maps[i].urlBinds).filter(
+                    ([bind, cmd]) => maps[i + 1].urlBinds[bind] !== cmd,
+                ) as any,
+            ),
         )
     }
     maps[maps.length - 1].urlBinds = keyseq.mapstrMapToKeyMap(
-        new Map(
-            Object.entries(maps[maps.length - 1].urlBinds
-        ))
+        new Map(Object.entries(maps[maps.length - 1].urlBinds)),
     )
     maps[maps.length - 1].binds = keyseq.mapstrMapToKeyMap(
-        new Map(
-            Object.entries(maps[maps.length - 1].binds
-        ))
+        new Map(Object.entries(maps[maps.length - 1].binds)),
     )
 
-    return maps;
+    return maps
 }
 
 // Convert MinimalKey arrays to PrintableKey arrays
@@ -236,7 +247,7 @@ function keyseqsToStrings(keymap) {
 }
 
 // Just exploring ideas
-// This lets us get strings from the help pages 
+// This lets us get strings from the help pages
 // currently by fetch()ing that page - can we access that data otherwise?
 // (like we can get with "@src/.metadata.generated")
 let excmdHelpDocFrag = null // essentially storing all the elements of the excmds help page in here
@@ -304,8 +315,8 @@ function hintFlagsToHelpDescription(flag) {
     return hintFlagsHelp.get(flag)
 }
 
-hintFlagsToHelpDescription("hint")
-
+// commenting this out in favour of "docs" config object
+// hintFlagsToHelpDescription("hint")
 
 // Some HTML element helpers follow
 // I wouldn't be surprised if a nice library for this sort of thing is already imported
@@ -349,30 +360,128 @@ function createElement(type, opts) {
     return el
 }
 
+// Wouldn't it be nice if there was a globally used command parser in src/lib or something?
+// could use it in every excmd that has flags
+// could add doc strings to instances of it
+// could add optional short docstrs for use with things like this
+/*
+// just thinking it through a little
+// IDK, it'd just be kinda neat
+// 
+hintFlagRules = {
+    strictness: "error", // throw error if unrecognised arg is passed
+    b: {
+        type: "bool", // default type - you could omit this
+        docstr: "open the selected element's href in a new background tab",
+        docshort: "background tab",
+    }, ...
+    c: {
+        type: "next 1", // some way to say that -c should use the next arg
+    },
+    pipe: {
+        type: "next 2", // and pipe would use the next 2
+    },
+    F: {
+        type: "next rest", // all proceding args are for -F
+    },
+    ...
+}
+
+bindFlagRules = {
+    strictness: "none", // treat args beginning with - as the start of the bind
+    // "-" + "-mode" = "--mode" - you'd want to specify double hyphen prefixes like this (or some other way yes)
+    "-mode": {
+        type: "setter", // --mode=visual ...
+    }
+}
+
+parse(flagRules, excmd) {
+    ...
+}
+
+parse(bindFlagRules, "bind --mode=visual b js ...")
+=== {
+        command: "bind",
+        flags: {
+            "-mode": "visual",
+        },
+        rest: ["b", "js ..."],
+    }
+
+*/
+function parseFlags(cmd, validFlags) {
+    const parts = cmd.trim().split(/\s+/)
+    const cmdName = parts[0]
+    const rest = parts.slice(1)
+
+    // Sort flags longest-first for greedy matching
+    const sortedFlags = [...validFlags].sort((a, b) => b.length - a.length)
+
+    const flags = []
+    let i = 0
+
+    while (i < rest.length && rest[i].startsWith("-")) {
+        let token = rest[i]
+
+        // Remove leading hyphens
+        token = token.replace(/^-+/, "")
+
+        // Greedy prefix matching
+        while (token.length > 0) {
+            let matched = false
+
+            for (const f of sortedFlags) {
+                if (token.startsWith(f)) {
+                    flags.push(f)
+                    token = token.slice(f.length)
+                    matched = true
+                    break
+                }
+            }
+
+            if (!matched) {
+                // No valid flag prefix found → stop parsing this token
+                break
+            }
+        }
+
+        i++
+    }
+
+    const args = rest.slice(i)
+    return { cmdName, flags, args }
+}
+
 // This could use some tidying up now
 // Reconsider how we get all the strings we want (keymaps, "docs" config, ... )
 // As well as the work we do in here - the excmd help url, strings per span...
 // I suspect a lot of that can be cached along with the keymaps
 // Then this function should just convert strings we've already built to elements
-function keystrMapsToElems(keystrMap, pressedLength = 0, pressedSpans = document.createDocumentFragment(), mapName: "nmaps") : HTMLElement[] {
+function keystrMapsToElems(
+    keystrMap,
+    pressedLength = 0,
+    pressedSpans = document.createDocumentFragment(),
+    mapName: "nmaps",
+): HTMLElement[] {
     const exaliases = config.get("exaliases")
 
     // TODO: if you keep this "docs" config stuff, cache it with the rest of the keymap stuff
     const docs = config.get("docs")
 
     return keystrMap.map(([keystrs, cmd]) => {
-        const unpressedSpans = keystrs
-            .slice(pressedLength)
-            .flatMap(str => [
-                createElement("span", {
-                    className: "KeyUnpressed",
-                    textContent: str,
-                }),
-                document.createElement("wbr"),
-            ])
+        const unpressedSpans = keystrs.slice(pressedLength).flatMap(str => [
+            createElement("span", {
+                className: "KeyUnpressed",
+                textContent: str,
+            }),
+            document.createElement("wbr"),
+        ])
 
         const cmdFirstWord = (cmd as string).split(" ", 1)[0]
         const cmdRest = (cmd as string).slice(cmdFirstWord.length)
+
+        const validFlags = Object.keys(docs.excmds[cmdFirstWord]?.flags || {})
+        const parsedFlags = parseFlags(cmd, validFlags)
 
         let hrefToAnchor
         const namespaceSplit = cmdFirstWord.split(".")
@@ -411,44 +520,55 @@ function keystrMapsToElems(keystrMap, pressedLength = 0, pressedSpans = document
         // will probably replace this with something less specific
         // like customisable doc strings in a config object
         const extraEls = []
-        if (cmdFirstWord === "hint" && cmdRest.startsWith(" -")) {
-            const docstr = hintFlagsToHelpDescription(
-                cmdRest.split("-", 2)[1],
-            )
-            if (docstr) {
-                extraEls.push(
-                    createElement("span", {
-                        className: "Info",
-                        textContent: " " + docstr + " ",
-                    }),
-                )
-            }
-        }
+        // just gonna comment this out - better to have one source of custom strings, might as well be the "docs" config object?
+        // if (cmdFirstWord === "hint" && cmdRest.startsWith(" -")) {
+        //     const docstr = hintFlagsToHelpDescription(
+        //         cmdRest.split("-", 2)[1],
+        //     )
+        //     if (docstr) {
+        //         extraEls.push(
+        //             createElement("span", {
+        //                 className: "Info",
+        //                 textContent: " " + docstr + " ",
+        //             }),
+        //         )
+        //     }
+        // }
 
         // just real quick here for checkin
         // yeah i quite like it actually
         // maybe worth doing well
-        if (docs["excmds"]?.[cmdFirstWord]) {
-            // no args eg :hint
-            // would be nice to have a way to only display this string if there are explicitly no args
-            if (typeof docs["excmds"][cmdFirstWord] === "string") {
+        if (docs.excmds?.[cmdFirstWord]) {
+            if (
+                cmdFirstWord === cmd.trim() &&
+                docs.excmds[cmdFirstWord]?.noargs
+            ) {
                 extraEls.push(
                     createElement("span", {
                         className: "Info",
-                        textContent: " " + docs["excmds"][cmdFirstWord] + " ",
+                        textContent:
+                            " " + docs.excmds[cmdFirstWord].noargs + " ",
+                    }),
+                )
+            } else if (typeof docs.excmds[cmdFirstWord] === "string") {
+                extraEls.push(
+                    createElement("span", {
+                        className: "Info",
+                        textContent: " " + docs.excmds[cmdFirstWord] + " ",
                     }),
                 )
             } else {
                 // args eg :hint -qb
-                for (const args in docs["excmds"][cmdFirstWord]) {
-                    if (RegExp(args).test(cmd)) {
-                        extraEls.push(
-                            createElement("span", {
-                                className: "Info",
-                                textContent: " " + docs["excmds"][cmdFirstWord][args] + " ",
-                            }),
-                        )
-                    }
+                for (const flag of parsedFlags.flags) {
+                    extraEls.push(
+                        createElement("span", {
+                            className: "Info",
+                            textContent:
+                                " " +
+                                docs.excmds[cmdFirstWord].flags[flag] +
+                                " ",
+                        }),
+                    )
                 }
             }
         }
@@ -463,27 +583,33 @@ function keystrMapsToElems(keystrMap, pressedLength = 0, pressedSpans = document
             )
         }
 
-        return createTableRow(
+        const cols = [
             {
                 className: "Keyseq",
-                children: [
-                    pressedSpans.cloneNode(true),
-                    ...unpressedSpans,
-                ],
+                children: [pressedSpans.cloneNode(true), ...unpressedSpans],
             },
-            {
-                className: "Command",
-                children: [
-                    ...extraEls,
-                    createElement("a", {
-                        textContent: cmdFirstWord,
-                        href,
-                        target,
-                    }),
-                    createElement("span", { textContent: cmdRest }),
-                ],
-            },
-        )     
+        ]
+
+        if (extraEls.length) {
+            cols.push({
+                className: "Docs",
+                children: extraEls,
+            })
+        }
+
+        cols.push({
+            className: "Command",
+            children: [
+                createElement("a", {
+                    textContent: cmdFirstWord,
+                    href,
+                    target,
+                }),
+                createElement("span", { textContent: cmdRest }),
+            ],
+        })
+
+        return createTableRow(...cols)
     })
 }
 
@@ -629,11 +755,16 @@ async function onStateChanged(property?, oldMode?, oldValue?, newValue?) {
 
     // const exaliases = config.get("exaliases")
 
-    const firstBind = keymaps.find(km => km.binds.length > 0 || km.urlBinds.length > 0)
+    const firstBind = keymaps.find(
+        km => km.binds.length > 0 || km.urlBinds.length > 0,
+    )
 
     if (!firstBind) return
 
-    const firstBindKeystrs = firstBind.binds.length > 0 ? firstBind.binds[0][0] : firstBind.urlBinds[0][0]
+    const firstBindKeystrs =
+        firstBind.binds.length > 0
+            ? firstBind.binds[0][0]
+            : firstBind.urlBinds[0][0]
     let toSlice = pressed.length
     let unpressedStart = 0
     while (toSlice > 0) {
@@ -645,20 +776,18 @@ async function onStateChanged(property?, oldMode?, oldValue?, newValue?) {
     // It's nicer if we don't split multi-char over multiple lines
     // as in for long keys/modifier combos like <AS-Backspace>
     pressedSpans.replaceChildren(
-        ...firstBindKeystrs
-            .slice(0, unpressedStart)
-            .flatMap(str => [
-                createElement("span", {
-                    className: "KeyPressed",
-                    textContent: str,
-                }),
-                document.createElement("wbr"),
-            ]),
+        ...firstBindKeystrs.slice(0, unpressedStart).flatMap(str => [
+            createElement("span", {
+                className: "KeyPressed",
+                textContent: str,
+            }),
+            document.createElement("wbr"),
+        ]),
     )
 
     // I don't like the "pretty" symbols after all
     // frag.appendChild(
-    //     createTableHeader(mode + " mode " + 
+    //     createTableHeader(mode + " mode " +
     //         Array.from(pressedSpans.children)
     //             .map(span => prettyPrint((span as HTMLElement).textContent))
     //             .join("")
@@ -666,7 +795,9 @@ async function onStateChanged(property?, oldMode?, oldValue?, newValue?) {
     //     )
     // )
 
-    const header = config.get("docs").headings[mode]?.[pressed] || mode + " mode " + pressed
+    const header =
+        config.get("docs").headings[mode]?.[pressed] ||
+        mode + " mode " + pressed
     frag.appendChild(createTableHeader(header, false))
 
     keymaps.forEach(({ name, urlBinds, binds }) => {
@@ -679,7 +810,14 @@ async function onStateChanged(property?, oldMode?, oldValue?, newValue?) {
                     true,
                 ),
             )
-            frag.append(...keystrMapsToElems(urlBinds, unpressedStart, pressedSpans, name))
+            frag.append(
+                ...keystrMapsToElems(
+                    urlBinds,
+                    unpressedStart,
+                    pressedSpans,
+                    name,
+                ),
+            )
         }
         if (binds.length > 0) {
             frag.appendChild(
@@ -688,7 +826,9 @@ async function onStateChanged(property?, oldMode?, oldValue?, newValue?) {
                     true,
                 ),
             )
-            frag.append(...keystrMapsToElems(binds, unpressedStart, pressedSpans, name))
+            frag.append(
+                ...keystrMapsToElems(binds, unpressedStart, pressedSpans, name),
+            )
         }
     })
 
@@ -730,8 +870,10 @@ function setLevel(newLevel, overrideConfig = false) {
 
 // felt cute might use this in the header row like "normal mode ␣" idk
 function prettyPrint(angledString) {
-    if (!angledString.startsWith("<") || !angledString.endsWith(">")) return angledString
-    if (angledString.indexOf("-") === -1) angledString = angledString.slice(1, angledString.length - 1)
+    if (!angledString.startsWith("<") || !angledString.endsWith(">"))
+        return angledString
+    if (angledString.indexOf("-") === -1)
+        angledString = angledString.slice(1, angledString.length - 1)
     const swaps = [
         ["Space", "␣"],
         ["Enter", "⏎"],
@@ -745,7 +887,8 @@ function prettyPrint(angledString) {
         ["Tab", "↹"],
     ]
     for (const [long, short] of swaps) {
-        if (angledString.includes(long)) return angledString.replace(long, short)
+        if (angledString.includes(long))
+            return angledString.replace(long, short)
     }
     return angledString
 }

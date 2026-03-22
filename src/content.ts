@@ -382,7 +382,7 @@ config.getAsync("superignore").then(async TRI_DISABLE => {
                     }
             }*/
                 let mode
-                if (contentState.pseudo_mode !== "") {
+                if (contentState.pseudo_mode) {
                     if (contentState.mode === "gobble") {
                         mode = "gobble|" + contentState.pseudo_mode
                     } else {
