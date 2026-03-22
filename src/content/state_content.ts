@@ -23,6 +23,7 @@ class ContentState {
     group = ""
     current_cmdline = ""
     cmdline_filter = ""
+    pseudo_mode = ""
 }
 
 export type ContentStateProperty =
@@ -30,7 +31,9 @@ export type ContentStateProperty =
     | "cmdHistory"
     | "prevInputs"
     | "suffix"
+    | "typedKeys"
     | "group"
+    | "pseudo_mode"
 
 export type ContentStateChangedCallback = (
     property: ContentStateProperty,
@@ -47,7 +50,7 @@ export function addContentStateChangedListener(
     onChangedListeners.push(callback)
 }
 
-export const contentState = (new Proxy(
+export const contentState = new Proxy(
     { mode: "normal" },
     {
         get(target, property: ContentStateProperty) {
@@ -59,12 +62,14 @@ export const contentState = (new Proxy(
 
             const oldValue = target[property]
             const mode = target.mode
+
             target[property] = newValue
 
             for (const listener of onChangedListeners) {
                 listener(property, mode, oldValue, newValue)
             }
+
             return true
         },
     },
-) as any) as ContentState
+) as any as ContentState

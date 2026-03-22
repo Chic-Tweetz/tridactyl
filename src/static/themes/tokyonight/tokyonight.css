@@ -34,7 +34,7 @@
     --tritheme-orange2-rgb: 252, 161, 48;
     --tritheme-orange3-rgb: 255, 150, 108;
     --tritheme-yellow-rgb: 224, 175, 104;
-    --tritheme-green-rgb: 115, 122, 162;
+    --tritheme-green-rgb: 116, 255, 0;
     --tritheme-cyan-rgb: 125, 207, 255;
     --tritheme-lightblue-rgb: 200, 211, 245;
     --tritheme-blue-rgb: 61, 89, 161;
@@ -98,22 +98,43 @@
     --tritheme-moon-magenta: rgb(var(--tritheme-moon-magenta-rgb));
     --tritheme-moon-magenta2: rgb(var(--tritheme-moon-magenta2-rgb));
 
+    /* Text Colours */
+    --tridactyl-fg-normal: var(--tritheme-lightblue);
+    --tridactyl-fg-emphasis: var(--tritheme-cyan);
+    --tridactyl-fg-faint: var(--tritheme-blue);
+    --tridactyl-fg-info: var(--tritheme-moon-blue);
+    --tridactyl-fg-warn: var(--tritheme-orange);
+    --tridactyl-fg-error: var(--tritheme-red);
+    --tridactyl-fg-highlight-1: var(--tritheme-green);
+    --tridactyl-fg-highlight-2: var(--tritheme-moon-yellow);
+    --tridactyl-fg-highlight-3: var(--tritheme-moon-magenta);
+    --tridactyl-fg-header: var(--tritheme-lightblue);
+    --tridactyl-fg-subheader: var(--tritheme-lightblue);
+    --tridactyl-fg-selection: var(--tritheme-moon-yellow);
+
+    /* Background Colours */
+    --tridactyl-bg-base: var(--tritheme-darkblue4);
+    --tridactyl-bg-contrast-low: #252841;
+    --tridactyl-bg-contrast-mid: #131523;
+    --tridactyl-bg-contrast-high: #080a1c;
+    --tridactyl-bg-selection: var(--tritheme-moon-orange);
+
     /* Generic */
     --tridactyl-font-family: "JetBrains Mono", "SF Mono", monospace;
     --tridactyl-small-font-size: 8pt;
     --tridactyl-large-font-size: 1.5rem;
     --tridactyl-bg: var(--tritheme-darkblue4);
-    --tridactyl-fg: var(--tritheme-lightblue);
+    --tridactyl-fg: var(--tridactyl-fg-normal);
     --tridactyl-private-window-icon-url: url("chrome://global/skin/icons/indicator-private-browsing.svg");
 
     /* Mode indicator */
     --tridactyl-status-fg: rgb(27, 29, 43);
-    --tridactyl-status-border-color: rgba(0,0,0,0);
+    --tridactyl-status-border-color: rgba(0, 0, 0, 0);
     /* --tridactyl-status-border: rgb(27, 29, 43) solid 1.5px; */
     --tridactyl-status-font-size: 8pt;
     --tridactyl-status-bg: rgba(var(--tritheme-moon-blue-rgb), 0.9);
 
-    --tritheme-status-private-border: solid 1px #51148A;
+    --tritheme-status-private-border: solid 1px #51148a;
     --tritheme-status-private-bg: var(--tridactyl-status-bg);
 
     /* Search highlight */
@@ -250,7 +271,8 @@
     --tridactyl-status-bg: rgba(var(--tritheme-moon-yellow-rgb), 0.9);
 }
 
-.TridactylModeinsert, .TridactylModeinput {
+.TridactylModeinsert,
+.TridactylModeinput {
     --tridactyl-status-bg: rgba(var(--tritheme-moon-green-rgb), 0.9);
 }
 

@@ -7,6 +7,7 @@ import * as Messaging from "@src/lib/messaging"
 import * as customCompletions from "@src/content/completions_content"
 import * as keyseq from "@src/lib/keyseq"
 import * as tri_editor from "@src/lib/editor"
+import { contentState } from "@src/content/state_content"
 const logger = new Logger("messaging")
 const cmdline_logger = new Logger("cmdline")
 
@@ -97,6 +98,15 @@ export function makeIframe() {
                 indicator.textContent = lastMode
                 indicator.classList.remove("TridactylModeex")
                 indicator.classList.add("TridactylMode" + lastMode)
+            })
+
+            const win = cmdline_iframe.contentWindow
+            win.addEventListener("focus", () => {
+                contentState.pseudo_mode = "ex"
+            })
+            win.addEventListener("blur", () => {
+                if (contentState.pseudo_mode === "ex")
+                    contentState.pseudo_mode = ""
             })
         }
     })

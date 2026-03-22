@@ -1,0 +1,74 @@
+@import url("../themes/auto/auto.css");
+
+.WhichKeyRoot body {
+    background: var(--tridactyl-bg-base);
+    color: var(--tridactyl-fg-normal);
+    font-family: var(--tridactyl-cmplt-font-family), monospace;
+    font-size: var(--tridactyl-cmplt-font-size);
+    margin: 0;
+}
+
+.WhichKey {
+    padding: 8px;
+}
+
+.WhichKey .Header,
+.WhichKey .Subheader {
+    position: sticky;
+    top: 0;
+    text-align: left;
+}
+
+.WhichKey .Header {
+    color: var(--tridactyl-fg-header);
+    background: linear-gradient(
+        var(--tridactyl-header-first-bg),
+        var(--tridactyl-header-second-bg),
+        var(--tridactyl-header-third-bg)
+    );
+}
+
+.WhichKey .Subheader {
+    color: var(--tridactyl-fg-selection);
+    background: var(--tridactyl-bg-selection);
+    position: sticky;
+    top: 0;
+}
+
+.WhichKey tr:nth-child(2n) {
+    background: var(--tridactyl-bg-contrast-low);
+}
+
+.WhichKey .Keyseq {
+    min-width: 50px;
+    max-width: 150px;
+    text-align: left;
+}
+
+.WhichKey .KeyPressed,
+.WhichKey .KeyUnpressed {
+    white-space: nowrap;
+}
+
+.WhichKey .KeyPressed {
+    color: var(--tridactyl-fg-faint);
+    text-align: right;
+}
+
+.WhichKey .KeyUnpressed {
+    color: var(--tridactyl-fg-highlight-1);
+    font-weight: bold;
+    text-align: left;
+}
+
+.WhichKey .Command a {
+    color: var(--tridactyl-fg-emphasis);
+}
+
+.WhichKey .Command {
+    color: var(--tridactyl-fg-normal);
+}
+
+.WhichKey .Info {
+    color: var(--tridactyl-fg-info);
+}

@@ -41,20 +41,30 @@
 
     --tridactyl-hintspan-active-fg: var(--tridactyl-hintspan-fg);
     --tridactyl-hintspan-active-bg: var(--tridactyl-hintspan-bg);
-    --tridactyl-hintspan-active-border-color: var(--tridactyl-hintspan-border-color);
+    --tridactyl-hintspan-active-border-color: var(
+        --tridactyl-hintspan-border-color
+    );
 
     /* Element highlights */
     --tridactyl-hint-fg: var(--tridactyl-fg);
     --tridactyl-hint-active-fg: var(--tridactyl-hint-fg);
     --tridactyl-hint-active-bg: #88ff00;
-    --tridactyl-hint-active-outline: 1px solid #cc0000;
+    --tridactyl-hint-active-out: 1px solid #cc0000;
 
     --tridactyl-hint-fg: var(--tridactyl-fg);
     --tridactyl-hint-bg: rgba(255, 255, 0, 0.25);
     --tridactyl-hint-outline: 1px solid #8f5902;
 
-    --tridactyl-large-hint-bg: color-mix(in oklch, var(--tridactyl-bg), var(--tridactyl-hint-bg) 50%);
-    --tridactyl-large-hint-active-bg: color-mix(in oklch, var(--tridactyl-bg), var(--tridactyl-hint-active-bg) 50%);
+    --tridactyl-large-hint-bg: color-mix(
+        in oklch,
+        var(--tridactyl-bg),
+        var(--tridactyl-hint-bg) 50%
+    );
+    --tridactyl-large-hint-active-bg: color-mix(
+        in oklch,
+        var(--tridactyl-bg),
+        var(--tridactyl-hint-active-bg) 50%
+    );
 
     /* Element highlight overlays */
     --tridactyl-hint-highlight-fg: var(--tridactyl-hint-fg);
@@ -62,7 +72,9 @@
     --tridactyl-hint-highlight-bg: var(--tridactyl-hint-bg);
     --tridactyl-hint-highlight-active-bg: var(--tridactyl-hint-active-bg);
     --tridactyl-hint-highlight-outline: var(--tridactyl-hint-outline);
-    --tridactyl-hint-highlight-active-outline: var(--tridactyl-hint-active-outline);
+    --tridactyl-hint-highlight-active-outline: var(
+        --tridactyl-hint-active-outline
+    );
     --tridactyl-hint-highlight-opacity: 0.25;
 
     /* :viewsource */
@@ -153,4 +165,37 @@
     --tridactyl-container-color-purple: #af51f5;
 
     --tridactyl-externaledit-bg: var(--tridactyl-logo) no-repeat center;
+
+    /* I intend to use these for whichkey, but they can be general purpose
+     * It's a bit more descriptive than just fg, cmplt-fg etc
+     */
+    /* Text Colours */
+    --tridactyl-fg-normal: var(--tridactyl-fg);
+    --tridactyl-fg-header: var(--tridactyl-fg);
+    --tridactyl-fg-subheader: var(--tridactyl-cmplt-fg);
+    --tridactyl-fg-selection: var(--tridactyl-of-fg);
+    --tridactyl-fg-emphasis: #0a75d4;
+    --tridactyl-fg-faint: #bfc6cd;
+    --tridactyl-fg-info: #008ea4;
+    --tridactyl-fg-warn: #ff9400;
+    --tridactyl-fg-error: #ff0039;
+    --tridactyl-fg-highlight-1: #1db658;
+    --tridactyl-fg-highlight-2: #c038e5;
+    --tridactyl-fg-highlight-3: #6e99f4;
+
+    /* Background Colours */
+    --tridactyl-bg-base: var(--tridactyl-bg);
+    --tridactyl-bg-contrast-low: color-mix(
+        var(--tridactyl-bg),
+        var(--tridactyl-fg) 3.5%
+    );
+    --tridactyl-bg-contrast-mid: color-mix(
+        var(--tridactyl-bg),
+        var(--tridactyl-fg) 10%
+    );
+    --tridactyl-bg-contrast-high: color-mix(
+        var(--tridactyl-bg),
+        var(--tridactyl-fg) 25%
+    );
+    --tridactyl-bg-selection: var(--tridactyl-of-bg);
 }

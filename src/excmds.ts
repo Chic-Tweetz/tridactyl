@@ -145,6 +145,7 @@ import * as toys from "./content/toys"
 import * as hinting from "@src/content/hinting"
 import * as gobbleMode from "@src/parsers/gobblemode"
 import * as nMode from "@src/parsers/nmode"
+import { showWhichKey } from "@src/content/whichkey"
 
 ALL_EXCMDS = {
     "": CTSELF,
@@ -417,8 +418,7 @@ export async function editor_excmd(excmd = "fillcmdline_notrail", ...initial: st
     } else {
         try {
             elem = initial[0].cloneNode(true)
-            ;["selectionStart", "selectionEnd", "selectionDirection"]
-                .forEach(k => elem[k] = initial[k])
+            ;["selectionStart", "selectionEnd", "selectionDirection"].forEach(k => (elem[k] = initial[k]))
         } catch (e) {
             elem = document.createElement("textarea")
         }
@@ -439,7 +439,7 @@ export async function editor_excmd(excmd = "fillcmdline_notrail", ...initial: st
         if (!editingComplete && !commandSent) return
         window.removeEventListener("focus", focusReturned)
         if (iframe) {
-            (iframe as any).contentWindow.removeEventListener("focus", focusReturned)
+            ;(iframe as any).contentWindow.removeEventListener("focus", focusReturned)
         }
         controller.acceptExCmd(command)
         commandSent = true
@@ -450,11 +450,11 @@ export async function editor_excmd(excmd = "fillcmdline_notrail", ...initial: st
     window.addEventListener("focus", focusReturned)
 
     if (iframe) {
-        (iframe as any).contentWindow.addEventListener("focus", focusReturned)
+        ;(iframe as any).contentWindow.addEventListener("focus", focusReturned)
     }
 
     let ans
-    const useHtml = await config.getAsync("editorusehtml") == "true"
+    const useHtml = (await config.getAsync("editorusehtml")) == "true"
     try {
         const editor = getEditor(elem, { preferHTML: useHtml })
         const text = await editor.getContent()
@@ -1652,10 +1652,10 @@ export function searchbar(...args: string[]) {
     let reverse = false
     let fromView = false
     for (const arg of args) {
-        if (args.includes("-?")) {
+        if (arg.includes("-?")) {
             reverse = true
         }
-        if (args.includes("--search-from-view")) {
+        if (arg.includes("--search-from-view")) {
             fromView = true
         }
     }
@@ -3269,11 +3269,10 @@ export async function tabdiscard(index: string) {
 export async function undo(item = "recent"): Promise<number> {
     const current_win_id: number = (await browser.windows.getCurrent()).id
     // cmdline popup: don't reopen the cmdline popup!
-    const sessions = (await browser.sessions.getRecentlyClosed())
-        .filter(closed => {
-            if (closed.tab) return true
-            return closed.window.tabs[0].url !== browser.runtime.getURL("static/commandline.html")
-        })
+    const sessions = (await browser.sessions.getRecentlyClosed()).filter(closed => {
+        if (closed.tab) return true
+        return closed.window.tabs[0].url !== browser.runtime.getURL("static/commandline.html")
+    })
 
     // Pick the first session object that is a window or a tab from this window ("recent"), a tab ("tab"), a tab
     // from this window ("tab_strict"), a window ("window") or pick by sessionId.
@@ -4154,7 +4153,7 @@ export async function popupcmdline(...strarr: string[]) {
 }
 
 /**
- * [[popupcmdline]] with no trailing space as in [[fillcmdline_notrail]] 
+ * [[popupcmdline]] with no trailing space as in [[fillcmdline_notrail]]
  */
 //#content
 export async function popupcmdline_notrail(...strarr: string[]) {
@@ -4165,7 +4164,7 @@ export async function popupcmdline_notrail(...strarr: string[]) {
  * Create a popup window to use as a commandline for a given tab.
  */
 //#background
-export async function cmdlinepopupfortab(tabid:number, trailspace:boolean, ...strarr: string[]) {
+export async function cmdlinepopupfortab(tabid: number, trailspace: boolean, ...strarr: string[]) {
     // I currently shove the popup down to the bottom of the window this was called from
     const fortab = await browser.tabs.get(tabid) // guess i should just pass the tab itself
     const forwin = await browser.windows.get(fortab.windowId)
@@ -4186,8 +4185,7 @@ export async function cmdlinepopupfortab(tabid:number, trailspace:boolean, ...st
     async function waitForScript(tabId, changeInfo, tab) {
         const popupTabId = (await popuptab).id
         if (tabId === popupTabId && changeInfo.status === "complete" && tab.url === browser.runtime.getURL("static/commandline.html")) {
-            Messaging.messageTab(popupTabId, "commandline_frame", "asPopup", [tabid, trailspace, strarr.join(" ")])
-            .then(() => browser.windows.update(tab.windowId, { focused: true }))
+            Messaging.messageTab(popupTabId, "commandline_frame", "asPopup", [tabid, trailspace, strarr.join(" ")]).then(() => browser.windows.update(tab.windowId, { focused: true }))
             browser.tabs.onUpdated.removeListener(waitForScript)
         }
     }
@@ -4487,7 +4485,6 @@ export async function tab_helper(interactive: boolean, anyWindow: boolean, ...ke
     if (id !== null && id !== undefined && !/\d+\.\d+/.exec(id)) {
         let defaultQuery = {}
         if (!anyWindow) defaultQuery = { windowId: (await activeTab()).windowId }
-
 
         const results = new Map()
         try {
@@ -6641,5 +6638,19 @@ export function hintstylesoverlays() {
 export function hintstylesdirect() {
     ;["fg", "bg", "outline"].forEach(type => config.set("hintstyles", type, "all"))
     ;["overlay", "overlayoutline"].forEach(type => config.set("hintstyles", type, "none"))
+}
+
+/**
+ * Show or disable a whichkey popup.
+ *
+ * Toggle with `:whichkey toggle` or simply `:whichkey`
+ * Show always with `:whichkey all`
+ * Show only for multiple-key binds with `:whichkey multi`
+ * Disable with `:whichkey none`
+ * Set default behaviour with `:set whichkey none | multi | all`
+ */
+//#content
+export function whichkey(level: "all" | "multi" | "none" | "toggle" = "toggle") {
+    showWhichKey(level)
 }
 // }}}

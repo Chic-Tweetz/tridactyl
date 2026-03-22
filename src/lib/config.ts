@@ -1439,8 +1439,8 @@ export class default_config {
             title: "my custom completion list!",
             srcfn: "tri.browserBg.tabs.query({})",
             columns: {
-                title: { key: "title", },
-                url: { class: "url", fn: "t => t.url", },
+                title: { key: "title" },
+                url: { class: "url", fn: "t => t.url" },
                 doc: { class: "haha", fn: "t => 'whatevs'" },
             },
             // should be able to put things at the end using double commas
@@ -1453,8 +1453,10 @@ export class default_config {
             valuefn: "t => t.title.slice(0, 5)",
 
             // good extras? (not implemented)
-            srcrefresh: "refreshFn => on event or whatever refreshFn(), will call srcfn again and update the options",
-            completionfn: "opt => fillcmdline with a built string (instead of appending value to excmd)",
+            srcrefresh:
+                "refreshFn => on event or whatever refreshFn(), will call srcfn again and update the options",
+            completionfn:
+                "opt => fillcmdline with a built string (instead of appending value to excmd)",
 
             // Haven't actually made these do anything useful, just testing stuff
             callbacks: {
@@ -1462,7 +1464,8 @@ export class default_config {
                 delete: "tab => { console.log('delete callback!') }",
                 action: "tab => { console.log('custom action!') }",
                 select: "tab => { console.log('selection:');console.log(tab.title); }",
-                deselect: "tab => { console.log('deselected:');console.log(tab.title); }",
+                deselect:
+                    "tab => { console.log('deselected:');console.log(tab.title); }",
             },
         },
         // Can almost use this to switch to a tab if it exists or open a new one (alias tabif to one or the other)
@@ -1475,9 +1478,12 @@ export class default_config {
                 prefix: { fn: "tab => '_'" },
                 privatewindow: { fn: "tab => 'p'" },
                 container: { fn: "tab => 'c'" },
-                icon: { fn: "tab => `<img src='${tab.favIconUrl}'>`", html: "true" },
+                icon: {
+                    fn: "tab => `<img src='${tab.favIconUrl}'>`",
+                    html: "true",
+                },
                 title: { key: "title" },
-                url: { fn: "tab => `<a>${tab.url}</a>`", html: "true" }
+                url: { fn: "tab => `<a>${tab.url}</a>`", html: "true" },
             },
             valuefn: "tab => tab.title",
         },
@@ -1492,7 +1498,8 @@ export class default_config {
                 delete: "p => p.remove()",
                 action: "p => p.scrollIntoView()",
                 select: "p => {p.classList.add('TridactylCompletionSelection');p.scrollIntoView()}",
-                deselect: "p => p.classList.remove('TridactylCompletionSelection')",
+                deselect:
+                    "p => p.classList.remove('TridactylCompletionSelection')",
                 hide: "()=>{console.log('paras hidden...');document.querySelectorAll('.TridactylCompletionSelection').forEach(e=>e.classList.remove('TridactylCompletionSelection'));tri.thisstyle.remove()}",
             },
             columns: {
@@ -1526,7 +1533,7 @@ export class default_config {
                     class: "type",
                     key: "mode",
                     ignore: "true",
-                }
+                },
             },
             columnorder: "cmd,keyseq,mode",
             valuefn: "opt => `--mode=${opt.mode} ${opt.keyseq}`",
@@ -1536,9 +1543,100 @@ export class default_config {
             excmd: "typeit",
             srcstrings: "",
             callbacks: {
-                query: "(_sel,_pre,query)=>console.log('YOU ARE TYPING', query)"
+                query: "(_sel,_pre,query)=>console.log('YOU ARE TYPING', query)",
             },
-        }
+        },
+    }
+    /**
+     * Display key completions in a popup window.
+     * Set to "multi" to show the popup for multi-key binds or all to display it permanently.
+     */
+    whichkey: "all" | "multi" | "none" = "multi"
+
+    /**
+     * Docs to serve as an explanation for binds or commands.
+     * Displayed in the whichkey popup.
+     * Not entirely sure this is worth it.
+     * Might be able to use the excmds part for custom cmdline docs
+     * like for non-obvious :composite or :js commands
+     * thinking about the excmds part... don't really want spaces in config keys soo
+     * excmds will have to be subobjects instead
+     * where you can add your patterns for command args
+     * perhaps if there was a unified excmd arg parser this would be simpler
+     * anyway let's just see if this has legs
+     * I quite like it actually...
+     * how about whichkey headings depending on the prefix...
+     */
+    docs = {
+        vmaps: {
+            w: "start of next [w]ord",
+            e: "end of next word",
+            b: "back a word (start)",
+            l: "next char",
+            h: "prev char",
+            j: "next line",
+            k: "prev line",
+            o: "reverse direction",
+            s: "search for selection",
+            S: "search in new tab",
+            y: "yank",
+            q: "qr code",
+            "0": "start of line",
+            $: "end of line",
+            "=": "expand selection",
+            "<Escape>": "clear selection & enter normal mode",
+            "<C-[>": "clear selection & enter normal mode",
+        },
+        excmds: {
+            hint: {
+                noargs: "click an element",
+                flags: {
+                    a: "save as",
+                    A: "save as image",
+                    b: "background tab",
+                    c: "css [selector]",
+                    C: "css [selector + default]",
+                    f: "by text",
+                    F: "[js callback]",
+                    h: "highlight",
+                    i: "view image",
+                    I: "image new tab",
+                    J: "no JavaScript",
+                    k: "kill irreversibly",
+                    K: "Kill (restore with :elementunhide)",
+                    p: "yank text",
+                    P: "yank title/alt text",
+                    q: "quick",
+                    r: "read with tts",
+                    s: "save",
+                    S: "Save image",
+                    t: "new tab",
+                    V: "include invisble",
+                    w: "new window",
+                    W: "[excmd] href",
+                    x: "exclude [selector]",
+                    y: "yank link",
+                    z: "scroll to",
+                    ";": "set scroll target",
+                    "#": "yank anchor",
+                    "!": "execute all",
+                    pipe: "[selector] [key]",
+                    fr: "by regex",
+                    wp: "private window",
+                    br: "deprecated: use -qb",
+                },
+            },
+        },
+        headings: {
+            normal: {
+                g: "goto",
+                gx: "close tabs",
+                ";": "hint",
+                ";g": "quick hints",
+                y: "yank",
+                z: "zoom",
+            },
+        },
     }
 }
 
