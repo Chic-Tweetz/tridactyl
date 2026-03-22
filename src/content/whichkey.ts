@@ -25,7 +25,7 @@ let completions
 let keystringsToCmdsCache = new Map()
 const keymapConfigListeners = new Set()
 let stateChangeDebounceTimer = -1
-let debounceMs = 100
+const debounceMs = 100
 
 getAsync("whichkey").then(show => {
     if (show !== "none") {
@@ -137,7 +137,7 @@ function addKeymapConfigListener(mapName) {
 function addBindUrlListener() {
     config.addChangeListener("subconfigs", (_oldValue, newValue) => {
         const affectsThisTab = !Object.keys(newValue).every(
-            url => !url.match(window.location.href),
+            url => !RegExp(url).test(window.location.href),
         )
         if (affectsThisTab) {
             keystringsToCmdsCache = new Map()
@@ -188,7 +188,7 @@ function getBindsForMapName(mapName) {
 // [{ name: "vmaps", urlBinds: {...}, binds: {...}, { name: "nmaps", binds: {...}, urlBinds: {...} },]
 // by default, browsermaps is added to the end of any array as they're available in any mode
 function unwrapInherits(mapName, includeBrowserMaps = true) {
-    let maps = []
+    const maps = []
     while (mapName) {
         maps.push({
             name: mapName,
@@ -258,7 +258,7 @@ let excmdHelpDocFrag = null // essentially storing all the elements of the excmd
 // You could use that to document binds or aliases
 // eg :composite and :js binds/aliases aren't necessarily self documenting
 // yes I do think that would be better... this was fun though
-async function queryExcmdHelp(
+async function _queryExcmdHelp(
     excmd: string,
     transform: (HTMLElement) => any = el => el,
 ) {
@@ -281,11 +281,12 @@ async function queryExcmdHelp(
 }
 
 // Parse the list explaining each :hint arg and map the flags to their explanation
-let hintFlagsHelp: Map<string, string> = null
+// let hintFlagsHelp: Map<string, string> = null
+
 // Pass a hint flag (eg "-b") and get that flag's explanation (ideally)
 // Not complete (won't work with :hint -qb for instance) and probably won't complete
 // Because I prefer the idea of a documentation config object I reckon
-function hintFlagsToHelpDescription(flag) {
+/* function hintFlagsToHelpDescription(flag) {
     if (!hintFlagsHelp) {
         hintFlagsHelp = new Map()
         queryExcmdHelp(
@@ -313,7 +314,7 @@ function hintFlagsToHelpDescription(flag) {
     }
 
     return hintFlagsHelp.get(flag)
-}
+} */
 
 // commenting this out in favour of "docs" config object
 // hintFlagsToHelpDescription("hint")
@@ -322,8 +323,6 @@ function hintFlagsToHelpDescription(flag) {
 // I wouldn't be surprised if a nice library for this sort of thing is already imported
 function replaceTableChildren(newChildren: DocumentFragment) {
     completions.replaceChildren(newChildren)
-    const rect = completions.getClientRects()[0]
-    // whichkeyIframe.style.width = Math.max(Math.min(rect.width, 350), 250) + "px"
 }
 
 function createTableHeader(text = "", subheader = true) {
@@ -367,7 +366,7 @@ function createElement(type, opts) {
 /*
 // just thinking it through a little
 // IDK, it'd just be kinda neat
-// 
+
 hintFlagRules = {
     strictness: "error", // throw error if unrecognised arg is passed
     b: {
@@ -617,7 +616,7 @@ function keystrMapsToElems(
 // Currently I've hardcoded several specific cases
 // The main one being displaying keybinds for the current mode
 // The other two being markjump/markadd and quickmark, where existing marks are shown
-async function onStateChanged(property?, oldMode?, oldValue?, newValue?) {
+async function onStateChanged(property?, _oldMode?, _oldValue?, _newValue?) {
     if (level === "none") return
 
     // Just grabbing straight from the contentState object rather than using the callback's args
@@ -869,7 +868,7 @@ function setLevel(newLevel, overrideConfig = false) {
 }
 
 // felt cute might use this in the header row like "normal mode ␣" idk
-function prettyPrint(angledString) {
+function _prettyPrint(angledString) {
     if (!angledString.startsWith("<") || !angledString.endsWith(">"))
         return angledString
     if (angledString.indexOf("-") === -1)

@@ -31,7 +31,6 @@ import { getAllDocumentFrames } from "@src/lib/dom"
 
 import state from "@src/state"
 import { EditorCmds as editor } from "@src/content/editor"
-import { whichkey } from "./.excmds_background.generated"
 /* tslint:disable:import-spacing */
 
 config.getAsync("superignore").then(async TRI_DISABLE => {
@@ -369,7 +368,7 @@ config.getAsync("superignore").then(async TRI_DISABLE => {
         }
 
         addContentStateChangedListener(
-            async (property, oldMode, oldValue, newValue) => {
+            async (_property, _oldMode, _oldValue, _newValue) => {
                 /*                 let mode = newValue
                 let suffix = ""
                 let result = ""
@@ -392,7 +391,7 @@ config.getAsync("superignore").then(async TRI_DISABLE => {
                     mode = contentState.mode
                 }
                 const suffix = contentState.suffix
-                /* 
+                /*
                 let suffix
                 if (property === "mode") {
                     mode = newValue
