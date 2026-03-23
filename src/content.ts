@@ -139,19 +139,6 @@ config.getAsync("superignore").then(async TRI_DISABLE => {
         messaging.attributeCaller(omniscient_controller),
     )
 
-    messaging.addListener(
-        "excmd_content",
-        messaging.attributeCaller(excmds_content),
-    )
-    messaging.addListener(
-        "controller_content",
-        messaging.attributeCaller(controller),
-    )
-    messaging.addListener(
-        "omniscient_content",
-        messaging.attributeCaller(omniscient_controller),
-    )
-
     // eslint-disable-next-line @typescript-eslint/require-await
     messaging.addListener("alive", async () => true)
 
