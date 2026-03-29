@@ -70,9 +70,9 @@ class HintState {
     public textfilter = [""]
     public hintchars = ""
     public filterMode = "flags"
-    private filteredHints: Hint[] = []
     public useHintClass: boolean
     public useActiveHintClass: boolean
+    private filteredHints: Hint[] = []
 
     constructor(
         public filterFunc: HintFilter,
@@ -94,8 +94,15 @@ class HintState {
             this.outlineHost.classList.add("TridactylHintOutlineHost")
         }
         // we can completely avoid adding classes to the hint elems
-        this.useHintClass = hintstyles.bg === "all" || hintstyles.outline === "all" || hintstyles.fg === "all"
-        this.useActiveHintClass = this.useHintClass || hintstyles.bg === "active" || hintstyles.outline === "active" || hintstyles.fg === "active"
+        this.useHintClass =
+            hintstyles.bg === "all" ||
+            hintstyles.outline === "all" ||
+            hintstyles.fg === "all"
+        this.useActiveHintClass =
+            this.useHintClass ||
+            hintstyles.bg === "active" ||
+            hintstyles.outline === "active" ||
+            hintstyles.fg === "active"
 
         this.hudTranslate.style.translate = `${-window.scrollX}px ${-window.scrollY}px`
     }
@@ -601,7 +608,7 @@ export function hintPage(
     }
     // weird shadow dom related issue on youtube made clientRects accessible
     // if classLists changed between calls to new Hint (very odd and annoying but this seems to fix it...)
-    modeState.hints.forEach(hint => hint.hidden = false)
+    modeState.hints.forEach(hint => (hint.hidden = false))
 
     if (!modeState.hints.length) {
         // No more hints to display
@@ -817,7 +824,7 @@ class Hint {
         public readonly filterData: any,
         private readonly onSelect: HintSelectedCallback,
         classes?: string[],
-        clientRects?: DOMRectList
+        clientRects?: DOMRectList,
     ) {
         // We need to compute the offset for elements that are in an iframe
         let offsetTop = 0
@@ -1036,30 +1043,38 @@ function buildHintsSimple(
     // but no probably not because everything's added to a DocumentFragment first I remember now
     // might still be nice to cache rects (maybe before this even - we get them in DOM.isVisible too)
     const hintablesfiltered = hintablesArray.map(h => ({
-            elements: h.elements.map(el => ({
-                    el,
-                    rects: el.getClientRects(),
-                }))
-                .filter(({rects}) => rects.length > 0),
-            hintclasses: h.hintclasses
-        })
+        elements: h.elements
+            .map(el => ({
+                el,
+                rects: el.getClientRects(),
+            }))
+            .filter(({ rects }) => rects.length > 0),
+        hintclasses: h.hintclasses,
+    }))
+    const totalhints = hintablesfiltered.reduce(
+        (n, h) => n + h.elements.length,
+        0,
     )
-    const totalhints = hintablesfiltered.reduce((n, h) => n + h.elements.length, 0)
 
     // can modeState.hints.length be not 0 here?
     const allnames = Array.from(
         hintnames(totalhints + modeState.hints.length),
     ).slice(modeState.hints.length)
 
-    const hints = modeState.hints
-
     for (const hintables of hintablesfiltered) {
         const names = allnames.slice(modeState.hints.length)
-        for (const [{el,rects}, name] of izip(hintables.elements, names)) {
+        for (const [{ el, rects }, name] of izip(hintables.elements, names)) {
             logger.debug({ el, name })
             modeState.hintchars += name
             modeState.hints.push(
-                new Hint(el, name, null, onSelect, hintables.hintclasses, rects),
+                new Hint(
+                    el,
+                    name,
+                    null,
+                    onSelect,
+                    hintables.hintclasses,
+                    rects,
+                ),
             )
         }
     }
@@ -1424,6 +1439,16 @@ export async function hintables(
     )
     const hintables: Hintables[] = [{ elements: elems }]
     if (withjs) {
+        DOM.getElemsBySelector("*", [
+            el => {
+                if ((el as any).onclick) {
+                    DOM.hintworthy_js_elems.add(el)
+                    return true
+                }
+                return false
+            },
+        ])
+
         hintables.push({
             elements: changeHintablesToLargestChild(
                 Array.from(DOM.hintworthy_js_elems).filter(
@@ -1501,10 +1526,10 @@ export function hintableImages(includeInvisible = false) {
  * @hidden
  */
 export function hintByText(match: string | RegExp) {
-    return DOM.getElemsAndStyleShadowHints(DOM.HINTTAGS_filter_by_text_selectors, [
-        DOM.isVisible,
-        hintByTextFilter(match),
-    ])
+    return DOM.getElemsAndStyleShadowHints(
+        DOM.HINTTAGS_filter_by_text_selectors,
+        [DOM.isVisible, hintByTextFilter(match)],
+    )
 }
 
 /** Add class to typed hint chars so they can be styled however.
