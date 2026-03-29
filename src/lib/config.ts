@@ -412,8 +412,36 @@ export class default_config {
         y: "composite js document.getSelection().toString() | clipboard yank",
         s: "composite js document.getSelection().toString() | fillcmdline open search",
         S: "composite js document.getSelection().toString() | fillcmdline tabopen search",
-        l: 'js document.getSelection().modify("extend","forward","character")',
-        h: 'js document.getSelection().modify("extend","backward","character")',
+        l: `js
+            const sel = document.getSelection();
+            const oldFocusNode = sel.focusNode;
+            const oldFocusOffset = sel.focusOffset;
+
+            sel.modify("extend", "forward", "character");
+            if (sel.isCollapsed) {
+              sel.setBaseAndExtent(
+                oldFocusNode,
+                oldFocusOffset,
+                sel.focusNode,
+                sel.focusOffset + 1
+              );
+            }
+        `,
+        h: `js
+            const sel = document.getSelection();
+            const oldFocusNode = sel.focusNode;
+            const oldFocusOffset = sel.focusOffset;
+
+            sel.modify("extend", "backward", "character");
+            if (sel.isCollapsed) {
+              sel.setBaseAndExtent(
+                oldFocusNode,
+                oldFocusOffset,
+                sel.focusNode,
+                sel.focusOffset - 1
+              );
+            }
+        `,
         e: 'js document.getSelection().modify("extend","forward","word")',
         w: 'js document.getSelection().modify("extend","forward","word"); document.getSelection().modify("extend","forward","word"); document.getSelection().modify("extend","backward","word"); document.getSelection().modify("extend","forward","character")',
         b: 'js document.getSelection().modify("extend","backward","character"); document.getSelection().modify("extend","backward","word"); document.getSelection().modify("extend","forward","character")',
