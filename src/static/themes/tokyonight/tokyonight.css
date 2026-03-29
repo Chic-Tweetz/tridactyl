@@ -307,6 +307,7 @@ span.TridactylHint {
 
 span.TridactylHint.TridactylJSHint {
     color: var(--tritheme-orange2) !important;
+    -webkit-text-fill-color: var(--tritheme-orange2) !important;
 }
 
 /* silly chars before input (& before excmd completions for alignment) */
