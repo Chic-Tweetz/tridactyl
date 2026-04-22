@@ -1175,9 +1175,10 @@ function addFilteredCharClass(hint: Hint, fstr: string) {
 /** Remove the filtered char class from all hints - for resetting the style when rapid hinting
 @hidden */
 function removeFilteredCharClass() {
-    document
-        .querySelectorAll(".TridactylHintCharPressed")
-        .forEach(el => el.classList.remove("TridactylHintCharPressed"))
+    const pressed = modeState.hintHost.querySelectorAll(".TridactylHintCharPressed");
+    for (const el of pressed) {
+        el.classList.remove("TridactylHintCharPressed");
+    }
 }
 
 /** @hidden */

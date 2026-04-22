@@ -414,33 +414,11 @@ export class default_config {
         S: "composite js document.getSelection().toString() | fillcmdline tabopen search",
         l: `js
             const sel = document.getSelection();
-            const oldFocusNode = sel.focusNode;
-            const oldFocusOffset = sel.focusOffset;
-
-            sel.modify("extend", "forward", "character");
-            if (sel.isCollapsed) {
-              sel.setBaseAndExtent(
-                oldFocusNode,
-                oldFocusOffset,
-                sel.focusNode,
-                sel.focusOffset + 1
-              );
-            }
+            tri.visual.extendByCharacter(sel, "forward");
         `,
         h: `js
             const sel = document.getSelection();
-            const oldFocusNode = sel.focusNode;
-            const oldFocusOffset = sel.focusOffset;
-
-            sel.modify("extend", "backward", "character");
-            if (sel.isCollapsed) {
-              sel.setBaseAndExtent(
-                oldFocusNode,
-                oldFocusOffset,
-                sel.focusNode,
-                sel.focusOffset - 1
-              );
-            }
+            tri.visual.extendByCharacter(sel, "backward");
         `,
         e: 'js document.getSelection().modify("extend","forward","word")',
         w: 'js document.getSelection().modify("extend","forward","word"); document.getSelection().modify("extend","forward","word"); document.getSelection().modify("extend","backward","word"); document.getSelection().modify("extend","forward","character")',
