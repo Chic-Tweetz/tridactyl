@@ -537,13 +537,13 @@ config.getAsync("modeindicator").then(mode => {
             statusIndicator.className =
                 "cleanslate TridactylStatusIndicator " + privateMode
             if (
-                dom.isTextEditable(document.activeElement) &&
+                dom.isTextEditable(dom.activeElement()) &&
                 !["input", "ignore"].includes(mode)
             ) {
                 result = "insert"
             } else if (
                 mode === "insert" &&
-                !dom.isTextEditable(document.activeElement)
+                !dom.isTextEditable(dom.activeElement())
             ) {
                 result = "normal"
             } else {
