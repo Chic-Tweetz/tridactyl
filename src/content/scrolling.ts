@@ -1,4 +1,5 @@
 import * as config from "@src/lib/config"
+import * as dom from "@src/lib/dom"
 
 type scrollingDirection = "scrollLeft" | "scrollTop"
 
@@ -153,7 +154,7 @@ export async function scroll(
 
 let lastRecursiveScrolled = null
 let lastFocused = null
-let currentFocused = document.activeElement as any
+let currentFocused = dom.activeElement() as any
 let lastX = 0
 let lastY = 0
 
@@ -162,13 +163,17 @@ export function setCurrentFocus(v) {
     currentFocused = v
 }
 
-document.addEventListener("mousedown", event => {
+function focusHandler(event) {
     currentFocused = event.target
-})
+}
 
-document.addEventListener("focusin", event => {
-    currentFocused = event.target
-})
+// Adding these in content.ts, along with any iframes discovered
+export function addScrollElemListeners(elem = window) {
+    elem.removeEventListener("focusin", focusHandler)
+    elem.removeEventListener("mousedown", focusHandler)
+    elem.addEventListener("focusin", focusHandler)
+    elem.addEventListener("mousedown", focusHandler)
+}
 
 /** Tries to find a node which can be scrolled either x pixels to the right or
  *  y pixels down among the Elements in {nodes} and children of these Elements.

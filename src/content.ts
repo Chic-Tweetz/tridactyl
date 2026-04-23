@@ -148,6 +148,7 @@ function listen(elem) {
         ContentController.canceller.cancelKeyUp,
         true,
     )
+    scrolling.addScrollElemListeners(elem)
 }
 
 listen(window)
