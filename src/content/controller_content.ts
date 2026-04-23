@@ -288,9 +288,8 @@ let doExitInsertModes = ["insert", "input"]
 let dontEnterInsertModes = ["insert", "input", "hint", "ignore"]
 config.getAsync("noinsertmodes")
 .then(noinsert => {
-    doExitInsertModes = insertLikeModes().concat(noinsert.split(" "))
+    doExitInsertModes = insertLikeModes().concat(noinsert.split(" ").filter(m => m))
     dontEnterInsertModes = doExitInsertModes.concat(["ignore", "hint"])
-    console.log("doExitInsertModes: ", doExitInsertModes, "dontEnterInsertModes: ", dontEnterInsertModes)
 })
 
 export function shouldEnterInsertMode(currentMode, textEditable) {
