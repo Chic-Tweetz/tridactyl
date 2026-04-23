@@ -11,6 +11,10 @@ import {
 } from "@src/lib/webext"
 const logger = new Logging.Logger("dom")
 import { hintElemStyles } from "@src/content/styling"
+import {
+    shouldEnterInsertMode,
+    shouldExitInsertMode,
+} from "@src/content/controller_content"
 
 // From saka-key lib/dom.js, under Apachev2
 
@@ -792,11 +796,23 @@ function hijackPageFocusFunction(win = window): void {
 
 const focusListenerDocs = new WeakSet()
 export function setupFocusHandler(doc = document, onNewIframeFound = null): void {
+    const blurOnce = e => {
+        if (shouldExitInsertMode(contentState.mode, false)) {
+            contentState.mode = "normal"
+        }
+        e.target.removeEventListener("blur", blurOnce)
+    }
     // Handles when a user selects an input
     const setFocus = elem => {
         if (isTextEditable(elem)) {
             LAST_USED_INPUT = elem
             setInput(elem)
+            if (shouldEnterInsertMode(contentState.mode, true)) {
+                contentState.mode = "insert"
+            }
+            elem.addEventListener("blur", blurOnce)
+        } else if (shouldExitInsertMode(contentState.mode, false)) {
+            contentState.mode = "normal"
         }
     }
     const knownRoot = new WeakSet()

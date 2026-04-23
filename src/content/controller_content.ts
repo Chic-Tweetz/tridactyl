@@ -74,7 +74,7 @@ class KeyCanceller {
                 ke.composed === ke2.composed &&
                 ke.ctrlKey === ke2.ctrlKey &&
                 ke.metaKey === ke2.metaKey &&
-                ke.shiftKey === ke2.shiftKey
+                ke.shiftKey === ke2.shiftKey,
         )
         if (index >= 0 && isKeyboardEvent(ke)) {
             ke.preventDefault()
@@ -176,19 +176,9 @@ function* ParserController() {
                 // This code was sort of the cause of the most serious bug in Tridactyl
                 // to date (March 2018).
                 // https://github.com/tridactyl/tridactyl/issues/311
-                if (
-                    currentMode !== "ignore" &&
-                    currentMode !== "hint" &&
-                    currentMode !== "input"
-                ) {
-                    if (textEditable) {
-                        if (currentMode !== "insert") {
-                            contentState.mode = "insert"
-                        }
-                    } else if (currentMode === "insert") {
-                        contentState.mode = "normal"
-                    }
-                } else if (currentMode === "input" && !textEditable) {
+                if (shouldEnterInsertMode(currentMode, textEditable)) {
+                    contentState.mode = "insert"
+                } else if (shouldExitInsertMode(currentMode, textEditable)) {
                     contentState.mode = "normal"
                 }
 
@@ -291,4 +281,43 @@ export function acceptKey(keyevent: KeyboardEvent) {
     }
     if (!tryBufferingPageKeyForClInput(keyevent))
         return generator.next(keyevent)
+}
+
+// Allow custom modes which inherit from insert mode to not exit to insert mode automatically
+let doExitInsertModes = ["insert", "input"]
+let dontEnterInsertModes = ["insert", "input", "hint", "ignore"]
+config.getAsync("noinsertmodes")
+.then(noinsert => {
+    doExitInsertModes = insertLikeModes().concat(noinsert.split(" "))
+    dontEnterInsertModes = doExitInsertModes.concat(["ignore", "hint"])
+    console.log("doExitInsertModes: ", doExitInsertModes, "dontEnterInsertModes: ", dontEnterInsertModes)
+})
+
+export function shouldEnterInsertMode(currentMode, textEditable) {
+    return textEditable && !dontEnterInsertModes.includes(currentMode)
+}
+
+export function shouldExitInsertMode(currentMode, textEditable) {
+    return !textEditable && doExitInsertModes.includes(currentMode)
+}
+
+function insertLikeModes() {
+    return Object.keys(config.get())
+        .filter(k => k.endsWith("maps") && inheritsImaps(k))
+        .map(k => {
+            const mode = k.slice(0, -4)
+            return mode === "i" ? "insert" : mode
+        })
+}
+
+function inheritsImaps(confkey) {
+    if (confkey === "imaps") return true
+    let conf = config.get(confkey)
+    let inherits = conf["🕷🕷INHERITS🕷🕷"]
+    while (inherits) {
+        if (inherits === "imaps") return true
+		conf = config.get(inherits)
+        inherits = conf["🕷🕷INHERITS🕷🕷"]
+    }
+    return false
 }
