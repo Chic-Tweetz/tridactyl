@@ -443,10 +443,7 @@ config.getAsync("modeindicator").then(mode => {
         ? "TridactylPrivate"
         : ""
 
-    statusIndicator.className =
-        "cleanslate TridactylStatusIndicator " +
-        privateMode +
-        " TridactylModenormal "
+    statusIndicator.className = "cleanslate TridactylStatusIndicator " + privateMode
 
     let containerColorClass = ""
     // Dynamically sets the border container color.
@@ -496,16 +493,36 @@ config.getAsync("modeindicator").then(mode => {
     try {
         // On quick loading pages, the document is already loaded
         statusIndicator.textContent = contentState.mode || "normal"
+        statusIndicator.classList.add(
+            "TridactylMode" + statusIndicator.textContent,
+        )
         document.body.appendChild(statusIndicator)
         document.head.appendChild(style)
     } catch (e) {
         // But on slower pages we wait for the document to load
         window.addEventListener("DOMContentLoaded", () => {
             statusIndicator.textContent = contentState.mode || "normal"
+            statusIndicator.classList.add(
+                "TridactylMode" + statusIndicator.textContent,
+            )
             document.body.appendChild(statusIndicator)
             document.head.appendChild(style)
         })
     }
+
+    let tabGroup: string | null = null
+    let tabGroupText = ""
+    let resultNoGroup = statusIndicator.textContent
+    let lastModeClass = "TridactylMode" + (contentState.mode || "normal")
+
+    tabTgroup().then(group => {
+        tabGroup = group
+        if (group) {
+            tabGroup = group
+            tabGroupText = " | " + group
+            statusIndicator.textContent = resultNoGroup + tabGroupText
+        }
+    })
 
     addContentStateChangedListener(
         async (_property, _oldMode, _oldValue, _newValue) => {
@@ -523,32 +540,19 @@ config.getAsync("modeindicator").then(mode => {
                 mode = contentState.mode
                 modeClass = mode
             }
-            const suffix = contentState.suffix
+            const suffix = contentState.suffix || ""
             let result = ""
-            const indicatorClass = "cleanslate TridactylStatusIndicator"
-            const privateMode = browser.extension.inIncognitoContext
-                ? "TridactylPrivate"
-                : ""
-            const invisibleClass =
+
+            if (
                 config.get("modeindicator") !== "true" ||
                 config.get("modeindicatormodes", mode) === "false"
-                    ? "TridactylInvisible"
-                    : ""
-            statusIndicator.className =
-                "cleanslate TridactylStatusIndicator " + privateMode
-            if (
-                dom.isTextEditable(dom.activeElement()) &&
-                !["input", "ignore"].includes(mode)
             ) {
-                result = "insert"
-            } else if (
-                mode === "insert" &&
-                !dom.isTextEditable(dom.activeElement())
-            ) {
-                result = "normal"
+                statusIndicator.classList.add("TridactylInvisible")
             } else {
-                result = mode
+                statusIndicator.classList.remove("TridactylInvisible")
             }
+            result = mode
+
             const modeindicatorshowkeys = config.get(
                 "modeindicatorshowkeys",
             )
@@ -556,10 +560,23 @@ config.getAsync("modeindicator").then(mode => {
                 result = mode + " " + suffix
             }
 
-            const tabGroup = await tabTgroup()
-            if (tabGroup) {
-                result = result + " | " + tabGroup
+            tabTgroup().then(group => {
+                if (group !== tabGroup) {
+                    tabGroup = group
+                    tabGroupText = group ? " | " + group : ""
+                    statusIndicator.textContent =
+                        resultNoGroup + tabGroupText
+                }
+            })
+
+            if (lastModeClass !== modeClass) {
+                statusIndicator.classList.remove(lastModeClass)
+                statusIndicator.classList.add("TridactylMode" + modeClass)
+                lastModeClass = "TridactylMode" + modeClass
             }
+            resultNoGroup = result
+            result = resultNoGroup + tabGroupText
+            statusIndicator.textContent = result
 
             logger.debug(
                 "statusindicator: ",
@@ -568,8 +585,6 @@ config.getAsync("modeindicator").then(mode => {
                 "config",
                 modeindicatorshowkeys,
             )
-            statusIndicator.textContent = result
-            statusIndicator.className = `${indicatorClass} ${privateMode} ${containerColorClass} TridactylMode${modeClass} ${invisibleClass}`
         },
     )
 })
