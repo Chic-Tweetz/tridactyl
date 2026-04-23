@@ -41,6 +41,7 @@ import * as R from "ramda"
 /** @hidden */
 const logger = new Logger("hinting")
 import * as keyseq from "@src/lib/keyseq"
+import { shouldEnterInsertMode } from "./controller_content"
 
 /** Calclate the distance between two segments.
  * @hidden
@@ -1176,7 +1177,7 @@ function reset() {
         modeState.resolveHinting()
     }
     modeState = undefined
-    contentState.mode = "normal"
+    contentState.mode = DOM.isTextEditable(document.activeElement) ? "insert" : "normal"
     window.removeEventListener("scroll", updateHudOffset)
 }
 

@@ -1404,6 +1404,27 @@ export class default_config {
      * Internal temporary storage for :reader, mapping UUIDs to base64 encoded html strings of articles
      */
     reader_articles: { [id: string]: string } = {}
+
+    /**
+     * Prevent entering insert mode when typing in a textEditable element when in these modes.
+     * Space separated, ie :set noinsertmodes <mode1> <mode2> <mode3> ...
+     * 
+     * For example, create a custom mode by binding keys to it:
+     * :bind --mode=edit-normal l text.forward_char
+     * :bind --mode=edit-normal h text.backward_char
+     * :bind --mode=edit-normal i mode insert
+     * 
+     * Allow entering it from insert mode:
+     * :bind --mode=insert <C-l> enter-mode edit-normal
+     * 
+     * Prevent automatically entering insert mode when typing:
+     * :set noinsertmodes edit-normal
+     * 
+     * Modes which inherit from insert mode are automatically treated this way.
+     * Use this syntax to inherit from insert mode:
+     * :bind --mode=edit-insert 🕷🕷INHERITS🕷🕷 imaps
+     */
+    noinsertmodes: string = ""
 }
 
 const platform_defaults = {

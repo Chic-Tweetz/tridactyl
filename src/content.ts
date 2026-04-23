@@ -138,21 +138,11 @@ const guardedAcceptKey = (keyevent: KeyboardEvent) => {
 function listen(elem) {
     elem.removeEventListener("keydown", guardedAcceptKey, true)
     elem.removeEventListener(
-        "keypress",
-        ContentController.canceller.cancelKeyPress,
-        true,
-    )
-    elem.removeEventListener(
         "keyup",
         ContentController.canceller.cancelKeyUp,
         true,
     )
     elem.addEventListener("keydown", guardedAcceptKey, true)
-    elem.addEventListener(
-        "keypress",
-        ContentController.canceller.cancelKeyPress,
-        true,
-    )
     elem.addEventListener(
         "keyup",
         ContentController.canceller.cancelKeyUp,
@@ -366,23 +356,7 @@ config.getAsync("modeindicator").then(mode => {
             : ""
         statusIndicator.className =
             "cleanslate TridactylStatusIndicator " + privateMode
-        if (
-            dom.isTextEditable(document.activeElement) &&
-            !["input", "ignore"].includes(mode)
-        ) {
-            result = "insert"
-            // this doesn't work; statusIndicator.style is full of empty string
-            // statusIndicator.style.borderColor = "green !important"
-            // need to fix loss of focus by click: doesn't do anything here.
-        } else if (
-            mode === "insert" &&
-            !dom.isTextEditable(document.activeElement)
-        ) {
-            result = "normal"
-            // statusIndicator.style.borderColor = "lightgray !important"
-        } else {
-            result = mode
-        }
+        result = mode
         const modeindicatorshowkeys = config.get("modeindicatorshowkeys")
         if (modeindicatorshowkeys === "true" && suffix !== "") {
             result = mode + " " + suffix
