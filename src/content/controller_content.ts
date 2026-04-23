@@ -180,19 +180,9 @@ function* ParserController() {
                 // This code was sort of the cause of the most serious bug in Tridactyl
                 // to date (March 2018).
                 // https://github.com/tridactyl/tridactyl/issues/311
-                if (
-                    currentMode !== "ignore" &&
-                    currentMode !== "hint" &&
-                    currentMode !== "input"
-                ) {
-                    if (textEditable) {
-                        if (currentMode !== "insert") {
-                            contentState.mode = "insert"
-                        }
-                    } else if (currentMode === "insert") {
-                        contentState.mode = "normal"
-                    }
-                } else if (currentMode === "input" && !textEditable) {
+                if (shouldEnterInsertMode(currentMode, textEditable)) {
+                    contentState.mode = "insert"
+                } else if (shouldExitInsertMode(currentMode, textEditable)) {
                     contentState.mode = "normal"
                 }
 
@@ -281,4 +271,12 @@ export function acceptKey(keyevent: KeyboardEvent) {
     }
     if (!tryBufferingPageKeyForClInput(keyevent))
         return generator.next(keyevent)
+}
+
+export function shouldEnterInsertMode(currentMode, textEditable) {
+    return textEditable && !["insert", "input", "ignore", "hint"].includes(currentMode)
+}
+
+export function shouldExitInsertMode(currentMode, textEditable) {
+    return !textEditable && ["insert", "input"].includes(currentMode)
 }
