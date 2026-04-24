@@ -1045,14 +1045,16 @@ export function getAbsoluteCentre(el) {
 // This is mainly for the benefit of the mode indicator when focused on an element in an iframe
 export function activeElement(doc = document) {
     let elem = doc.activeElement
-    while (true) {
+    while (elem) {
         while (elem.shadowRoot) {
             elem = elem.shadowRoot.activeElement
             if (!elem) return null
         }
         if (elem.tagName !== "IFRAME") return elem
         try {
-            elem = (elem as HTMLIFrameElement).contentDocument.activeElement
+            const iframeActiveElem = (elem as HTMLIFrameElement).contentDocument.activeElement
+            if (!iframeActiveElem) return elem
+            elem = iframeActiveElem
         } catch (e) {
             return elem
         }
