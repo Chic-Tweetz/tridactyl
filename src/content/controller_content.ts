@@ -213,7 +213,7 @@ function* ParserController() {
                     response,
                 )
 
-                if (response.isMatch && keyevent instanceof KeyboardEvent) {
+                if (contentState.blocking_keypresses || (response.isMatch && keyevent instanceof KeyboardEvent)) {
                     canceller.push(keyevent)
                 }
 

@@ -1404,6 +1404,13 @@ export class default_config {
      * Internal temporary storage for :reader, mapping UUIDs to base64 encoded html strings of articles
      */
     reader_articles: { [id: string]: string } = {}
+
+    /**
+     * Consume all keypresses when any of these modes. Space-separated.
+     * The command :blockpagekeys false
+     * can be used to allow keypresses through to the page in these modes.
+     */
+    blockpagekeypressesmodes: string = ""
 }
 
 const platform_defaults = {

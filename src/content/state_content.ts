@@ -1,4 +1,5 @@
 import Logger from "@src/lib/logging"
+import * as config from "@src/lib/config"
 const logger = new Logger("state")
 
 export type ModeName =
@@ -23,6 +24,7 @@ class ContentState {
     group = ""
     current_cmdline = ""
     cmdline_filter = ""
+    blocking_keypresses = false
 }
 
 export type ContentStateProperty =
@@ -31,6 +33,7 @@ export type ContentStateProperty =
     | "prevInputs"
     | "suffix"
     | "group"
+    | "blocking_keypresses"
 
 export type ContentStateChangedCallback = (
     property: ContentStateProperty,
@@ -63,6 +66,10 @@ export const contentState = (new Proxy(
 
             for (const listener of onChangedListeners) {
                 listener(property, mode, oldValue, newValue)
+            }
+            if (property === "mode" && oldValue !== newValue) {
+                const consumeKeyModes = config.get("blockpagekeypressesmodes").split(" ").filter(m => m.length > 0)
+                contentState.blocking_keypresses = consumeKeyModes.includes(newValue)
             }
             return true
         },

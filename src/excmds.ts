@@ -6469,4 +6469,16 @@ export function hintstylesdirect() {
     ;["fg", "bg", "outline"].forEach(type => config.set("hintstyles", type, "all"))
     ;["overlay", "overlayoutline"].forEach(type => config.set("hintstyles", type, "none"))
 }
+
+/**
+ * Prevent or allow any keypresses from reaching the page.
+ * Resets when changing modes.
+ * Allow them again using :blockpagekeys false
+ * Some modes may automatically block page keypresses.
+ */
+//#content
+export function blockpagekeys(allow: "true" | "false") {
+    contentState.blocking_keypresses = allow === "true"
+}
+
 // }}}
