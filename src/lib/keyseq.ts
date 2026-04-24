@@ -318,7 +318,7 @@ export function parse(
                 numericPrefix: numericPrefix.length
                     ? Number(numericPrefix.map(ke => ke.key).join(""))
                     : undefined,
-                keys: [],
+                keys: numericPrefix.concat(keyseq),
             }
         } catch (e) {
             if (!(e instanceof RangeError)) throw e

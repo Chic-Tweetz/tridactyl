@@ -6653,4 +6653,42 @@ export function hintstylesdirect() {
 export function whichkey(level: "all" | "multi" | "none" | "toggle" = "toggle") {
     showWhichKey(level)
 }
+
+/**
+ * Prevent or allow any keypresses from reaching the page.
+ * Resets when changing modes.
+ * Allow them again using :blockpagekeys false
+ * Some modes may automatically block page keypresses.
+ */
+//#content
+export function blockpagekeys(allow: "true" | "false") {
+    contentState.blocking_keypresses = allow === "true"
+}
+
+/**
+ * Allow binds to work on the page, even if they match Tridactyl binds.
+ * Only lets the final key in the keyseq work, eg:
+ * :allowpagebind www.example.com abc
+ * would only let the c keypress be seen by the page
+ * if you wanted the page to receive all three keys, you can add them separately:
+ * :allowpagebind www.example.com a
+ * :allowpagebind www.example.com ab
+ * note that this is only helpful if Tridactyl binds are conflicting with page binds you want to use.
+ * You may wish to also unbind Tridactyl binds. For instance to use gmail's `gi` instead of Tridactyl's:
+ * :allowpagebind mail.google.com g
+ * :unbindurl mail.google.com gi
+ */
+//#background
+export function allowpagebind(pattern: string, keys: string) {
+    const args_obj = parse_bind_args(keys)
+    return config.setURL(pattern, "whitelistpagebinds", args_obj.key, "noop")
+}
+
+/**
+ * Remove a previously allowed page bind from :allowpagebind.
+ */
+export function unallowpagebind(pattern: string, keys: string) {
+    config.unsetURL(pattern, "whitelistpagebinds", keys)
+}
 // }}}
+

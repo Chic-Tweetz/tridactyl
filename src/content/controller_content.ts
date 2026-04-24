@@ -140,6 +140,9 @@ function* ParserController() {
         nmode: nmode.parser,
     }
 
+    // These won't be cancelled
+    const whitelistBindsParser = keys => generic.parser("whitelistpagebinds", keys)
+
     while (true) {
         let exstr = ""
         let previousSuffix = null
@@ -199,8 +202,15 @@ function* ParserController() {
                     response,
                 )
 
-                if (response.isMatch && isKeyboardEvent(keyevent)) {
-                    canceller.push(keyevent)
+                if (contentState.blocking_keypresses || (
+                        response.isMatch &&
+                        isKeyboardEvent(keyevent) &&
+                        (
+                            !response.keys ||
+                            !whitelistBindsParser(response.keys).exstr
+                        )
+                )) {
+                    canceller.push(keyevent as KeyboardEvent)
                 }
 
                 if (response.exstr) {
