@@ -202,15 +202,21 @@ function* ParserController() {
                     response,
                 )
 
-                if (contentState.blocking_keypresses || (
-                        response.isMatch &&
-                        isKeyboardEvent(keyevent) &&
-                        (
-                            !response.keys ||
-                            !whitelistBindsParser(response.keys).exstr
-                        )
-                )) {
-                    canceller.push(keyevent as KeyboardEvent)
+                if (isKeyboardEvent(keyevent)) {
+                    if (contentState.blocking_keypresses) {
+                        canceller.push(keyevent)
+                    } else if (response.isMatch) {
+                        const whitelistResponse = response.keys ? whitelistBindsParser(response.keys) : null
+                        if (
+                            !whitelistResponse ||
+                            !(
+                                whitelistResponse.exstr &&
+                                whitelistResponse.keys?.length === response.keys.length
+                            )
+                        ) {
+                            canceller.push(keyevent)
+                        }
+                    }
                 }
 
                 if (response.exstr) {
