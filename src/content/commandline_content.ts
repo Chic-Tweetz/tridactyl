@@ -8,8 +8,10 @@ import * as customCompletions from "@src/content/completions_content"
 import * as keyseq from "@src/lib/keyseq"
 import * as tri_editor from "@src/lib/editor"
 import { contentState } from "@src/content/state_content"
+import { canceller } from "@src/content/controller_content"
 const logger = new Logger("messaging")
 const cmdline_logger = new Logger("cmdline")
+
 
 /* TODO:
     CSS
@@ -68,41 +70,11 @@ export function makeIframe() {
                 "commandline_frame_ready_to_receive_messages",
             )
         } else {
-            // Hijacking this existing if for something completely different:
-            // There isn't an actual ex mode, but we could still set the status indicator's text if we focus the cmdline
-            // There's more in content.ts to make sure the correct text is put in the status indicator
-            // (would rather put it all in one place)
-            let lastMode = "normal"
-            cmdline_iframe.contentWindow.addEventListener("focus", () => {
-                const indicator = document.querySelector(
-                    ".TridactylStatusIndicator",
-                )
-                if (indicator && indicator.textContent !== "ex") {
-                    lastMode = indicator.textContent.split(" ")[0]
-                    setTimeout(() => {
-                        indicator.textContent = "ex"
-                        indicator.classList.remove("TridactylMode" + lastMode)
-                        indicator.classList.add("TridactylModeex")
-                    }, 0)
-                }
-            })
-            cmdline_iframe.contentWindow.addEventListener("blur", () => {
-                const indicator = document.querySelector(
-                    ".TridactylStatusIndicator",
-                )
-                if (!indicator) return
-                if (indicator.textContent !== "ex") {
-                    lastMode = indicator.textContent.split(" ")[0]
-                    return
-                }
-                indicator.textContent = lastMode
-                indicator.classList.remove("TridactylModeex")
-                indicator.classList.add("TridactylMode" + lastMode)
-            })
-
             const win = cmdline_iframe.contentWindow
             win.addEventListener("focus", () => {
                 contentState.pseudo_mode = "ex"
+                // The key canceller was keeping KeyUp events from binds like ":" which focus the commandline
+                canceller.clearQueue()
             })
             win.addEventListener("blur", () => {
                 if (contentState.pseudo_mode === "ex")

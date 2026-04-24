@@ -173,6 +173,12 @@ browser.tabs.onActivated.addListener(ev => {
         messaging
             .messageTab(curTab, "excmd_content", "loadaucmds", ["TabLeft"])
             .catch(ignore)
+
+        // Could use the autocmd "TabLeft" listener, but will also send this when the window changes
+        // to clear the key canceller queue which otherwise gets leftover keyup events stacked up
+        messaging.messageTab(curTab, "tab_changes", "tab_left", [])
+            .catch(ignore)
+
     }
     curTab = ev.tabId
     messaging
@@ -199,6 +205,22 @@ for (const requestEvent of webrequests.requestEvents) {
 // }}}
 
 // {{{ AUTOCONTAINERS
+
+let curWin: null | number = null
+browser.windows.onFocusChanged.addListener((windowId) => {
+    // Not clear whether curTab will update when changing windows, doesn't look like it
+    if (curWin) {
+        browser.tabs.query({ windowId: curWin,  active:true }).then(tabs => {
+            const t = tabs[0]
+            if (t) {
+                messaging.messageTab(t.id, "tab_changes", "tab_left", [])
+                    .catch(_=>{})
+            }
+        })
+    }
+    curWin = windowId
+});
+
 
 extension_info.init()
 

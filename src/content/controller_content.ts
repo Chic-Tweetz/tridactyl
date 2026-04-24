@@ -330,3 +330,9 @@ function inheritsImaps(confkey) {
     }
     return false
 }
+
+Messaging.addListener("tab_changes", msg => {
+    if (msg.command === "tab_left") {
+        canceller.clearQueue()
+    }
+})
