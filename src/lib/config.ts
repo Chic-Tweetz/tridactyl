@@ -1410,7 +1410,16 @@ export class default_config {
      * The command :blockpagekeys false
      * can be used to allow keypresses through to the page in these modes.
      */
-    blockpagekeypressesmodes: string = ""
+    blockpagekeypressesmodes: string = "hint"
+
+    /**
+     * Allow specific keypresses to reach the page, even if they match a Tridactyl bind.
+     * Useful for cases like gmail where the `g` key prefixes both Tridactyl and gmail binds.
+     * 
+     * Set using the :allowpagebind excmd, e.g:
+     * :allowpagebind mail.gmail.com g
+     */
+    whitelistpagebinds = {}
 }
 
 const platform_defaults = {

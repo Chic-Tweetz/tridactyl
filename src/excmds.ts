@@ -6481,4 +6481,12 @@ export function blockpagekeys(allow: "true" | "false") {
     contentState.blocking_keypresses = allow === "true"
 }
 
+/**
+ * Allow binds to work on the page, even if they match Tridactyl binds.
+ */
+//#background
+export function allowpagebind(pattern: string, keys: string) {
+    const args_obj = parse_bind_args(keys)
+    return config.setURL(pattern, "whitelistpagebinds", args_obj.key, "noop")
+}
 // }}}

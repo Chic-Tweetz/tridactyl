@@ -68,7 +68,6 @@ class KeyCanceller {
     push(ke: KeyboardEvent) {
         ke.preventDefault()
         ke.stopImmediatePropagation()
-        this.keyPress.push(ke)
         this.keyUp.push(ke)
     }
 
@@ -90,8 +89,8 @@ class KeyCanceller {
                 ke.composed === ke2.composed &&
                 ke.ctrlKey === ke2.ctrlKey &&
                 ke.metaKey === ke2.metaKey &&
-                ke.shiftKey === ke2.shiftKey &&
-                ke.target === ke2.target,
+                ke.shiftKey === ke2.shiftKey
+                // ke.target === ke2.target,
         )
         if (index >= 0 && ke instanceof KeyboardEvent) {
             ke.preventDefault()
@@ -143,6 +142,9 @@ function* ParserController() {
         visual: keys => generic.parser("vmaps", keys),
         nmode: nmode.parser,
     }
+
+    // These won't be cancelled
+    const whitelistBindsParser = keys => generic.parser("whitelistpagebinds", keys)
 
     while (true) {
         let exstr = ""
@@ -213,8 +215,15 @@ function* ParserController() {
                     response,
                 )
 
-                if (contentState.blocking_keypresses || (response.isMatch && keyevent instanceof KeyboardEvent)) {
-                    canceller.push(keyevent)
+                if (contentState.blocking_keypresses || (
+                        response.isMatch &&
+                        keyevent instanceof KeyboardEvent &&
+                        (
+                            !response.keys ||
+                            !whitelistBindsParser(response.keys).exstr
+                        )
+                )) {
+                    canceller.push(keyevent as KeyboardEvent)
                 }
 
                 if (response.exstr) {
