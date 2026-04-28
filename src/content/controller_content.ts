@@ -303,8 +303,13 @@ export function acceptKey(keyevent: KeyboardEvent) {
 let doExitInsertModes = ["insert", "input"]
 let dontEnterInsertModes = ["insert", "input", "hint", "ignore"]
 config.getAsync("noinsertmodes")
-.then(noinsert => {
-    doExitInsertModes = insertLikeModes().concat(noinsert.split(" ").filter(m => m))
+.then((noinsert) => {
+    doExitInsertModes = insertLikeModes()
+    .concat(
+        Object.entries(noinsert)
+        .filter(([_mode, value]) => value === "true")
+        .map(([mode, _value]) => mode)
+    )
     dontEnterInsertModes = doExitInsertModes.concat(["ignore", "hint"])
 })
 

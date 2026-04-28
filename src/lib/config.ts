@@ -1653,7 +1653,7 @@ export class default_config {
     
     /**
      * Prevent entering insert mode when typing in a textEditable element when in these modes.
-     * Space separated, ie :set noinsertmodes <mode1> <mode2> <mode3> ...
+     * Usage: :set noinsertmodes.mode-name true
      * 
      * For example, create a custom mode by binding keys to it:
      * :bind --mode=edit-normal l text.forward_char
@@ -1664,14 +1664,14 @@ export class default_config {
      * :bind --mode=insert <C-l> enter-mode edit-normal
      * 
      * Prevent automatically entering insert mode when typing:
-     * :set noinsertmodes edit-normal
+     * :set noinsertmodes.edit-normal true
      * 
      * Modes which inherit from insert mode are automatically treated this way.
      * Use this syntax to inherit from insert mode:
      * :bind --mode=edit-insert 🕷🕷INHERITS🕷🕷 imaps
      */
-    noinsertmodes: string = ""
-    
+    noinsertmodes: { [key: string]: "true" | "false" } = {}
+
     /**
      * Consume all keypresses when any of these modes. Space-separated.
      * The command :blockpagekeys false
