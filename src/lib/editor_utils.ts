@@ -7,7 +7,16 @@ export type editor_function = (
     start: number,
     end: number,
     arg?: any,
-) => [string, number, number]
+) => [string | null, number | null, number | null]
+
+// nah, we need text too so we can check word boundaries still... goodness sake
+export type editor_selection_function = (
+    text: string,
+    start: number,
+    end: number,
+    direction: string,
+    arg?: any,
+) => [number | null, number | null, string | null]
 
 /**
  * Applies a function to an element. If the element is an HTMLInputElement and its type isn't "text", it is first turned into a "text" element. This is necessary because some elements (e.g. "email") do not have a selectionStart/selectionEnd.
@@ -34,6 +43,10 @@ export function applyToElem(e, fn) {
  */
 export function getSimpleValues(e: any) {
     return applyToElem(e, e => [e.value, e.selectionStart, e.selectionEnd])
+}
+
+export function getSelectionValues(e: any) {
+    return applyToElem(e, e => [e.value, e.selectionStart, e.selectionEnd, e.selectionDirection])
 }
 
 /**
@@ -76,6 +89,14 @@ export function setSimpleValues(e, text, start, end) {
             e.selectionStart = start
             e.selectionEnd = end
         }
+    })
+}
+
+export function setSelectionValues(e, start, end, direction) {
+    return applyToElem(e, e => {
+        if (start !== null) e.selectionStart = start
+        if (end !== null) e.selectionEnd = end
+        if (direction !== null) e.selectionDirection = direction
     })
 }
 
@@ -136,6 +157,23 @@ export function wrap_input(
     }
 }
 
+export function wrap_selection(
+    fn: editor_selection_function,
+): (e: HTMLElement, arg?: any) => boolean {
+    return (e: HTMLElement, arg?: any) => {
+        let getValues = getSelectionValues
+        let setValues = setSelectionValues
+        // isContentEditable probably wouldn't work judging by wrap_input
+        const [origText, origStart, origEnd, origDirection] = getValues(e)
+        console.log(origText, origStart, origEnd, origDirection)
+        if (origDirection === "none") return false // Or not, I don't know
+        setValues(e, ...fn(origText, origStart, origEnd, origDirection))
+        console.log(getValues(e))
+        return true
+    }
+    
+}
+
 /**
  * Take an editor function as parameter and wrap it in a function that will handle error conditions
  */
@@ -157,6 +195,24 @@ export function needs_text(fn: editor_function, arg?: any): editor_function {
             text,
             selectionStart,
             typeof selectionEnd === "number" ? selectionEnd : selectionStart,
+            arg,
+        )
+    }
+}
+
+export function needs_direction(fn: editor_selection_function, arg?: any): editor_selection_function {
+    return (
+        text: string,
+        selectionStart: number,
+        selectionEnd: number,
+        selectionDirection: string,
+        arg?: any,
+    ) => {
+        return fn(
+            text,
+            selectionStart,
+            selectionEnd,
+            selectionDirection,
             arg,
         )
     }

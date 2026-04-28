@@ -21,7 +21,9 @@
 
 import {
     wrap_input,
+    wrap_selection,
     needs_text,
+    needs_direction,
     getWordBoundaries,
     wordAfterPos,
     rot13_helper,
@@ -322,6 +324,95 @@ export const backward_kill_word = wrap_input(
     }),
 )
 
+// These selection functions are working :D
+// nice!
+export const extend_char = wrap_selection(
+    needs_direction((text, selectionStart, selectionEnd, selectionDirection) => {
+        // If backward, we want to move selectionStart, if forward we move selectionEnd
+        // haven't actually done that mind you
+        // just wanna see if this does anything at all first
+        let backward = selectionDirection === "backward"
+        const caret = backward ? selectionStart : selectionEnd
+        if (caret === text.length) return [null, null, null]
+        if (backward) {
+            if (selectionEnd < selectionStart + 1) {
+                return [selectionEnd, selectionStart + 1, "forward"]
+            } else {
+                return [selectionStart + 1, null, null]
+            }
+        }
+        return [null, selectionEnd + 1, null]
+    })
+)
+
+export const extend_backward_char = wrap_selection(
+    needs_direction((_text, selectionStart, selectionEnd, selectionDirection) => {
+        // If backward, we want to move selectionStart, if forward we move selectionEnd
+        // haven't actually done that mind you
+        // just wanna see if this does anything at all first
+        let backward = selectionDirection === "backward"
+        const caret = backward ? selectionStart : selectionEnd
+        if (caret === 0) return [null, null, null]
+        if (!backward) {
+            if (selectionStart > selectionEnd - 1) {
+                return [selectionEnd - 1, selectionStart, "backward"]
+            } else {
+                return [null, selectionEnd - 1, null]
+            }
+        }
+        return [selectionStart - 1, null, null]
+    })
+)
+
+export const extend_word = wrap_selection(
+    needs_direction((text, selectionStart, selectionEnd, selectionDirection) => {
+        // If backward, we want to move selectionStart, if forward we move selectionEnd
+        // haven't actually done that mind you
+        // just wanna see if this does anything at all first
+        let backward = selectionDirection === "backward"
+        const caret = backward ? selectionStart : selectionEnd
+        if (caret === text.length) return [null, null, null]
+
+        const boundary = getWordBoundaries(text, caret, false)[1]
+        if (backward) {
+            if (selectionEnd < boundary) {
+                return [selectionEnd, boundary, "forward"]
+            } else {
+                return [boundary, null, null]
+            }
+        }
+        return [null, boundary, null]
+    })
+)
+
+export const extend_backward_word = wrap_selection(
+    needs_direction((text, selectionStart, selectionEnd, selectionDirection) => {
+        // If backward, we want to move selectionStart, if forward we move selectionEnd
+        // haven't actually done that mind you
+        // just wanna see if this does anything at all first
+        let backward = selectionDirection === "backward"
+        const caret = backward ? selectionStart : selectionEnd
+        if (caret === 0) return [null, null, null]
+
+        const boundary = getWordBoundaries(text, caret, true)[0]
+        if (!backward) {
+            if (selectionStart > boundary) {
+                return [boundary, selectionStart, "backward"]
+            } else {
+                return [null, boundary, null]
+            }
+        }
+        return [boundary, null, null]
+    })
+)
+
+export const reverse_direction = wrap_selection(
+    needs_direction((_text, _selectionStart, _selectionEnd, selectionDirection) => {
+        if (selectionDirection === "none") return [null, null, null]
+        return selectionDirection === "backward" ? [null, null, "forward"] : [null, null, "backward"]
+    })
+)
+
 /**
  * Behaves like readline's [beginning_of_line](http://web.mit.edu/gnu/doc/html/rlman_1.html#SEC12). Moves the caret to the right of the first newline character found at the left of the caret. If no newline can be found, move the caret to the beginning of the text.
  **/
@@ -350,6 +441,43 @@ export const end_of_line = wrap_input(
     }),
 )
 
+export const extend_end_of_line = wrap_selection(
+    needs_direction((text, selectionStart, selectionEnd, selectionDirection) => {
+        const backward = selectionDirection === "backward"
+        let caret = backward ? selectionStart : selectionEnd
+        while (text[caret] !== undefined && text[caret] !== "\n") {
+            caret += 1
+        }
+        if (backward) {
+            if (selectionEnd < caret) {
+                return [selectionEnd, caret, "forward"]
+            } else {
+                return [caret, null, null]
+            }
+        }
+        return [null, caret, null]
+    })
+)
+
+export const extend_beginning_of_line = wrap_selection(
+    needs_direction((text, selectionStart, selectionEnd, selectionDirection) => {
+        const backward = selectionDirection === "backward"
+        let caret = backward ? selectionStart : selectionEnd
+        while (text[caret - 1] !== undefined && text[caret - 1] !== "\n") {
+            caret -= 1            
+        } 
+
+        if (!backward) {
+            if (selectionStart > caret) {
+                return [caret, selectionStart, "backward"]
+            } else {
+                return [null, caret, null]
+            }
+        }
+
+        return [caret, null, null]
+    })
+)
 /**
  * Behaves like readline's [forward_char](http://web.mit.edu/gnu/doc/html/rlman_1.html#SEC12). Moves the caret one character to the right.
  **/
@@ -408,6 +536,73 @@ export const next_line = wrap_input(
             }
         }
         return [text, position, null]
+    }
+)
+
+export const extend_next_line = wrap_selection(
+    (text, selectionStart, selectionEnd, selectionDirection) => {
+        const backward = selectionDirection === "backward"
+        let caret = backward ? selectionStart : selectionEnd
+
+        const leftNewLinePos = text.slice(0, caret).lastIndexOf("\n")
+        let width
+        if (leftNewLinePos !== -1) {
+            width = caret - leftNewLinePos
+        } else {
+            width = caret + 1
+        }
+        const rightNewLinePos = text.indexOf("\n", caret)
+
+        if (rightNewLinePos == -1) {
+            caret = text.length
+        } else {
+            const nextRightNewLinePos = text.indexOf("\n", rightNewLinePos + 1)
+            if (nextRightNewLinePos == -1 || rightNewLinePos + width < nextRightNewLinePos) {
+                caret = rightNewLinePos + width
+            } else {
+                caret = nextRightNewLinePos
+            }
+        }
+
+        if (backward) {
+            if (selectionEnd < caret) {
+                return [selectionEnd, caret, "forward"]
+            } else {
+                return [caret, null, null]
+            }
+        }
+
+        return [null, caret, null]
+    }
+)
+
+export const extend_previous_line = wrap_selection(
+    (text, selectionStart, selectionEnd, selectionDirection) => {
+        const backward = selectionDirection === "backward"
+        let caret = backward ? selectionStart : selectionEnd
+        
+        const leftNewLinePos = text.slice(0, caret).lastIndexOf("\n")
+        let width = 0
+        if (leftNewLinePos !== -1) {
+            width = caret - leftNewLinePos
+            const previousLeftNewLinePos = text.slice(0, leftNewLinePos).lastIndexOf("\n", caret)
+            if (previousLeftNewLinePos + width < leftNewLinePos) {
+                caret = previousLeftNewLinePos + width
+            } else {
+                caret = leftNewLinePos
+            }
+        } else {
+            caret = 0
+        }
+
+        if (!backward) {
+            if (selectionStart > caret) {
+                return [caret, selectionStart, "backward"]
+            } else {
+                return [null, caret, null]
+            }
+        }
+        return [caret, null, null]
     }
 )
 
