@@ -162,6 +162,15 @@ export class default_config {
     }
 
     /**
+     * exfindmaps will be used when using the finding searchbar.
+     */
+    exfindmaps = {
+        "🕷🕷INHERITS🕷🕷": "exmaps",
+        "<C-g>": "findnext",
+        "<C-t>": "findnext -?",
+    }
+
+    /**
      * ignoremaps contain all of the bindings for "ignore mode".
      *
      * They consist of key sequences mapped to ex commands.
@@ -389,6 +398,10 @@ export class default_config {
             "open https://www.youtube.com/watch?v=M3iOROuTuMA",
         m: "gobble 1 markadd",
         "`": "gobble 1 markjump",
+        "/": "searchbar --search-from-view",
+        "?": "searchbar -? --search-from-view",
+        n: "findnext",
+        N: "findnext -?",
     }
 
     vmaps = {
@@ -432,7 +445,10 @@ export class default_config {
         "<ArrowLeft>": "hint.focusLeftHint",
         "<ArrowRight>": "hint.focusRightHint",
         "<Enter>": "hint.selectFocusedHint",
-        "<Space>": "hint.selectFocusedHint",
+        "<Space>": "hint.pushSpaceOrSelectFocusedHint",
+        "/": "hint.filterByText",
+        "<C-/>": "hint.filterByTag",
+        "<M-/>": "hint.filterByTag",
     }
 
     /**
@@ -726,6 +742,15 @@ export class default_config {
         tabclosealltoright: "tabcloseallto right",
         tabclosealltoleft: "tabcloseallto left",
         reibadailty: "jumble",
+        hints_nohl:
+            "js for(const k in tri.config.get('hintstyles'))tri.config.set('hintstyles',k,'none')",
+        hints_overlays:
+            "js ['bg','outline'].forEach(k=>tri.config.set('hintstyles',k,'none'));['overlay','overlayoutline'].forEach(k=>tri.config.set('hintstyles',k,'all'))",
+        hints_direct:
+            "js ['bg','outline'].forEach(k=>tri.config.set('hintstyles',k,'all'));['overlay','overlayoutline'].forEach(k=>tri.config.set('hintstyles',k,'none'))",
+        vimium: "composite hints_nohl; colours vimium",
+        tokyonight:
+            "composite hints_overlays; set hintstyles.fg active; colours tokyonight",
     }
 
     /**
@@ -1393,11 +1418,11 @@ export class default_config {
      *`:set hintstyles.bg none` and reload the page to remove background colors from all hints.
      */
     hintstyles: { [key: string]: "all" | "active" | "none" } = {
-        fg: "all",
-        bg: "all",
-        outline: "all",
-        overlay: "none",
-        overlayoutline: "none",
+        fg: "active",
+        bg: "none",
+        outline: "none",
+        overlay: "all",
+        overlayoutline: "all",
     }
 
     /**
@@ -1406,11 +1431,253 @@ export class default_config {
     reader_articles: { [id: string]: string } = {}
 
     /**
+     * In progess. How best to set these?
+     * would be nice if I could "inherit" like start from a fully setup "tab" completion
+     * this doesn't take too much setup to get completions working though
+     */
+    customcompletions = {
+        hintthis: {
+            title: "hint elements",
+            srcstrings: "a,div,p",
+            excmd: "hint -c",
+        },
+        customcomp: {
+            title: "my custom completion list!",
+            srcfn: "tri.browserBg.tabs.query({})",
+            columns: {
+                title: { key: "title" },
+                url: { class: "url", fn: "t => t.url" },
+                doc: { class: "haha", fn: "t => 'whatevs'" },
+            },
+            // should be able to put things at the end using double commas
+            // title,,doc
+            // should put title first, everything else default and doc at the end
+            // (currently columnorder specified cols come first so you have to type them all to get something to the end)
+            columnorder: "title,doc,url",
+
+            excmd: "fillcmdline",
+            valuefn: "t => t.title.slice(0, 5)",
+
+            // good extras? (not implemented)
+            srcrefresh:
+                "refreshFn => on event or whatever refreshFn(), will call srcfn again and update the options",
+            completionfn:
+                "opt => fillcmdline with a built string (instead of appending value to excmd)",
+
+            // Haven't actually made these do anything useful, just testing stuff
+            callbacks: {
+                exec: "tab => {console.log('on exec callback!');console.log(tab);}",
+                delete: "tab => { console.log('delete callback!') }",
+                action: "tab => { console.log('custom action!') }",
+                select: "tab => { console.log('selection:');console.log(tab.title); }",
+                deselect:
+                    "tab => { console.log('deselected:');console.log(tab.title); }",
+            },
+        },
+        // Can almost use this to switch to a tab if it exists or open a new one (alias tabif to one or the other)
+        // good for finding problems with multiple sources showing at once
+        tabif: {
+            title: "tab or tabopen",
+            excmd: "tab",
+            srcfn: "tri.browserBg.tabs.query({})",
+            columns: {
+                prefix: { fn: "tab => '_'" },
+                privatewindow: { fn: "tab => 'p'" },
+                container: { fn: "tab => 'c'" },
+                icon: {
+                    fn: "tab => `<img src='${tab.favIconUrl}'>`",
+                    html: "true",
+                },
+                title: { key: "title" },
+                url: { fn: "tab => `<a>${tab.url}</a>`", html: "true" },
+            },
+            valuefn: "tab => tab.title",
+        },
+        // Surprisingly this seems to work (scrolls paragraphs into view and highlights as they're selected)
+        paras: {
+            srcfn: "Array.from(document.querySelectorAll('p'))",
+            title: "Paragraphs",
+            excmd: "goto",
+            valuefn: "p => tri.dom.getSelector(p)",
+            callbacks: {
+                show: "()=>{if (!tri.thisstyle){tri.thisstyle=document.createElement('style');tri.thisstyle.textContent='.TridactylCompletionSelection{outline:1px solid blue !important;}';}document.head.appendChild(tri.thisstyle);}",
+                delete: "p => p.remove()",
+                action: "p => p.scrollIntoView()",
+                select: "p => {p.classList.add('TridactylCompletionSelection');p.scrollIntoView()}",
+                deselect:
+                    "p => p.classList.remove('TridactylCompletionSelection')",
+                hide: "()=>{console.log('paras hidden...');document.querySelectorAll('.TridactylCompletionSelection').forEach(e=>e.classList.remove('TridactylCompletionSelection'));tri.thisstyle.remove()}",
+            },
+            columns: {
+                title: {
+                    fn: "p => p.textContent.length < 53 ? p.textContent : p.textContent.slice(0, 50) + '...'",
+                },
+            },
+        },
+        // Trying out making something potentially helpful for a change :) - search for commands to see binds
+        // does something like this already exist by default already anyway?
+        findbind: {
+            title: "find bind",
+            excmd: "bindshow",
+            srcfn: `const short = {i:"insert",n:"normal",v:"visual"};
+                Object.entries(tri.config.get()).filter(([k,_v]) => k.endsWith("maps")).flatMap(([k,v]) => {
+                    let mode = k.slice(0,-4);
+                    mode = short[mode] || mode;
+                    return Object.entries(v).map(([keyseq,cmd])=>({keyseq,cmd,mode}));
+                });`,
+            columns: {
+                keyseq: {
+                    class: "name",
+                    key: "keyseq",
+                    ignore: "true",
+                },
+                cmd: {
+                    class: "content",
+                    key: "cmd",
+                },
+                mode: {
+                    class: "type",
+                    key: "mode",
+                    ignore: "true",
+                },
+            },
+            columnorder: "cmd,keyseq,mode",
+            valuefn: "opt => `--mode=${opt.mode} ${opt.keyseq}`",
+        },
+        asyoutype: {
+            title: "irrelevant",
+            excmd: "typeit",
+            srcstrings: "",
+            callbacks: {
+                query: "(_sel,_pre,query)=>console.log('YOU ARE TYPING', query)",
+            },
+        },
+    }
+    /**
+     * Display key completions in a popup window.
+     * Set to "multi" to show the popup for multi-key binds or all to display it permanently.
+     */
+    whichkey: "all" | "multi" | "none" = "multi"
+
+    /**
+     * Docs to serve as an explanation for binds or commands.
+     * Displayed in the whichkey popup.
+     * Not entirely sure this is worth it.
+     * Might be able to use the excmds part for custom cmdline docs
+     * like for non-obvious :composite or :js commands
+     * thinking about the excmds part... don't really want spaces in config keys soo
+     * excmds will have to be subobjects instead
+     * where you can add your patterns for command args
+     * perhaps if there was a unified excmd arg parser this would be simpler
+     * anyway let's just see if this has legs
+     * I quite like it actually...
+     * how about whichkey headings depending on the prefix...
+     */
+    docs = {
+        vmaps: {
+            w: "start of next [w]ord",
+            e: "end of next word",
+            b: "back a word (start)",
+            l: "next char",
+            h: "prev char",
+            j: "next line",
+            k: "prev line",
+            o: "reverse direction",
+            s: "search for selection",
+            S: "search in new tab",
+            y: "yank",
+            q: "qr code",
+            "0": "start of line",
+            $: "end of line",
+            "=": "expand selection",
+            "<Escape>": "clear selection & enter normal mode",
+            "<C-[>": "clear selection & enter normal mode",
+        },
+        excmds: {
+            hint: {
+                noargs: "click an element",
+                flags: {
+                    a: "save as",
+                    A: "save as image",
+                    b: "background tab",
+                    c: "css [selector]",
+                    C: "css [selector + default]",
+                    f: "by text",
+                    F: "[js callback]",
+                    h: "highlight",
+                    i: "view image",
+                    I: "image new tab",
+                    J: "no JavaScript",
+                    k: "kill irreversibly",
+                    K: "Kill (restore with :elementunhide)",
+                    p: "yank text",
+                    P: "yank title/alt text",
+                    q: "quick",
+                    r: "read with tts",
+                    s: "save",
+                    S: "Save image",
+                    t: "new tab",
+                    V: "include invisble",
+                    w: "new window",
+                    W: "[excmd] href",
+                    x: "exclude [selector]",
+                    y: "yank link",
+                    z: "scroll to",
+                    ";": "set scroll target",
+                    "#": "yank anchor",
+                    "!": "execute all",
+                    pipe: "[selector] [key]",
+                    fr: "by regex",
+                    wp: "private window",
+                    br: "deprecated: use -qb",
+                },
+            },
+        },
+        headings: {
+            normal: {
+                g: "goto",
+                gx: "close tabs",
+                ";": "hint",
+                ";g": "quick hints",
+                y: "yank",
+                z: "zoom",
+            },
+        },
+    }
+
+    /**
+     * Interpret MacOS alt key presses as the base letter instead of the alt character.
+     * For instance, <A-∆> will be seen as <A-j>.
+     */
+    macaltcompat: "true" | "false" = "false"
+    
+    /**
+     * Prevent entering insert mode when typing in a textEditable element when in these modes.
+     * Usage: :set noinsertmodes.mode-name true
+     * 
+     * For example, create a custom mode by binding keys to it:
+     * :bind --mode=edit-normal l text.forward_char
+     * :bind --mode=edit-normal h text.backward_char
+     * :bind --mode=edit-normal i mode insert
+     * 
+     * Allow entering it from insert mode:
+     * :bind --mode=insert <C-l> enter-mode edit-normal
+     * 
+     * Prevent automatically entering insert mode when typing:
+     * :set noinsertmodes.edit-normal true
+     * 
+     * Modes which inherit from insert mode are automatically treated this way.
+     * Use this syntax to inherit from insert mode:
+     * :bind --mode=edit-insert 🕷🕷INHERITS🕷🕷 imaps
+     */
+    noinsertmodes: { [key: string]: "true" | "false" } = {}
+
+    /**
      * Consume all keypresses when any of these modes. Space-separated.
      * The command :blockpagekeys false
      * can be used to allow keypresses through to the page in these modes.
      */
-    blockpagekeypressesmodes: string = "hint"
+    blockpagekeypressesmodes: { [key: string]: "true" | "false" } = {}
 
     /**
      * Allow specific keypresses to reach the page, even if they match a Tridactyl bind.
@@ -1459,6 +1726,9 @@ Remove-Item '%TEMP%/tridactyl_installnative.ps1'"`,
             ";:": 'hint -F e => { const pos = tri.dom.getAbsoluteCentre(e); tri.excmds.exclaim_quiet("xdotool mousemove --sync " + window.devicePixelRatio * pos.x + " " + window.devicePixelRatio * pos.y)}',
             ";X": 'hint -F e => { const pos = tri.dom.getAbsoluteCentre(e); tri.excmds.exclaim_quiet("xdotool mousemove --sync " + window.devicePixelRatio * pos.x + " " + window.devicePixelRatio * pos.y + "; xdotool keydown ctrl+shift; xdotool click 1; xdotool keyup ctrl+shift")}',
         } as unknown,
+    },
+    mac: {
+        macaltcompat: "true",
     },
 } as Record<browser.runtime.PlatformOs, default_config>
 
