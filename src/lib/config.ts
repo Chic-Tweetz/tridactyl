@@ -1677,7 +1677,7 @@ export class default_config {
      * The command :blockpagekeys false
      * can be used to allow keypresses through to the page in these modes.
      */
-    blockpagekeypressesmodes: string = "hint"
+    blockpagekeypressesmodes: { [key: string]: "true" | "false" } = {}
 
     /**
      * Allow specific keypresses to reach the page, even if they match a Tridactyl bind.
