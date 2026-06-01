@@ -6499,4 +6499,15 @@ export function hintstylesdirect() {
     ;["fg", "bg", "outline"].forEach(type => config.set("hintstyles", type, "all"))
     ;["overlay", "overlayoutline"].forEach(type => config.set("hintstyles", type, "none"))
 }
+
+/**
+ * Create an incsearch :find input textbox.
+ */
+//#content
+export function searchbar(reverse: string | boolean, fromView: string | boolean) {
+    return finding.searchbar(
+        reverse === "true" || reverse === true,
+        fromView === "true" || fromView === true
+    )
+}
 // }}}

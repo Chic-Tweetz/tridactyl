@@ -389,6 +389,10 @@ export class default_config {
             "open https://www.youtube.com/watch?v=M3iOROuTuMA",
         m: "gobble 1 markadd",
         "`": "gobble 1 markjump",
+        "/": "searchbar",
+        "?": "searchbar true",
+        "n": "findnext --search-from-view",
+        "N": "findnext --search-from-view --reverse",
     }
 
     vmaps = {
