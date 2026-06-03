@@ -8,6 +8,56 @@ import { clear } from "@src/commandline_frame"
 import { showAlternateInput } from "@src/content/commandline_content"
 import { getThemedCssText, getThemedStylesheet } from "@src/content/styling"
 
+/**
+ * what a monster this has become!
+ *
+ * examples of pages which have caused the size of this file to increase:
+ * - https://catppuccin.com/palette/
+ *      - random runs of whitespace due to the format of the html in <p>s, must be squashed to 1 space
+ *      - rgb/hsl/oklch text are all within elements with display: "contents"; set, which the isSubstantial function missed
+ * - github.com
+ *      - shadow doms with nothing but a text node inside (date/time tags)
+ * - stackoverflow
+ *      - TODO: <pre> code snippets - we should be respecting newlines here but we aren't
+ *                                    try searching for ^. and see the whole <pre> is one block
+ *                                    confusing... i split by newlines when matching and it didn't fix it
+ *                                    well, "fix" it... this is possibly a non-issue... maybe... 
+ *
+ * find text in the page, using regex (not browser.find.find)
+ *
+ * first find all text, splitting it into "blocks"
+ * by walking the dom, checking element types and styles
+ * broadly, inline elements/styles -> same block, block -> new block
+ *
+ * we walk shadows (& same-origin iframes)
+ * ultimately stopped using a TreeWalker because of having to deal with shadows, but maybe would still be the right choice
+ *
+ * after collecting text blocks, their combined text is normalised
+ * this involves:
+ * - either keeping or removing newlines depending on the element/whitepsace style (<pre> keeps them)
+ * - squashing runs of spaces into 1 (again depending on whitespace rule)
+ * - normalising accented chars to non-accented é -> e
+ * - normalising punctuation, including ellipses to three dots... which the built-in search doesn't actually do it turns out
+ * - String.normalize("NFKC") is also used, apparently some ligatures can take up multiple unicode chars or... something
+ *
+ * this is in an effort to aim for parity with the built-in browser ctrl+f
+ *
+ * there are many annoying edge cases like slots, display: contents,
+ * long runs of whitespace from the html layout
+ * probably many issues yet to be found
+ *
+ * normalised text is tested against the search query, as a regular expression
+ *
+ * Ranges for matched text are fed to the highlight api, with an extra highlight registry in every iframe
+ * we also try to inject style into shadow doms so the highlights work everywhere
+ *
+ * Because this is intended to work as the search query is typed (incsearch),
+ * there are some simple "if this time-slice > max-time-slice then await setTimeout..." checks
+ * with abort controllers to cancel previous searches when a new one begins
+ *
+ * these could/should(?) likely be replaced with equivalent async generators
+ */
+
 // Unlimited highlights can slow us down (particularly for searches like ".")
 const MAX_HIGHLIGHTS = 1000
 
@@ -46,6 +96,9 @@ const searchState: SearchState = {
     fromView: false,
 }
 
+export function getSearchBlocks() {
+    return searchState.searchBlocks
+}
 // As much as possible, this Range is used as opposed to creating new live Ranges.
 // Doing it this way fixed a nasty performance issue. Favour StaticRanges!
 const reuseRange = document.createRange()
@@ -755,22 +808,11 @@ async function buildSearchBlocks(startNode = document.body) {
 
     let currBlock = null
     let currBlockNodes = []
-    // let currRange = null
 
     const textNodeCallback = node => {
         const { block, whiteSpace } = getBlockOwner(node)
         if (currBlock !== block) {
             if (currBlockNodes.length > 0) {
-                /*                 blocks.push([
-                    // currRange,
-                    currBlockNodes,
-                    stringNormaliser(
-                        currBlockNodes.map(n => n.nodeValue).join(""),
-                        whiteSpace,
-                        2, // magic number currently, maybe config setting?
-                    ),
-                    currBlockNodes[0].getRootNode().defaultView,
-                ]) */
                 blocks.push({
                     nodes: currBlockNodes,
                     normalisedText: stringNormaliser(
@@ -788,17 +830,16 @@ async function buildSearchBlocks(startNode = document.body) {
             // is this ever used? It might be important for filtering blocked nodes here
             // currRange = document.createRange()
             try {
+                // don't actually know if "reuseRange" can be used in iframes and shadows, ought to check that
+                // might end up needing a range per frame?
                 // can be blocked: "insecure"
-                // document.createRange().selectNodeContents(node)
                 reuseRange.selectNodeContents(node)
             } catch (e) {
                 currBlock = null
                 currBlockNodes = []
             }
-        } else if (/*currRange !== null && */ currBlock !== null) {
+        } else if (currBlock !== null) {
             currBlockNodes.push(node)
-            // pretty sure we don't need currRange though
-            // currRange.setEnd(node, node.length)
         }
     }
 
@@ -830,7 +871,9 @@ async function walk_iterative(startNode, callback) {
         if (!walked.has(node)) {
             walked.add(node)
             stack.push(node)
+            return true
         }
+        return false
     }
 
     // for searching specifically we don't want invisible nodes
@@ -853,7 +896,6 @@ async function walk_iterative(startNode, callback) {
             }
         }
         const node = stack.pop()
-
         if (node.nodeType === Node.TEXT_NODE && node.nodeValue.trim()) {
             if (!node.parentElement) {
                 // Not a big fan of this :) but it does make highlights work for shadows with only text nodes
@@ -873,6 +915,7 @@ async function walk_iterative(startNode, callback) {
                 continue
             }
             const children = getComposedChildren(node)
+
             for (let i = children.length - 1; i >= 0; --i) {
                 push(children[i])
             }
@@ -888,7 +931,7 @@ async function walk_iterative(startNode, callback) {
 // figure out if a node should be inline with its siblings
 // now also returns the white-space rule so we know whether to replace "\n" with " "
 // I think it should return a bool though, we don't need to know the actual rule elsewhere do we?
-function getBlockOwner(node) {
+export function getBlockOwner(node) {
     let el = node.parentElement
     let whiteSpace = null
 
@@ -901,12 +944,14 @@ function getBlockOwner(node) {
             whiteSpace = cs.whiteSpace
         }
 
+        // Should make an extensive list of display rules we'd consider a "block"
         if (
             disp === "block" ||
             disp === "list-item" ||
             disp === "flex" ||
             disp === "grid" ||
             disp === "table" ||
+            disp === "table-cell" ||
             disp === "flow-root"
         ) {
             return { block: el, whiteSpace }
@@ -924,7 +969,7 @@ function getBlockOwner(node) {
 
 // untangle slots and shadows so we can walk everything
 // it might nice to keep track of shadows as we go for styling actually
-function getComposedChildren(elem) {
+export function getComposedChildren(elem) {
     const out = []
 
     // 1. slot assigned nodes
@@ -993,6 +1038,36 @@ function isSubstantial(thing) {
             thing = thing.parentElement
         }
     }
+    // Was only doing this and calling getComputedStyle if we had rects, but display: contents is annoying!
+    let element
+    if (thing instanceof Range) {
+        element = thing.startContainer
+        if (element.nodeType !== Node.ELEMENT_NODE) {
+            element = element.parentElement
+        }
+    } else {
+        element = thing
+    }
+
+    // Can be pure text node in shadow dom (no parent el but a client rect)
+    // example: github's timestamps
+    // I was wrapping them in spans but don't fancy messing with the DOM that much
+    if (!element) {
+        return (thing as Node)?.nodeType === Node.TEXT_NODE
+    }
+    const computedStyle = getComputedStyle(element)
+
+    // TODO: test this makes sense...
+    // if a display: contents; element has only text node chlidren, might need to check the element's parent
+    if (computedStyle.display === "contents") {
+        return [...element.childNodes].some(node => {
+            switch (node.nodeType) {
+                case Node.ELEMENT_NODE: return isSubstantial(node as Element)
+                case Node.TEXT_NODE: return node.textContent.trim().length > 0 // might not be visible though?
+                default: return false
+            }
+        })
+    }
 
     // something to do with shadow DOMs(?) - there might be no clientRects for us
     const clientRect = thing.getClientRects()[0]
@@ -1008,25 +1083,10 @@ function isSubstantial(thing) {
             return false
     }
 
-    let element
-    if (thing instanceof Range) {
-        element = thing.startContainer
-        if (element.nodeType !== Node.ELEMENT_NODE) {
-            element = element.parentElement
-        }
-    } else {
-        element = thing
-    }
-    // Can be pure text node in shadow dom (no parent el but a client rect)
-    // example: github's timestamps
-    // I was wrapping them in spans but don't fancy messing with the DOM that much
-    if (!element) {
-        return true
-    }
+
+
 
     // remove elements that are barely within the viewport, tiny, or invisible
-    // Only call getComputedStyle when necessary
-    const computedStyle = getComputedStyle(element)
     // I'm sure the widthMatters and heightMatters are important but I don't understand them
     switch (true) {
         case computedStyle.visibility !== "visible":
@@ -1212,6 +1272,7 @@ function prev(n: number = 1) {
     return gotoMatch(searchState.activeMatchIdx - n)
 }*/
 
+// err, this ain't doing what i want
 // Levels maybe better off as flags
 // levels 1, 2 and 3 correspond to:
 // Replace lookalike punctuation chars, strip accents, full NFKC normalisation
@@ -1219,7 +1280,7 @@ function prev(n: number = 1) {
 // some changes could change the size of the string so we also return a map of normalised indices to raw indices
 // the index map will normally be i -> i (unchanged) so we check whether we need it
 // now using getRawIndex(i) which can be either i=>i or i=>map[i]
-function stringNormaliser(str: string, whiteSpaceRule: string, level) {
+export function stringNormaliser(str: string, whiteSpaceRule: string, level) {
     const NORMALISE_LEVELS = {
         none: 0,
         punctuation: 1,
@@ -1258,32 +1319,40 @@ function stringNormaliser(str: string, whiteSpaceRule: string, level) {
         }
     }
 
+    let squashingWhitespace = false
+    // Exhuastive "whitespace is real" rules list here? Probably not.
+    const isRealWhitespace = ["pre", "pre-wrap", "pre-line", "break-spaces"].includes(whiteSpaceRule)
+
     for (let i = 0; i < str.length; i++) {
         const rawChar = str[i]
         let out = rawChar
 
-        if (rawChar === "\n") {
-            if (
-                whiteSpaceRule === "pre" ||
-                whiteSpaceRule === "pre-wrap" ||
-                whiteSpaceRule === "pre-line" ||
-                whiteSpaceRule === "break-spaces"
-            ) {
-                out = "\n" // real line break
+        // Messing with whitespace is necessary, but the ways we change it might be worth exposing as options
+        // we're supporting flags with the /query/xyz syntax, so we could add our own in there
+        // also the "levels" of normalisation that we're not actually changing could be set in the query
+
+        // even if newlines are "real"... would you rather have to type "\n" (or "\s") than " "?
+        // default ctrl-f would use " "
+        if (!isRealWhitespace && /\s/.test(rawChar)) {
+            if (!squashingWhitespace) {
+                out = " "
+                squashingWhitespace = true
             } else {
-                out = " " // collapsed whitespace
+                // Squash multiple whitespace chars to one space
+                out = "" 
             }
+        } else {
+            squashingWhitespace = false
         }
 
         // 1. NFKD accent stripping
         if (level >= NORMALISE_LEVELS.accents) {
-            const decomposed = rawChar.normalize("NFKD")
+            const decomposed = out.normalize("NFKD")
             const base = decomposed.replace(/[\u0300-\u036f]/g, "")
             out = base
         }
 
         // 2. punctuation normalisation
-        // now we do one char at a time we can probably swap this regex for a simple string replace yea?
         if (level >= NORMALISE_LEVELS.punctuation) {
             out = out
                 .replace(/[‘’‚‛]/g, "'")
