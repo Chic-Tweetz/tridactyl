@@ -599,7 +599,7 @@ config.getAsync("leavegithubalone").then(v => {
 window.addEventListener("keydown", protectSlash, {capture: true})
 
 function protectSlash(e) {
-    if (!e.isTrusted || leaveGithubAlone ) return
+    if (!e.isTrusted || leaveGithubAlone) return
     const blacklistKeys = config.get("blacklistkeys") || [];
     if (blacklistKeys.includes(e.key) && contentState.mode === "normal") {
         e.cancelBubble = true
@@ -608,50 +608,35 @@ function protectSlash(e) {
     }
 }
 
-    // Some sites like to prevent firefox's `/` from working so we need to protect
-    // ourselves against that
-    // This was originally a github-specific fix
-    config.getAsync("leavegithubalone").then(v => {
-        if (v === "true") return
-        try {
-            // On quick loading pages, the document is already loaded
-            document.body.addEventListener("keydown", protectSlash)
-        } catch (e) {
-            // But on slower pages we wait for the document to load
-            window.addEventListener("DOMContentLoaded", () => {
-                document.body.addEventListener("keydown", protectSlash)
-            })
-        }
-    })
-
-    // I still don't get lib/messaging.ts
-    const phoneHome = () => browser.runtime.sendMessage("dom_loaded_background")
-    document.readyState === "complete" && phoneHome()
-    window.addEventListener("load", () => {
-        phoneHome()
-    })
+// I still don't get lib/messaging.ts
+const phoneHome = () => browser.runtime.sendMessage("dom_loaded_background")
+document.readyState === "complete" && phoneHome()
+window.addEventListener("load", () => {
+    phoneHome()
+})
 
     addVisualModeListeners()
 
-    // Try to catch the iframe/status indicator being removed by a script (React again)
-    const checkElemsSurvived = () => {
-        if (document.readyState === "complete") {
-            commandline_content.ensureIframeExists()
+// Try to catch the iframe/status indicator being removed by a script (React again)
+const checkElemsSurvived = () => {
+    if (document.readyState === "complete") {
+        commandline_content.ensureIframeExists()
 
-            if (statusIndicator !== undefined)
-                document.body.appendChild(statusIndicator)
+        if (statusIndicator !== undefined)
+            document.body.appendChild(statusIndicator)
 
-            // We only want to check the iframe survived between "interactive" and "complete"
-            document.removeEventListener("readystatechange", checkElemsSurvived)
-        }
+        // We only want to check the iframe survived between "interactive" and "complete"
+        document.removeEventListener("readystatechange", checkElemsSurvived)
     }
-    document.addEventListener("readystatechange", checkElemsSurvived)
+}
+document.addEventListener("readystatechange", checkElemsSurvived)
 
-    // Listen for statistics from each content script and send them to the
-    // background for collection. Attach the observer to the window object
-    // since there's apparently a bug that causes performance observers to
-    // be GC'd even if they're still the target of a callback.
-    ;(window as any).tri = Object.assign(window.tri, {
-        perfObserver: perf.listenForCounters(),
-    })
+// Listen for statistics from each content script and send them to the
+// background for collection. Attach the observer to the window object
+// since there's apparently a bug that causes performance observers to
+// be GC'd even if they're still the target of a callback.
+;(window as any).tri = Object.assign(window.tri, {
+    perfObserver: perf.listenForCounters(),
+})
+
 }) // End of maybe-disable-tridactyl-a-bit wrapper
