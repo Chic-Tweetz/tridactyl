@@ -1687,6 +1687,36 @@ export class default_config {
      * :allowpagebind mail.gmail.com g
      */
     whitelistpagebinds = {}
+
+    /**
+     *  Override CSS selectors for all :hint modes that use them. Will be respected by :hint -C.
+     *
+     *  Alternative to multiple `:bindurl`s with different hint flags (`hint`, `hint -t`, `hint -b`...) with custom CSS selectors.
+     *
+     *  Default selectors will be overriden unless the matching `hintselectorsbehaviour` category is set to "extend".
+     *
+     *  Hint categories: clickable, filterbytext, img, saveable, killable, anchor
+     *
+     *  Suggested usage is with `:seturl`:
+     *  `:seturl [URL] hintselectors.[category] [comma-separated CSS selectors]`
+     *
+     *  To also include default selectors:
+     *  `:seturl [URL] hintselectorsbehaviour.[category] extend`
+     *
+     *  eg:
+     *  `:seturl old.reddit.com hintselectors.clickable a,.extendo-button`
+     */
+    hintselectors: { [key: string]: string } = {}
+
+    /**
+     *  Whether selectors set in hintselectors should override or be included with default hint selectors.
+     *
+     *  Default behaviour is to override then, include them by setting to "extend":
+     *  :seturl <URL> hintselectorsbehaviour.<category> extend
+     *
+     *  Categories: clickable, filterbytext, img, saveable, killable, anchor
+     */
+    hintselectorsbehavior: { [key: string]: "extend" | "override" } = {}
 }
 
 const platform_defaults = {

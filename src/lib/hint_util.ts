@@ -419,7 +419,7 @@ export class HintConfig implements HintOptions {
 
             default:
                 return hinting.hintables(
-                    DOM.HINTTAGS_selectors,
+                    DOM.hintSelectors(),
                     this.jshints,
                     this.includeInvisible,
                 )

@@ -1429,7 +1429,7 @@ function pushSpace() {
     @hidden
 */
 export async function hintables(
-    selectors = DOM.HINTTAGS_selectors,
+    selectors = DOM.hintSelectors(),
     withjs = false,
     includeInvisible = false,
 ) {
@@ -1509,7 +1509,7 @@ function isElementLargerThan(e1: Element, e2: Element): boolean {
  * @hidden
  */
 export function saveableElements(includeInvisible = false) {
-    return DOM.getElemsAndStyleShadowHints(DOM.HINTTAGS_saveable, [
+    return DOM.getElemsBySelector(DOM.hintSelectors("saveable"), [
         DOM.isVisibleFilter(includeInvisible),
     ])
 }
@@ -1518,7 +1518,7 @@ export function saveableElements(includeInvisible = false) {
  * @hidden
  */
 export function hintableImages(includeInvisible = false) {
-    return DOM.getElemsAndStyleShadowHints(DOM.HINTTAGS_img_selectors, [
+    return DOM.getElemsBySelector(DOM.hintSelectors("img"), [
         DOM.isVisibleFilter(includeInvisible),
     ])
 }
@@ -1529,7 +1529,7 @@ export function hintableImages(includeInvisible = false) {
  */
 export function hintByText(match: string | RegExp) {
     return DOM.getElemsAndStyleShadowHints(
-        DOM.HINTTAGS_filter_by_text_selectors,
+        DOM.hintSelectors("filterbytext"),
         [DOM.isVisible, hintByTextFilter(match)],
     )
 }
@@ -1654,7 +1654,7 @@ export function hintByTextFilter(match: string | RegExp): HintSelectedCallback {
 @hidden
  */
 export function killables(includeInvisible = false) {
-    return DOM.getElemsAndStyleShadowHints(DOM.HINTTAGS_killable_selectors, [
+    return DOM.getElemsBySelector(DOM.hintSelectors("killable"), [
         DOM.isVisibleFilter(includeInvisible),
     ])
 }

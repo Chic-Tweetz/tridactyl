@@ -947,11 +947,39 @@ export const HINTTAGS_saveable = `
 [href]:not([href='#'])
 `
 
+export type HintSelectorCategory =
+    | "clickable"
+    | "filterbytext"
+    | "img" 
+    | "anchor"
+    | "killable"
+    | "saveable"
+
+const hintCategoriesToDefaultSelectors = {
+    clickable: HINTTAGS_selectors,
+    filterbytext: HINTTAGS_filter_by_text_selectors,
+    img: HINTTAGS_img_selectors,
+    anchor: HINTTAGS_anchor_selectors,
+    killable: HINTTAGS_killable_selectors,
+    saveable: HINTTAGS_saveable,
+}
+    
+/** Get user-configurable hint selectors if they exist.
+ *  Combine or extend defaults depending on "hintselectorsbehavior" setting.
+ */
+export function hintSelectors(hintType: HintSelectorCategory = "clickable") {
+    const configSelectors = config.get("hintselectors", hintType)
+    if (!configSelectors) return hintCategoriesToDefaultSelectors[hintType]
+    return config.get("hintselectorsbehavior", hintType) === "extend"
+        ? hintCategoriesToDefaultSelectors[hintType] + "," + configSelectors
+        : configSelectors
+}
+
 /** Get array of "anchors": elements which have id or name and can be addressed
  * with the hash/fragment in the URL
  */
 export function anchors(includeInvisible = false) {
-    return getElemsBySelector(HINTTAGS_anchor_selectors, [
+    return getElemsBySelector(hintSelectors("anchor"), [
         isVisibleFilter(includeInvisible),
     ])
 }
