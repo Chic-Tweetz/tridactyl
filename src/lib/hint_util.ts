@@ -5,6 +5,7 @@
 import Logger from "@src/lib/logging"
 import * as DOM from "@src/lib/dom"
 import * as hinting from "@src/content/hinting"
+import * as config from "@src/lib/config"
 
 /**
  * Open mode: how to act on the selected hintable element
@@ -85,6 +86,7 @@ export class HintConfig implements HintOptions {
         }
 
         const result = new HintConfig()
+        result.jshints = config.get("hintselectorsincludejs") === "true"
         const multiLetterFlags = ["fr", "wp", "br", "pipe"]
         let cOrPipeFlagPresent = false
         let CFlagPresent = false
@@ -140,6 +142,9 @@ export class HintConfig implements HintOptions {
                                     break
                                 case "V":
                                     result.includeInvisible = true
+                                    break
+                                case "j":
+                                    result.jshints = true
                                     break
                                 case "J":
                                     result.jshints = false

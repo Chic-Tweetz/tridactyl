@@ -1717,6 +1717,14 @@ export class default_config {
      *  Categories: clickable, filterbytext, img, saveable, killable, anchor
      */
     hintselectorsbehavior: { [key: string]: "extend" | "override" } = {}
+
+    /**
+     *  Set globally or with `:seturl` whether to include JS hints by default.
+     *
+     *  If this is set to "false", they can still be hinted with ":hint -j".
+     *  Otherwise, they can be ignored using ":hint -J".
+     */
+    hintselectorsincludejs: "true" | "false" = "true"
 }
 
 const platform_defaults = {
