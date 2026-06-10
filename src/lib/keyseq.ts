@@ -21,10 +21,10 @@
 */
 
 /** */
-import { filter, find, izip } from "@src/lib/itertools"
+import * as R from "ramda"
+import { filter, find } from "@src/lib/itertools"
 import { Parser } from "@src/lib/nearley_utils"
 import * as config from "@src/lib/config"
-import * as R from "ramda"
 import grammar from "@src/grammars/.bracketexpr.generated"
 const bracketexpr_grammar = grammar
 const bracketexpr_parser = new Parser(bracketexpr_grammar)
@@ -38,6 +38,25 @@ export interface KeyModifiers {
     ctrlKey?: boolean
     metaKey?: boolean
     shiftKey?: boolean
+    keyup?: boolean
+    keydown?: boolean
+    optional?: boolean
+    repeat?: boolean
+}
+
+/**
+ * Do I really have to do this, JS?
+ */
+export function minimalKeyFromObj(obj) {
+    return new MinimalKey(obj.key, {
+        altKey: obj.altKey,
+        ctrlKey: obj.ctrlKey,
+        metaKey: obj.metaKey,
+        shiftKey: obj.shiftKey,
+        keyup: obj.keyup,
+        keydown: obj.keydown,
+        optional: obj.optional,
+    })
 }
 
 // Format modifiers
@@ -154,6 +173,10 @@ export class MinimalKey {
     readonly ctrlKey = false
     readonly metaKey = false
     readonly shiftKey = false
+    readonly keyup = false
+    readonly keydown = false
+    readonly optional = false
+    readonly repeat = false
     translated = false
     constructor(
         readonly key: string,
@@ -173,14 +196,26 @@ export class MinimalKey {
     }
 
     /** Does this key match another MinimalKey */
-    public match(keyevent: MinimalKey) {
-        if (this.key !== keyevent.key) return false
-        for (const [_, attr] of modifiers.entries()) {
-            if (this[attr] !== keyevent[attr]) return false
+    // NB: not symmetric!
+    public match(keyevent: MinimalKey): true | false | "skip" {
+        if (this.key !== keyevent.key) {
+            if (this.optional) return "skip"
+            return false
         }
+        for (const [_, attr] of modifiers.entries()) {
+            if (attr === "shiftKey" && this.key.length === 1) continue
+            if (this[attr] !== keyevent[attr]) {
+                if (this.optional) return "skip"
+                return false
+            }
+        }
+        if (this.keyup !== keyevent.keyup) {
+            if (this.optional) return "skip"
+            return false
+        }
+        if (this.keydown && keyevent.repeat) return false
         return true
     }
-
     public translate(keytranslatemap: { [inkey: string]: string }): MinimalKey {
         let newkey = keytranslatemap[this.key]
         if (newkey === undefined || this.translated) newkey = this.key
@@ -189,6 +224,9 @@ export class MinimalKey {
             ctrlKey: this.ctrlKey,
             metaKey: this.metaKey,
             shiftKey: this.shiftKey,
+            keyup: this.keyup,
+            keydown: this.keydown,
+            repeat: this.repeat,
         })
         result.translated = true
         return result
@@ -198,6 +236,15 @@ export class MinimalKey {
         let str = ""
         let needsBrackets = this.key.length > 1
 
+        const modifiers = new Map([
+            ["A", "altKey"],
+            ["C", "ctrlKey"],
+            ["M", "metaKey"],
+            ["S", "shiftKey"],
+            ["D", "keydown"],
+            ["U", "keyup"],
+            ["?", "optional"],
+        ])
         for (const [letter, attr] of modifiers.entries()) {
             if (this[attr]) {
                 str += letter
@@ -244,24 +291,33 @@ export interface ParserResponse {
     numericPrefix?: number
 }
 
+const isDigit = (d: string) => d.length === 1 && d >= "0" && d <= "9"
+
+const isKeyup = (k: MinimalKey) => k.keyup
+
 function splitNumericPrefix(
     keyseq: MinimalKey[],
 ): [MinimalKey[], MinimalKey[]] {
-    // If the first key is in 1:9, partition all numbers until you reach a non-number.
     if (
         !hasModifiers(keyseq[0]) &&
-        [1, 2, 3, 4, 5, 6, 7, 8, 9].includes(Number(keyseq[0].key))
+        !isKeyup(keyseq[0]) &&
+        isDigit(keyseq[0].key) &&
+        keyseq[0].key !== "0"
     ) {
         const prefix = [keyseq[0]]
+        let skipcount = 0
         for (const ke of keyseq.slice(1)) {
-            if (
-                !hasModifiers(ke) &&
-                [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].includes(Number(ke.key))
-            )
+            if (isKeyup(ke)) {
+                if (!isDigit(ke.key)) break
+                skipcount++
+                continue
+            }
+            if (!hasModifiers(ke) && isDigit(ke.key)) {
                 prefix.push(ke)
-            else break
+                skipcount++
+            } else break
         }
-        const rest = keyseq.slice(prefix.length)
+        const rest = keyseq.slice(skipcount + 1)
         return [prefix, rest]
     } else {
         return [[], keyseq]
@@ -275,11 +331,25 @@ export function stripOnlyModifiers(keyseq) {
     )
 }
 
-export function parse(
-    keyseq: MinimalKey[],
-    map: KeyMap,
-    useNumericPrefixes = true,
-): ParserResponse {
+function isPerfectMatch(input: MinimalKey[], mapEntry: MinimalKey[]): boolean {
+    let i = 0
+    const remaining = [...mapEntry]
+    while (input[i] !== undefined && remaining.length > 0) {
+        const mapKey = remaining.shift()
+        switch (mapKey.match(input[i])) {
+            case false:
+                return false
+            case "skip":
+                continue
+            case true:
+                i++
+                break
+        }
+    }
+    return remaining.every(k => k.optional)
+}
+
+export function parse(keyseq: MinimalKey[], map: KeyMap, useNumericPrefixes = true): ParserResponse {
     // Remove bare modifiers
     keyseq = stripOnlyModifiers(keyseq)
 
@@ -307,9 +377,8 @@ export function parse(
         // Check if any of the mappings is a perfect match (this will only
         // happen if some sequences in the KeyMap are prefixes of other seqs).
         try {
-            const perfect = find(
-                possibleMappings,
-                ([k, _v]) => k.length === keyseq.length,
+            const perfect = find(possibleMappings, ([k, _v]) =>
+                isPerfectMatch(keyseq, k),
             )
             return {
                 value: perfect[1],
@@ -337,8 +406,19 @@ function prefixes(seq1: MinimalKey[], seq2: MinimalKey[]) {
     if (seq1.length > seq2.length) {
         return false
     } else {
-        for (const [key1, key2] of izip(seq1, seq2)) {
-            if (!key2.match(key1)) return false
+        let i = 0
+        for (const desired_key of seq2) {
+            if (seq1[i] == undefined) break
+            switch (desired_key.match(seq1[i])) {
+                case false:
+                    return false
+                case "skip":
+                    i = i - 1 // if skipped, we want to try the real key again against the next thing in the sequence
+                    break
+                case true:
+                    break
+            }
+            i = i + 1
         }
         return true
     }
@@ -467,16 +547,28 @@ export function bracketexprToKey(inputStr) {
 
     (All four {modifier}Key flags are actually provided on all MinimalKeys)
 */
+const hasExplicitDirection = (key: MinimalKey) => key.keyup || key.keydown
+
 export function mapstrToKeyseq(mapstr: string): MinimalKey[] {
     const keyseq: MinimalKey[] = []
     let key: MinimalKey
-    // Reduce mapstr by one character or one bracket expression per iteration
     while (mapstr.length) {
         if (mapstr[0] === "<") {
             ;[key, mapstr] = bracketexprToKey(mapstr)
-            keyseq.push(key)
+            const explicitDirection = hasExplicitDirection(key)
+            keyseq.push(explicitDirection ? key : minimalKeyFromObj(key))
+            if (mapstr.length > 1 && !explicitDirection)
+                keyseq.push(
+                    minimalKeyFromObj(
+                        R.mergeRight(key, { keyup: true, optional: true }),
+                    ),
+                )
         } else {
             keyseq.push(new MinimalKey(mapstr[0]))
+            if (mapstr.length > 1)
+                keyseq.push(
+                    new MinimalKey(mapstr[0], { keyup: true, optional: true }),
+                )
             mapstr = mapstr.slice(1)
         }
     }
@@ -485,6 +577,7 @@ export function mapstrToKeyseq(mapstr: string): MinimalKey[] {
 
 export function canonicaliseMapstr(mapstr: string): string {
     return mapstrToKeyseq(mapstr)
+        .filter(k => !k.optional)
         .map(k => k.toMapstr())
         .join("")
 }
@@ -606,6 +699,8 @@ export function minimalKeyFromKeyboardEvent(
         ctrlKey: keyEvent.ctrlKey,
         metaKey: keyEvent.metaKey,
         shiftKey: keyEvent.shiftKey,
+        keyup: keyEvent.type === "keyup",
+        repeat: keyEvent.repeat,
     }
     if (config.get("keyboardlayoutforce") === "true") {
         Object.keys(KEYCODETRANSLATEMAP).length === 0 && updateBaseLayout()

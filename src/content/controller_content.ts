@@ -150,6 +150,15 @@ function* ParserController() {
         try {
             while (true) {
                 const keyevent: KeyEventLike = yield
+
+                // Don't break old modes with keyup events
+                // TODO: fix this in these parsers directly
+                if (
+                    ["hint", "gobble"].includes(contentState.mode) &&
+                    (keyevent as any).keyup
+                )
+                    continue
+
                 let shadowRoot = null
                 let textEditable = false
 

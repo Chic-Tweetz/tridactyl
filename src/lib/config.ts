@@ -260,9 +260,9 @@ export class default_config {
         gH: "home true",
         p: "clipboard open",
         P: "clipboard tabopen",
-        j: "scrollline 10",
+        j: "smoothscrollstart 800",
+        k: "smoothscrollstart -800",
         "<C-e>": "scrollline 10",
-        k: "scrollline -10",
         "<C-y>": "scrollline -10",
         h: "scrollpx -50",
         l: "scrollpx 50",
@@ -750,7 +750,46 @@ export class default_config {
             "js ['bg','outline'].forEach(k=>tri.config.set('hintstyles',k,'all'));['overlay','overlayoutline'].forEach(k=>tri.config.set('hintstyles',k,'none'))",
         vimium: "composite hints_nohl; colours vimium",
         tokyonight:
-            "composite hints_overlays; set hintstyles.fg active; colours tokyonight",
+                "composite hints_overlays; set hintstyles.fg active; colours tokyonight",
+        smoothscrollstart: `js -dΩ
+            if (!tri.scrolling.smoothscroll_state) {
+
+              tri.scrolling.smoothscroll_state = {
+                scrolling: false,
+                speed: 400,
+                mult: 1,
+                lastTick: null,
+              };
+
+              tri.scrolling.smoothscroll_tick = () => {
+
+                if (!tri.scrolling.smoothscroll_state.scrolling) return;
+                const thisTick = Date.now();
+                const tickDur = thisTick - tri.scrolling.smoothscroll_state.lastTick;
+                tri.scrolling.smoothscroll_state.lastTick = thisTick;
+                const px = tri.scrolling.smoothscroll_state.mult * tri.scrolling.smoothscroll_state.speed * tickDur / 1000;
+                tri.excmds.scrollpx(0, px);
+
+                requestAnimationFrame(tri.scrolling.smoothscroll_tick);
+              };
+
+              tri.scrolling.smoothscrollstart = (speed = 400, mult = 1) => {
+                tri.scrolling.smoothscroll_state.lastTick = Date.now();
+                tri.scrolling.smoothscroll_state.speed = speed;
+                tri.scrolling.smoothscroll_state.mult = mult;
+                tri.scrolling.smoothscroll_state.scrolling = true;
+                tri.scrolling.smoothscroll_tick();
+              };
+
+              tri.scrolling.smoothscrollstop = () => {
+                tri.scrolling.smoothscroll_state.scrolling = false;
+              };
+            }
+
+            tri.scrolling.smoothscrollstart(JS_ARGS[1] || 400, JS_ARGS[2] || 1);
+            Ω`,
+
+        smoothscrollstop: "js if (tri.scrolling.smoothscroll_state) tri.scrolling.smoothscroll_state.scrolling = false;",
     }
 
     /**
