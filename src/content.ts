@@ -148,11 +148,8 @@ function listen(elem) {
         true,
     )
     elem.addEventListener("keydown", guardedAcceptKey, true)
-    elem.addEventListener(
-        "keypress",
-        ContentController.canceller.cancelKeyPress,
-        true,
-    )
+    elem.addEventListener("keyup", guardedAcceptKey, true)
+
     elem.addEventListener(
         "keyup",
         ContentController.canceller.cancelKeyUp,

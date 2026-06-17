@@ -1404,6 +1404,7 @@ function focusRightHint() {
 
 /** @hidden */
 export function parser(keys: keyseq.MinimalKey[]) {
+    keys = keys.filter(key => !key.keyup)
     const parsed = keyseq.parse(
         keys,
         keyseq.mapstrMapToKeyMap(

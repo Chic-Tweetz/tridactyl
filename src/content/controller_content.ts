@@ -129,18 +129,24 @@ Messaging.addListener("stop_buffering_page_keys", (message, sender, sendResponse
     bufferedPageKeys = []
 })
 
+// Most key binds like "a", "<D-a>", sort of "<R-a>" can prevent repeats and the keyup for "a" from doing anything
+// "<R-a>" would prevent the keyups but allow repeats, good for something like j/k (without keydown/keyup smoothscrolling that is)
+// Like the normal key canceller, these need to be reset when the page loses focus because we won't know that they're released otherwise
+let consumeKeyups = new Set()
+let consumeRepeats = new Set()
+
 /** Accepts keyevents, resolves them to maps, maps to exstrs, executes exstrs */
 function* ParserController() {
     const parsers: {
-        [mode_name in ModeName]: (keys: MinimalKey[]) => ParserResponse
+        [mode_name in ModeName]: (keys: MinimalKey[], startNode?: Map<string, any>) => ParserResponse
     } = {
-        normal: keys => generic.parser("nmaps", keys),
-        insert: keys => generic.parser("imaps", keys),
-        input: keys => generic.parser("inputmaps", keys),
-        ignore: keys => generic.parser("ignoremaps", keys),
+        normal: (keys, node) => generic.parser("nmaps", keys, node),
+        insert: (keys, node) => generic.parser("imaps", keys, node),
+        input: (keys, node) => generic.parser("inputmaps", keys, node),
+        ignore: (keys, node) => generic.parser("ignoremaps", keys, node),
         hint: hinting.parser,
         gobble: gobblemode.parser,
-        visual: keys => generic.parser("vmaps", keys),
+        visual: (keys, node) => generic.parser("vmaps", keys, node),
         nmode: nmode.parser,
     }
 
@@ -148,9 +154,45 @@ function* ParserController() {
         let exstr = ""
         let previousSuffix = null
         let keyEvents: MinimalKey[] = []
+        let node: Map<string, any> | null = null
         try {
             while (true) {
                 const keyevent: KeyEventLike = yield
+                keyEvents = []
+                console.log("parsing:", keyevent)
+
+                if (keyevent.code) {
+                    if (
+                        (
+                            (keyevent as KeyboardEvent).type === "keyup" ||
+                            (keyevent as MinimalKey).keyup
+                        )
+                        && consumeKeyups.has(keyevent.code)
+                    ) {
+                        if (consumeKeyups.has(keyevent.code)) {
+                            consumeKeyups.delete(keyevent.code)
+                            consumeRepeats.delete(keyevent.code)
+
+                            console.log("consuming keyup:", keyevent.code, consumeKeyups, consumeRepeats)
+
+                            // Presumably we'd already have pushed to the canceller?
+                            // if (keyevent instanceof KeyboardEvent) {
+                            //     keyevent.preventDefault()
+                            //     keyevent.stopImmediatePropagation()
+                            // }
+
+                            continue
+                        }
+                    } else if (keyevent.repeat && consumeRepeats.has(keyevent.code)) {
+                        console.log("cancelling repeat:", keyevent.code)
+                        if (keyevent instanceof KeyboardEvent) {
+                            keyevent.preventDefault()
+                            keyevent.stopImmediatePropagation()
+                        }
+                        continue
+                    }
+                }
+
                 let shadowRoot = null
                 let textEditable = false
 
@@ -198,14 +240,17 @@ function* ParserController() {
 
                 const newMode = contentState.mode
                 if (newMode !== currentMode) {
+                    node = null
                     keyEvents = keyEvents.slice(-1)
                     previousSuffix = null
                 }
 
+                console.log("NODE BEFORE", node)
+
                 const response = (
                     parsers[contentState.mode] ||
-                    (keys => generic.parser(contentState.mode + "maps", keys))
-                )(keyEvents)
+                    ((keys, node) => generic.parser(contentState.mode + "maps", keys, node))
+                )(keyEvents, node || undefined)
                 logger.debug(
                     currentMode,
                     contentState.mode,
@@ -215,6 +260,24 @@ function* ParserController() {
 
                 if (response.isMatch && keyevent instanceof KeyboardEvent) {
                     canceller.push(keyevent)
+                }
+                
+                console.log("response", response)
+                node = response.trieNode || null
+                console.log("NODE AFTER", node)
+
+                if (response.cancelKeyups && keyevent instanceof KeyboardEvent) {
+                    for (const keyCode of response.cancelKeyups) {
+                        consumeKeyups.add(keyCode)
+                        console.log("keyups to consume:", consumeKeyups)
+                    }
+                }
+
+                if (response.cancelRepeats && keyevent instanceof KeyboardEvent) {
+                    for (const keyCode of response.cancelRepeats) {
+                        consumeRepeats.add(keyCode)
+                        console.log("repeats to consume:", consumeRepeats)
+                    }
                 }
 
                 if (response.exstr) {
@@ -231,7 +294,9 @@ function* ParserController() {
                     }
                     break
                 } else {
-                    keyEvents = response.keys
+                    // If I change to start nodes, we don't want to remember the full path
+                    // keyEvents = response.keys
+
                     // show current keyEvents as a suffix of the contentState
                     const suffix = keyEvents.map(x => PrintableKey(x)).join("")
                     if (previousSuffix !== suffix) {

@@ -2,7 +2,8 @@
 
 import * as keyseq from "@src/lib/keyseq"
 
-export function parser(conf, keys: keyseq.MinimalKey[]): keyseq.ParserResponse {
-    const maps = keyseq.keyMap(conf)
-    return keyseq.parse(keys, maps)
+export function parser(conf, keys: keyseq.MinimalKey[], startNode?: Map<string, any>): keyseq.ParserResponse {
+    // const maps = keyseq.keyMap(conf)
+    // return keyseq.parse(keys, maps)
+    return keyseq.parseTrie(keys, keyseq.keyTrie(conf), startNode)
 }

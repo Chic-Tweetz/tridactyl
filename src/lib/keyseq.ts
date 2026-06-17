@@ -20,6 +20,20 @@
 
 */
 
+/** Tries
+   
+    Encode keybinds and key events as single strings instead of objects (MinimalKeys).
+
+    This lets us make use of Maps in a more natural way, rather than converting to arrays and filtering etc.
+
+    A keymap might have ["g", "g"] -> "scrollto 0"
+    Equivalent trie nodes would be { "g": { "g": { command: "scrollto 0" } } }
+    Well, almost. We'll be encoding all essential information about binds/key events and prepending to the key name. So:
+    { "00g" -> { "00g" -> { "command" -> "scrollto 0" } } }
+
+    Despite messing about a bit too much, this is... actually working quite well?
+*/
+
 /** */
 import { filter, find, izip } from "@src/lib/itertools"
 import { Parser } from "@src/lib/nearley_utils"
@@ -31,6 +45,85 @@ const bracketexpr_parser = new Parser(bracketexpr_grammar)
 
 let KEYCODETRANSLATEMAP = {}
 
+// {{{ Single-string key encoding
+const modifierKeys = new Set([
+  "Alt",
+  "Control",
+  "Meta",
+  "Shift",
+])
+
+// Encode key event details as bits, eventually to convert into a string
+// Separated into two consts because typescript casting got out of hand
+const rawFlagFns = [
+  ["keyup", (ev: KeyEventLike | MinimalKey) =>
+    (ev as KeyboardEvent).type === "keyup" || (ev as MinimalKey).keyup
+  ],
+  ["shiftKey", (ev: KeyEventLike | MinimalKey) =>
+    ev.shiftKey && (ev.key.length > 1 || ev.key === " ")
+  ],
+] as const
+
+const encodeFlagFns: [string, (ev: KeyEventLike | MinimalKey) => boolean, number][] =
+  rawFlagFns.map(([name, f], i) => [name, f, 1 << i])
+
+const encodeFlags: [string, number][] = [
+  "repeat", // repeats are interesting because we might want to bind both down & repeat, or just repeat, or just down...
+  "altKey",
+  "ctrlKey",
+  "metaKey",
+  // "translated", // not something we should match on i don't believe
+].map((f, i) => [f, 1 << (i + encodeFlagFns.length)])
+
+const encodeFlagBits: Map<string, number> = new Map(
+    encodeFlags.concat(encodeFlagFns.map(([name, _, bit]) => [name, bit]))
+)
+
+const ENCODED_FLAGS_LENGTH = 2
+const ENCODED_FLAGS_BASE = 36
+
+// Encode usefult key event details to 2 chars and prepend them to the key name
+export function keyEventToString(ev: KeyEventLike) {
+    let flags = 0
+
+    for (const [_, f, bit] of encodeFlagFns)
+        flags |= f(ev) ? bit : 0
+
+    for (const [flag, bit] of encodeFlags)
+        flags |= ev[flag] ? bit : 0
+ 
+    return flags.toString(ENCODED_FLAGS_BASE).padStart(ENCODED_FLAGS_LENGTH, "0") + ev.key
+}
+
+export function encodedKeystrFlagBits(...flagNames) {
+    let flags = 0
+    for (const flag of flagNames) {
+        flags |= (encodeFlagBits.get(flag) || 0)
+    }
+    return flags
+}
+
+export function addFlagsToEncodedKeystr(encodedKeystr, ...flagNames) {
+    const flags = parseInt(encodedKeystr.slice(0, ENCODED_FLAGS_LENGTH), ENCODED_FLAGS_BASE) | encodedKeystrFlagBits(...flagNames)
+    return flags.toString(ENCODED_FLAGS_BASE).padStart(ENCODED_FLAGS_LENGTH, "0") + encodedKeystr.slice(ENCODED_FLAGS_LENGTH)
+}
+
+export function removeFlagsFromEncodedKeystr(encodedKeystr, ...flagNames) {
+    const flags = parseInt(encodedKeystr.slice(0, ENCODED_FLAGS_LENGTH), ENCODED_FLAGS_BASE) & ~encodedKeystrFlagBits(...flagNames)
+    return flags.toString(ENCODED_FLAGS_BASE).padStart(ENCODED_FLAGS_LENGTH, "0") + encodedKeystr.slice(ENCODED_FLAGS_LENGTH)
+}
+
+function encodedKeystrToMinimalKey(enc) {
+    const flags = parseInt(enc.slice(0, ENCODED_FLAGS_LENGTH), ENCODED_FLAGS_BASE)
+    const key = enc.slice(ENCODED_FLAGS_LENGTH)
+    const mods = {}
+    encodeFlagFns.forEach(([flag, _, bit]) => mods[flag] = Boolean(flags & bit))
+	encodeFlags.forEach(([flag, bit]) => mods[flag] = Boolean(flags & bit))
+	return new MinimalKey(key, mods)
+}
+
+// }}}
+
 // {{{ General types
 
 export interface KeyModifiers {
@@ -38,6 +131,11 @@ export interface KeyModifiers {
     ctrlKey?: boolean
     metaKey?: boolean
     shiftKey?: boolean
+    keyup?: boolean
+    type?: string
+    repeat?: boolean
+    code?: string
+    keydown?: boolean
 }
 
 // Format modifiers
@@ -46,13 +144,22 @@ const modifiers = new Map([
     ["C", "ctrlKey"],
     ["M", "metaKey"],
     ["S", "shiftKey"],
+    ["R", "repeat"],
+    ["U", "keyup"],
+    ["D", "keydown"],
 ])
 export class MinimalKey {
     readonly altKey = false
     readonly ctrlKey = false
     readonly metaKey = false
     readonly shiftKey = false
+    repeat = false
     translated = false
+    keyup = false
+    keydown = false // this is less about it being a keydown, more about letting us know that we don't want to cancel the keyup
+    // type: string = "keydown" // why have both keyup and type
+    code?: string // Can use this to keep track of held keys, even if you press a modifier while they're held
+
     constructor(readonly key: string, modifiers?: KeyModifiers) {
         if (modifiers !== undefined) {
             for (const mod of Object.keys(modifiers)) {
@@ -64,6 +171,11 @@ export class MinimalKey {
                     continue
                 this[mod] = modifiers[mod]
             }
+            if (modifiers.type === "keyup" || modifiers.keyup) {
+                this.keyup = true
+                // this.type = "keyup"
+            }
+            this.code = modifiers.code
         }
     }
 
@@ -84,6 +196,11 @@ export class MinimalKey {
             ctrlKey: this.ctrlKey,
             metaKey: this.metaKey,
             shiftKey: this.shiftKey,
+            repeat: this.repeat,
+            keyup: this.keyup,
+            keydown: this.keydown,
+            code: this.code,
+            // type: this.type,
         })
         result.translated = true
         return result
@@ -137,6 +254,9 @@ export interface ParserResponse {
     exstr?: string
     isMatch?: boolean
     numericPrefix?: number
+    cancelKeyups?: string[]
+    cancelRepeats?: string[]
+    trieNode?: Map<string, any>
 }
 
 function splitNumericPrefix(
@@ -217,6 +337,111 @@ export function parse(keyseq: MinimalKey[], map: KeyMap): ParserResponse {
     // preserve that whole thing, so concat them back together before
     // returning.
     return { keys: numericPrefix.concat(keyseq), isMatch: keyseq.length > 0 }
+}
+
+// Kinda winging it
+// MinimalKey would eventually be replaced with pure strings also (probably)
+// I'm now thinking we might want to store extra, non-trie-key info
+//   eg "repeat OR not repeat" - that can't be encoded and matched (because keyevents will be one or the other)
+//   so MinimalKey might instead have encodedKey, allowRepeat, consumeKeyup, consumeRepeats, ... whatever else
+// Using MinimalKey to get something working for now
+// 
+
+// I changed parsing to use a start node (so if you type "gg", the second "g" will already be at the "00g" node)
+// Not entirely sure why I felt the need, but it does basically work, except you'll have to repair numeric prefixes
+// I added parent keys for trie nodes, so you can walk back to the root to figure out what to display in the mode indicator
+// So yes, that's two broken things for essentially no gain? hehe
+export function parseTrie(keyseq: MinimalKey[], trie: Map<string, any>, startNode?: Map<string, any>): ParserResponse {
+    // keyseq = keyseq.filter(k => modifierKeys.has(k.slice(2)))
+    keyseq = stripOnlyModifiers(keyseq)
+    if (keyseq.length === 0) return { keys: [], isMatch: false, trieNode: startNode || trie }
+
+    console.log(keyseq, startNode)
+
+    // const numericEndIdx = keyseq.findIndex(k => !/^[0-9]$/.test(k[2])) 
+    // let numericPrefix = keyseq.slice(0, numericEndIdx === -1 ? 0 : numericEndIdx)
+    // keyseq = keyseq.slice(numericPrefix.length)
+
+    let numericPrefix: MinimalKey[]
+    ;[numericPrefix, keyseq] = splitNumericPrefix(keyseq)
+
+    // figure startNode could replace keyseq, but would require more tinkering to get that to work
+    // controller_content would need to pass the startNode of the last non-terminating match
+    // and keyseq would need to start relative to that instead of the root node
+    // ... so you wouldn't replace keyseq, no, although you may change it from an array to a single key event?
+    let cursor: Map<string, any> = startNode || trie
+    let keys: MinimalKey[] = []
+    let cancelKeyups: string[] = []
+    let cancelRepeats: string[] = []
+    // let perfect = false
+    for (const minKey of keyseq) {
+        const key = keyEventToString(minKey)
+        let next = cursor.get(key)
+        // When introducing keyups you'll have to handle them differently
+        if (next === undefined) {
+            // if keyup or repeat, ignore, probably filter out of keys for returning
+            /*
+            if (isKeyUp(key) || isRepeat(key)) {
+                continue
+            }
+            cursor = next
+             */
+
+            // if keydown, then we try again from the trie root
+            numericPrefix = []
+            next = trie.get(key)
+            if (next === undefined) {
+                // Shall I let root <U-...> binds work? This might be better (IDK)
+                if (minKey.keyup || minKey.repeat) continue
+
+                next = trie
+                keys = []
+                cancelKeyups = []
+                cancelRepeats = []
+            } else {
+                keys = [minKey]
+            }
+        } else {
+            keys.push(minKey)
+        }
+        cursor = next
+
+        if (!minKey.keyup && cursor.has("consumeKeyup") && minKey.code) {
+            cancelKeyups.push(minKey.code)
+        }
+        if (!minKey.keyup && cursor.has("consumeRepeats") && minKey.code) {
+            cancelRepeats.push(minKey.code)
+        }
+
+        if (cursor.has("command")) {
+            break
+        }
+        // if (typeof cursor === "string") {
+        //     perfect = true
+        //     break
+        // }
+    }
+    // const numericPrefixStr = numericPrefix.reduce((acc, k) => acc + k[2], "")
+    const numericPrefixStr = numericPrefix.map(k => k.key).join("")
+    if (cursor.has("command")) {
+        return {
+            value: cursor.get("command"),
+            exstr: cursor.get("command") + (numericPrefix.length ? " " + numericPrefixStr : ""),
+            isMatch: true,
+            numericPrefix: numericPrefix.length ? Number(numericPrefixStr) : undefined,
+            keys: numericPrefix.concat(keys),
+            cancelKeyups,
+            cancelRepeats,
+            trieNode: cursor,
+        }
+    }
+    return {
+        isMatch: keys.length > 0,
+        keys: numericPrefix.concat(keys),
+        cancelRepeats,
+        cancelKeyups,
+        trieNode: cursor,
+    }
 }
 
 /** True if seq1 is a prefix or equal to seq2 */
@@ -454,6 +679,82 @@ export function keyMap(conf): KeyMap {
     return KEYMAP_CACHE[conf]
 }
 
+let KEYTRIE_CACHE = {}
+/**
+ *  Encode keybinds as strings to use as the keys for nested maps.
+ *  Key events can be similarly encoded to walk the trie.
+ */
+export function keyTrie(conf) {
+    if (KEYTRIE_CACHE[conf]) return KEYTRIE_CACHE[conf]
+    // Eventually we'd replace keymaps altogether I suppose
+    const keymap = keyMap(conf)
+
+    const iter = keymap.entries()
+    const root = new Map()
+
+    // Trie keys are encoded key strings, values are nodes or an excmd
+    while (true) {
+        const next = iter.next()
+        if (next.done) break;
+        const [keyseq, excmd] = next.value
+
+        let cursor = root
+        // Hmm, I dunno if this helps much really.
+        // let heldKeys: string[] = []
+
+        for (let i = 0; i < keyseq.length; ++i) {
+            const enc = keyEventToString(keyseq[i])
+
+            // This lot's probably going to break keyup binds for now (might not do it this way anyway)
+            // Key ups and repeats point to same node while key is held (unless keybind says not to - not implemented)
+            // We want <D-x> I think, to avoid this (although repeats should still be ignored for <D-x>)
+            // if (keyseq[i].keyup) {
+            //     heldKeys = heldKeys.filter(key => key !== keyseq[i].key)
+            // } else { // if (keyseq[i] IS NOT <D-...> flavour) { ...
+            //     heldKeys.push(enc)
+            // }
+
+            if (!cursor.has(enc)) cursor.set(enc, new Map())
+            cursor.get(enc).set("parent", cursor)
+
+            // Allow non-repeats to trigger repeat binds... neat that's worked.
+            if (keyseq[i].repeat) {
+                cursor.set(removeFlagsFromEncodedKeystr(enc, "repeat"), cursor.get(enc))
+            }
+
+            cursor = cursor.get(enc)
+
+            // Held key repeats/keyups point to same node (elegant? stupid? time will tell)
+            // for (const heldKey of heldKeys) {
+            //     cursor.set(addFlagsToEncodedKeystr(heldKey, "keyup"), cursor)
+            //     cursor.set(addFlagsToEncodedKeystr(heldKey, "repeat"), cursor)
+            // }
+            
+            // if (typeof cursor === "string") continue; // Shadowed bind
+
+            // shadowed bind - we could actually allow this you know... would that be useful though?
+            if (cursor.has("command")) continue
+
+            // Do need a way to allow repeats mind you
+            // - No repeats (only thing that'll work now)
+            // - Only repeats (any use case for binding to a repeat-only keyevent though?)
+            // - Either repeats or no repeats
+            if (!keyseq[i].keyup) {
+                // So... that might make <R-j> work for example to keep scrolling
+                // But I'm not sure tbh
+                if (!keyseq[i].repeat) {
+                    cursor.set("consumeRepeats", true)
+                }
+                if (!keyseq[i].keydown) {
+                    cursor.set("consumeKeyup", true)
+                }
+            }
+        }
+        cursor.set("command", excmd)
+    }
+    return KEYTRIE_CACHE[conf] = root
+}
+
 // }}}
 
 // {{{ Utility functions for dealing with KeyboardEvents
@@ -493,7 +794,12 @@ export function minimalKeyFromKeyboardEvent(
         ctrlKey: keyEvent.ctrlKey,
         metaKey: keyEvent.metaKey,
         shiftKey: keyEvent.shiftKey,
+        repeat: keyEvent.repeat,
+        keyup: keyEvent.type === "keyup",
+        code: keyEvent.code,
+        // type: keyEvent.type,
     }
+
     if (config.get("keyboardlayoutforce") === "true") {
         Object.keys(KEYCODETRANSLATEMAP).length === 0 && updateBaseLayout()
         let newkey = keyEvent.key
@@ -503,6 +809,7 @@ export function minimalKeyFromKeyboardEvent(
     }
 
     const result = new MinimalKey(keyEvent.key, modifiers)
+    
     if (config.get("usekeytranslatemap") === "true") {
         const translationmap = config.get("keytranslatemap")
         return result.translate(translationmap)
@@ -515,6 +822,7 @@ export function minimalKeyFromKeyboardEvent(
 browser.storage.onChanged.addListener(changes => {
     if ("userconfig" in changes) {
         KEYMAP_CACHE = {}
+        KEYTRIE_CACHE = {}
     }
 })
 
