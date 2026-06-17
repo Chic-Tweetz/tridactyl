@@ -1644,24 +1644,6 @@ export function findselect() {
     selection.addRange(range)
 }
 
-/**
- * incsearch finding.
- */
-//#content
-export function searchbar(...args: string[]) {
-    let reverse = false
-    let fromView = false
-    for (const arg of args) {
-        if (arg.includes("-?")) {
-            reverse = true
-        }
-        if (arg.includes("--search-from-view")) {
-            fromView = true
-        }
-    }
-    return finding.searchbar(reverse, fromView)
-}
-
 /** @hidden */
 //#content_helper
 function history(url_or_num: string, direction: number) {
@@ -6730,8 +6712,18 @@ export function allowpagebind(pattern: string, keys: string) {
 /**
  * Remove a previously allowed page bind from :allowpagebind.
  */
-export function unallowpagebind(pattern: string, keys: string) {
+export function disallowpagebind(pattern: string, keys: string) {
     config.unsetURL(pattern, "whitelistpagebinds", keys)
 }
-// }}}
 
+/**
+ * Create an incsearch :find input textbox.
+ */
+//#content
+export function searchbar(reverse: string | boolean, fromView: string | boolean) {
+    return finding.searchbar(
+        reverse === "true" || reverse === true,
+        fromView === "true" || fromView === true
+    )
+}
+// }}}

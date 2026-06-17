@@ -344,8 +344,10 @@ export function show(hidehover = false) {
 
         ensureIframeExists()
         cmdline_iframe.inert = false
+
         cmdline_iframe.setAttribute("popover", "manual")
         ;(cmdline_iframe as any).showPopover()
+
         cmdline_iframe.classList.remove("hidden")
         const height =
             cmdline_iframe.contentWindow.document.body.offsetHeight + "px"
