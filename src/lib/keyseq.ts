@@ -21,7 +21,7 @@
 */
 
 /** Tries
-   
+
     Encode keybinds and key events as single strings instead of objects (MinimalKeys).
 
     This lets us make use of Maps in a more natural way, rather than converting to arrays and filtering etc.
@@ -46,12 +46,7 @@ const bracketexpr_parser = new Parser(bracketexpr_grammar)
 let KEYCODETRANSLATEMAP = {}
 
 // {{{ Single-string key encoding
-const modifierKeys = new Set([
-  "Alt",
-  "Control",
-  "Meta",
-  "Shift",
-])
+/* eslint-disable no-bitwise */
 
 // Encode key event details as bits, eventually to convert into a string
 // Separated into two consts because typescript casting got out of hand
@@ -79,8 +74,18 @@ const encodeFlagBits: Map<string, number> = new Map(
     encodeFlags.concat(encodeFlagFns.map(([name, _, bit]) => [name, bit]))
 )
 
-const ENCODED_FLAGS_LENGTH = 2
 const ENCODED_FLAGS_BASE = 36
+const ENCODED_FLAGS_LENGTH = Math.ceil(
+    (encodeFlagFns.length + encodeFlags.length) / Math.log2(ENCODED_FLAGS_BASE)
+)
+
+// Just exploring possibilities, may or may not use this
+// these flags would be bits higher than for those used when creating trie-keys
+// so they can be easily filtered out with a bit mask
+const _trieNodeFlags: [string, number][] = [
+    "cancelRepeats",
+    "cancelKeyup",
+].map((name, i) => [name, 1 << (i + encodeFlagFns.length + encodeFlags.length)])
 
 // Encode usefult key event details to 2 chars and prepend them to the key name
 export function keyEventToString(ev: KeyEventLike) {
@@ -91,7 +96,7 @@ export function keyEventToString(ev: KeyEventLike) {
 
     for (const [flag, bit] of encodeFlags)
         flags |= ev[flag] ? bit : 0
- 
+
     return flags.toString(ENCODED_FLAGS_BASE).padStart(ENCODED_FLAGS_LENGTH, "0") + ev.key
 }
 
@@ -113,7 +118,8 @@ export function removeFlagsFromEncodedKeystr(encodedKeystr, ...flagNames) {
     return flags.toString(ENCODED_FLAGS_BASE).padStart(ENCODED_FLAGS_LENGTH, "0") + encodedKeystr.slice(ENCODED_FLAGS_LENGTH)
 }
 
-function encodedKeystrToMinimalKey(enc) {
+// Anticipating I'll want something like this eventually
+function _encodedKeystrToMinimalKey(enc) {
     const flags = parseInt(enc.slice(0, ENCODED_FLAGS_LENGTH), ENCODED_FLAGS_BASE)
     const key = enc.slice(ENCODED_FLAGS_LENGTH)
     const mods = {}
@@ -121,6 +127,8 @@ function encodedKeystrToMinimalKey(enc) {
 	encodeFlags.forEach(([flag, bit]) => mods[flag] = Boolean(flags & bit))
 	return new MinimalKey(key, mods)
 }
+
+/* eslint-enable no-bitwise */
 
 // }}}
 
@@ -345,7 +353,7 @@ export function parse(keyseq: MinimalKey[], map: KeyMap): ParserResponse {
 //   eg "repeat OR not repeat" - that can't be encoded and matched (because keyevents will be one or the other)
 //   so MinimalKey might instead have encodedKey, allowRepeat, consumeKeyup, consumeRepeats, ... whatever else
 // Using MinimalKey to get something working for now
-// 
+//
 
 // I changed parsing to use a start node (so if you type "gg", the second "g" will already be at the "00g" node)
 // Not entirely sure why I felt the need, but it does basically work, except you'll have to repair numeric prefixes
@@ -356,9 +364,7 @@ export function parseTrie(keyseq: MinimalKey[], trie: Map<string, any>, startNod
     keyseq = stripOnlyModifiers(keyseq)
     if (keyseq.length === 0) return { keys: [], isMatch: false, trieNode: startNode || trie }
 
-    console.log(keyseq, startNode)
-
-    // const numericEndIdx = keyseq.findIndex(k => !/^[0-9]$/.test(k[2])) 
+    // const numericEndIdx = keyseq.findIndex(k => !/^[0-9]$/.test(k[2]))
     // let numericPrefix = keyseq.slice(0, numericEndIdx === -1 ? 0 : numericEndIdx)
     // keyseq = keyseq.slice(numericPrefix.length)
 
@@ -392,7 +398,9 @@ export function parseTrie(keyseq: MinimalKey[], trie: Map<string, any>, startNod
             next = trie.get(key)
             if (next === undefined) {
                 // Shall I let root <U-...> binds work? This might be better (IDK)
-                if (minKey.keyup || minKey.repeat) continue
+                // If we're "consuming" keyups and repeats do we still need this guard?
+
+                // if (minKey.keyup || minKey.repeat) continue
 
                 next = trie
                 keys = []
@@ -702,8 +710,8 @@ export function keyTrie(conf) {
         // Hmm, I dunno if this helps much really.
         // let heldKeys: string[] = []
 
-        for (let i = 0; i < keyseq.length; ++i) {
-            const enc = keyEventToString(keyseq[i])
+        for (const minKey of keyseq) {
+            const enc = keyEventToString(minKey)
 
             // This lot's probably going to break keyup binds for now (might not do it this way anyway)
             // Key ups and repeats point to same node while key is held (unless keybind says not to - not implemented)
@@ -729,7 +737,7 @@ export function keyTrie(conf) {
             //     cursor.set(addFlagsToEncodedKeystr(heldKey, "keyup"), cursor)
             //     cursor.set(addFlagsToEncodedKeystr(heldKey, "repeat"), cursor)
             // }
-            
+
             // if (typeof cursor === "string") continue; // Shadowed bind
 
             // shadowed bind - we could actually allow this you know... would that be useful though?
@@ -739,13 +747,13 @@ export function keyTrie(conf) {
             // - No repeats (only thing that'll work now)
             // - Only repeats (any use case for binding to a repeat-only keyevent though?)
             // - Either repeats or no repeats
-            if (!keyseq[i].keyup) {
+            if (!minKey.keyup) {
                 // So... that might make <R-j> work for example to keep scrolling
                 // But I'm not sure tbh
-                if (!keyseq[i].repeat) {
+                if (!minKey.repeat) {
                     cursor.set("consumeRepeats", true)
                 }
-                if (!keyseq[i].keydown) {
+                if (!minKey.keydown) {
                     cursor.set("consumeKeyup", true)
                 }
             }
@@ -809,7 +817,7 @@ export function minimalKeyFromKeyboardEvent(
     }
 
     const result = new MinimalKey(keyEvent.key, modifiers)
-    
+
     if (config.get("usekeytranslatemap") === "true") {
         const translationmap = config.get("keytranslatemap")
         return result.translate(translationmap)

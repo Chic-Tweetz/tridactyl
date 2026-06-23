@@ -132,8 +132,11 @@ Messaging.addListener("stop_buffering_page_keys", (message, sender, sendResponse
 // Most key binds like "a", "<D-a>", sort of "<R-a>" can prevent repeats and the keyup for "a" from doing anything
 // "<R-a>" would prevent the keyups but allow repeats, good for something like j/k (without keydown/keyup smoothscrolling that is)
 // Like the normal key canceller, these need to be reset when the page loses focus because we won't know that they're released otherwise
-let consumeKeyups = new Set()
-let consumeRepeats = new Set()
+const consumeKeyups = new Set()
+const consumeRepeats = new Set()
+
+let keysToFeed: KeyEventLike[] = []
+let generatorIsWaiting = true
 
 /** Accepts keyevents, resolves them to maps, maps to exstrs, executes exstrs */
 function* ParserController() {
@@ -157,9 +160,10 @@ function* ParserController() {
         let node: Map<string, any> | null = null
         try {
             while (true) {
-                const keyevent: KeyEventLike = yield
+                generatorIsWaiting = true
+                const keyevent: KeyEventLike = keysToFeed.length ? keysToFeed.shift() : yield
+                generatorIsWaiting = false
                 keyEvents = []
-                console.log("parsing:", keyevent)
 
                 if (keyevent.code) {
                     if (
@@ -173,8 +177,6 @@ function* ParserController() {
                             consumeKeyups.delete(keyevent.code)
                             consumeRepeats.delete(keyevent.code)
 
-                            console.log("consuming keyup:", keyevent.code, consumeKeyups, consumeRepeats)
-
                             // Presumably we'd already have pushed to the canceller?
                             // if (keyevent instanceof KeyboardEvent) {
                             //     keyevent.preventDefault()
@@ -184,7 +186,6 @@ function* ParserController() {
                             continue
                         }
                     } else if (keyevent.repeat && consumeRepeats.has(keyevent.code)) {
-                        console.log("cancelling repeat:", keyevent.code)
                         if (keyevent instanceof KeyboardEvent) {
                             keyevent.preventDefault()
                             keyevent.stopImmediatePropagation()
@@ -245,8 +246,6 @@ function* ParserController() {
                     previousSuffix = null
                 }
 
-                console.log("NODE BEFORE", node)
-
                 const response = (
                     parsers[contentState.mode] ||
                     ((keys, node) => generic.parser(contentState.mode + "maps", keys, node))
@@ -261,22 +260,18 @@ function* ParserController() {
                 if (response.isMatch && keyevent instanceof KeyboardEvent) {
                     canceller.push(keyevent)
                 }
-                
-                console.log("response", response)
+
                 node = response.trieNode || null
-                console.log("NODE AFTER", node)
 
                 if (response.cancelKeyups && keyevent instanceof KeyboardEvent) {
                     for (const keyCode of response.cancelKeyups) {
                         consumeKeyups.add(keyCode)
-                        console.log("keyups to consume:", consumeKeyups)
                     }
                 }
 
                 if (response.cancelRepeats && keyevent instanceof KeyboardEvent) {
                     for (const keyCode of response.cancelRepeats) {
                         consumeRepeats.add(keyCode)
-                        console.log("repeats to consume:", consumeRepeats)
                     }
                 }
 
@@ -317,6 +312,16 @@ function* ParserController() {
 
 export const generator = ParserController() // var rather than let stops weirdness in repl.
 generator.next()
+
+export function keyMuncher(...keys: KeyEventLike[]) {
+    if (keys.length === 0) return
+    if (generatorIsWaiting) {
+        keysToFeed = keysToFeed.concat(keys)
+        generator.next(keysToFeed.shift())
+    } else {
+        keysToFeed = keysToFeed.concat(keys)
+    }
+}
 
 /** Feed keys to the ParserController, unless they should be buffered to be later fed to clInput */
 export function acceptKey(keyevent: KeyboardEvent) {

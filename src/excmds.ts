@@ -113,7 +113,7 @@ let ALL_EXCMDS
 import * as controller from "@src/lib/controller"
 
 //#content_helper
-import { generator as KEY_MUNCHER } from "@src/content/controller_content"
+import { keyMuncher as KEY_MUNCHER } from "@src/content/controller_content"
 
 /**
  * Used to store the types of the parameters for each excmd for
@@ -5191,9 +5191,8 @@ export function viewconfig(...key: string[]) {
  */
 //#background
 export async function jsonview(...json: string[]) {
-    const tab = await tabopen("-w", browser.runtime.getURL("static/newtab.html"))
-    const url = "data:application/json," + encodeURIComponent(json.join(" "))
-    return browser.tabs.executeScript(tab.id, { code: `window.location.href = "${url}";` })
+    const blob = new Blob([json.join(" ")], { type: "application/json" })
+    return tabopen("-w", URL.createObjectURL(blob))
 }
 
 /**
@@ -6271,7 +6270,7 @@ export async function keyfeed(...args: string[]) {
     }
 
     for (const k of keyseq) {
-        usePage ? spoofKey(k) : KEY_MUNCHER.next(k)
+        usePage ? spoofKey(k) : KEY_MUNCHER(k)
         await sleep(10)
     }
 }
