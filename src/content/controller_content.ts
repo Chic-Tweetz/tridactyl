@@ -7,6 +7,7 @@ import {
     ParserResponse,
     minimalKeyFromKeyboardEvent,
     MinimalKey,
+    keyEventToString,
 } from "@src/lib/keyseq"
 import { deepestShadowRoot } from "@src/lib/dom"
 
@@ -129,11 +130,30 @@ Messaging.addListener("stop_buffering_page_keys", (message, sender, sendResponse
     bufferedPageKeys = []
 })
 
-// Most key binds like "a", "<D-a>", sort of "<R-a>" can prevent repeats and the keyup for "a" from doing anything
-// "<R-a>" would prevent the keyups but allow repeats, good for something like j/k (without keydown/keyup smoothscrolling that is)
-// Like the normal key canceller, these need to be reset when the page loses focus because we won't know that they're released otherwise
+// Cancel these keyups so the page doesn't receive them
+const cancelKeyups = new Set()
+
+// "Consume" these keyevents - neither the page or Tridactyl will use them
+// Some system like this is essential for situations like ":bind <U-g>" interfering with ":bind gg"
+// Contextual keyups should let us be more lenient with the :bind grammar (like "g<U-g>" working as well as "<D-g><U-g>")
+//    x  binds contextually cancel keyups
+// <P-x> binds cancel all repeats and keyups
+// <D-x> binds cancel repeats
+// What does that leave?
+//  - cancel neither
+//  - cancel keyup (non-contextual/explicit)
 const consumeKeyups = new Set()
+const consumeKeyupsContextual = new Set() // Ignore these keyups only if the parser didn't have to reset to the trie root
 const consumeRepeats = new Set()
+
+// If we lose focus we have no idea whether keys are held
+window.addEventListener("blur", e => {
+    if (!e.isTrusted) return
+    cancelKeyups.clear()
+    consumeKeyups.clear()
+    consumeKeyupsContextual.clear()
+    consumeRepeats.clear()
+})
 
 let keysToFeed: KeyEventLike[] = []
 let generatorIsWaiting = true
@@ -153,35 +173,48 @@ function* ParserController() {
         nmode: nmode.parser,
     }
 
+    // I've just noticed the nested while loops and am now wondering about this
+    let node: Map<string, any> | null = null
+    let lastMode = contentState.mode
+
     while (true) {
         let exstr = ""
         let previousSuffix = null
         let keyEvents: MinimalKey[] = []
-        let node: Map<string, any> | null = null
         try {
             while (true) {
                 generatorIsWaiting = true
                 const keyevent: KeyEventLike = keysToFeed.length ? keysToFeed.shift() : yield
                 generatorIsWaiting = false
+
                 keyEvents = []
 
+                // Getting nice and confusing at this point
                 if (keyevent.code) {
                     if (
                         (
                             (keyevent as KeyboardEvent).type === "keyup" ||
                             (keyevent as MinimalKey).keyup
                         )
-                        && consumeKeyups.has(keyevent.code)
                     ) {
-                        if (consumeKeyups.has(keyevent.code)) {
+                        if (cancelKeyups.has(keyevent.code)) {
+                            if (keyevent instanceof KeyboardEvent) {
+                                keyevent.preventDefault()
+                                keyevent.stopImmediatePropagation()
+                            }
+                            cancelKeyups.delete(keyevent.code)
+                        }
+                        consumeRepeats.delete(keyevent.code)
+                        if (consumeKeyups.has(keyevent.code) && !consumeKeyupsContextual.has(keyevent.code)) {
                             consumeKeyups.delete(keyevent.code)
-                            consumeRepeats.delete(keyevent.code)
 
-                            // Presumably we'd already have pushed to the canceller?
-                            // if (keyevent instanceof KeyboardEvent) {
-                            //     keyevent.preventDefault()
-                            //     keyevent.stopImmediatePropagation()
-                            // }
+                            // If we've matched a keydown, we want to cancel the keyup no matter what
+                            // so key cancelling should be separated from key "consuming"
+                            // consuming is basically preventing any tridactyl binds as well as the page
+                            if (keyevent instanceof KeyboardEvent) {
+                                keyevent.preventDefault()
+                                keyevent.stopImmediatePropagation()
+                            }
 
                             continue
                         }
@@ -246,6 +279,13 @@ function* ParserController() {
                     previousSuffix = null
                 }
 
+                // My start node doesn't update with mode changes!
+                // That's three complications the startNode thing added
+                // are there any benefits?
+                if (newMode !== lastMode) {
+                    node = null
+                }
+
                 const response = (
                     parsers[contentState.mode] ||
                     ((keys, node) => generic.parser(contentState.mode + "maps", keys, node))
@@ -257,25 +297,60 @@ function* ParserController() {
                     response,
                 )
 
+                // Think canceller needs a rethink? We'll cancel keyups when checking our sets now
+                // Hmm. I'm throwing these preventDefaults and stopImmediatePropagations around now though
                 if (response.isMatch && keyevent instanceof KeyboardEvent) {
-                    canceller.push(keyevent)
+                    // canceller.push(keyevent)
+                    if (keyevent instanceof KeyboardEvent) {
+                        keyevent.preventDefault()
+                        keyevent.stopImmediatePropagation()
+                    }
+
+                    if (keyevent.type === "keydown") {
+                        cancelKeyups.add(keyevent.code)
+                    }
+                }
+
+                // we're saying, if we want to cancel a keyup contextually, we should only do it if the parser didn't have to start over
+                // so if you had "x" bound and typed "gx", that would be a "reset" because we didn't use the "g" node
+                if (keyevent.code && ((keyevent as KeyboardEvent).type === "keyup" && consumeKeyupsContextual.has(keyevent.code))) {
+                    consumeKeyupsContextual.delete(keyevent.code)
+                    consumeKeyups.delete(keyevent.code)
+
+                    if (response.didReset) {
+                        continue
+                    }
                 }
 
                 node = response.trieNode || null
 
-                if (response.cancelKeyups && keyevent instanceof KeyboardEvent) {
+                if (response.cancelKeyupsContextual?.length && keyevent instanceof KeyboardEvent) {
+                    for (const keyCode of response.cancelKeyupsContextual) {
+                        consumeKeyupsContextual.add(keyCode)
+                    }
+                } else if (response.cancelKeyups?.length && keyevent instanceof KeyboardEvent) {
                     for (const keyCode of response.cancelKeyups) {
                         consumeKeyups.add(keyCode)
                     }
                 }
 
-                if (response.cancelRepeats && keyevent instanceof KeyboardEvent) {
+                if (response.cancelRepeats?.length && keyevent instanceof KeyboardEvent) {
                     for (const keyCode of response.cancelRepeats) {
                         consumeRepeats.add(keyCode)
                     }
                 }
 
                 if (response.exstr) {
+                    // stickyRepeat -> remain on same node so repeats keep firing this command even if in a sequence
+                    if (!node?.has("stickyRepeat")) {
+                        node = null
+                    } else if (keyevent.code) {
+                        // make sure we can escape the sticky node!
+                        consumeKeyups.delete(keyevent.code)
+                        consumeKeyupsContextual.delete(keyevent.code)
+                        // and that we can use it... could we be in this situation?
+                        consumeRepeats.delete(keyevent.code)
+                    }
                     exstr = response.exstr
                     if (
                         exstr.startsWith("fillcmdline") &&
