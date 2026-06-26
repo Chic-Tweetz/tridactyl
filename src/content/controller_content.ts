@@ -176,6 +176,7 @@ function* ParserController() {
     // I've just noticed the nested while loops and am now wondering about this
     let node: Map<string, any> | null = null
     let lastMode = contentState.mode
+    let numericPrefix = ""
 
     while (true) {
         let exstr = ""
@@ -187,7 +188,7 @@ function* ParserController() {
                 const keyevent: KeyEventLike = keysToFeed.length ? keysToFeed.shift() : yield
                 generatorIsWaiting = false
 
-                keyEvents = []
+                // keyEvents = []
 
                 // Getting nice and confusing at this point
                 if (keyevent.code) {
@@ -274,7 +275,7 @@ function* ParserController() {
 
                 const newMode = contentState.mode
                 if (newMode !== currentMode) {
-                    node = null
+                    // node = null
                     keyEvents = keyEvents.slice(-1)
                     previousSuffix = null
                 }
@@ -282,9 +283,9 @@ function* ParserController() {
                 // My start node doesn't update with mode changes!
                 // That's three complications the startNode thing added
                 // are there any benefits?
-                if (newMode !== lastMode) {
-                    node = null
-                }
+                // if (newMode !== lastMode) {
+                //     node = null
+                // }
 
                 const response = (
                     parsers[contentState.mode] ||
@@ -322,7 +323,7 @@ function* ParserController() {
                     }
                 }
 
-                node = response.trieNode || null
+                // node = response.trieNode || null
 
                 if (response.cancelKeyupsContextual?.length && keyevent instanceof KeyboardEvent) {
                     for (const keyCode of response.cancelKeyupsContextual) {
@@ -342,9 +343,7 @@ function* ParserController() {
 
                 if (response.exstr) {
                     // stickyRepeat -> remain on same node so repeats keep firing this command even if in a sequence
-                    if (!node?.has("stickyRepeat")) {
-                        node = null
-                    } else if (keyevent.code) {
+                    if (keyevent.code && response.trieNode?.has("stickyRepeat")) {
                         // make sure we can escape the sticky node!
                         consumeKeyups.delete(keyevent.code)
                         consumeKeyupsContextual.delete(keyevent.code)
@@ -365,7 +364,7 @@ function* ParserController() {
                     break
                 } else {
                     // If I change to start nodes, we don't want to remember the full path
-                    // keyEvents = response.keys
+                    keyEvents = response.keys || []
 
                     // show current keyEvents as a suffix of the contentState
                     const suffix = keyEvents.map(x => PrintableKey(x)).join("")

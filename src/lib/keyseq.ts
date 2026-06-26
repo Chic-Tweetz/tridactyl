@@ -303,7 +303,7 @@ function splitNumericPrefix(
             else break
         }
         const rest = keyseq.slice(prefix.length)
-        return [prefix, rest]
+        return [prefix.filter(mk => !mk.keyup), rest]
     } else {
         return [[], keyseq]
     }
@@ -377,10 +377,10 @@ export function parse(keyseq: MinimalKey[], map: KeyMap): ParserResponse {
 // Not entirely sure why I felt the need, but it does basically work, except you'll have to repair numeric prefixes
 // I added parent keys for trie nodes, so you can walk back to the root to figure out what to display in the mode indicator
 // So yes, that's two broken things for essentially no gain? hehe
-export function parseTrie(keyseq: MinimalKey[], trie: Map<string, any>, startNode?: Map<string, any>): ParserResponse {
+export function parseTrie(keyseq: MinimalKey[], trie: Map<string, any>): ParserResponse {
     // keyseq = keyseq.filter(k => modifierKeys.has(k.slice(2)))
     keyseq = stripOnlyModifiers(keyseq)
-    if (keyseq.length === 0) return { keys: [], isMatch: false, trieNode: startNode || trie }
+    if (keyseq.length === 0) return { keys: [], isMatch: false, trieNode: trie }
 
     // const numericEndIdx = keyseq.findIndex(k => !/^[0-9]$/.test(k[2]))
     // let numericPrefix = keyseq.slice(0, numericEndIdx === -1 ? 0 : numericEndIdx)
@@ -390,12 +390,13 @@ export function parseTrie(keyseq: MinimalKey[], trie: Map<string, any>, startNod
     // We only create perefixes when we're at the root node
     // Is it time to scrap the "startNode"?
     let numericPrefix: MinimalKey[]
-    if (trie === startNode) {
-        [numericPrefix, keyseq] = splitNumericPrefix(keyseq)
-        console.log("NUMBER!", numericPrefix)
-    } else {
-        numericPrefix = []
-    }
+    [numericPrefix, keyseq] = splitNumericPrefix(keyseq)
+
+    // if (trie === startNode) {
+    //     [numericPrefix, keyseq] = splitNumericPrefix(keyseq)
+    // } else {
+    //     numericPrefix = []
+    // }
 
     // figure startNode could replace keyseq, but would require more tinkering to get that to work
     // controller_content would need to pass the startNode of the last non-terminating match
@@ -403,7 +404,7 @@ export function parseTrie(keyseq: MinimalKey[], trie: Map<string, any>, startNod
     // ... so you wouldn't replace keyseq, no, although you may change it from an array to a single key event?
     //
     // wish I had written down why i thought that was worth doing :)
-    let cursor: Map<string, any> = startNode || trie
+    let cursor: Map<string, any> = trie
     let keys: MinimalKey[] = []
     let cancelKeyups: string[] = []
     let cancelRepeats: string[] = []
@@ -417,7 +418,9 @@ export function parseTrie(keyseq: MinimalKey[], trie: Map<string, any>, startNod
         if (next === undefined) {
             didReset = true
             // if keydown and not explicitly cancelling keyups, then we try again from the trie root
-            numericPrefix = []
+            if (!minKey.keyup)
+                numericPrefix = []
+
             next = trie.get(key)
             if (next === undefined) {
                 // Shall I let root <U-...> binds work? This might be better (IDK)
