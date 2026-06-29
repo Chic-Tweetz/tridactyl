@@ -2,7 +2,7 @@
 
 BracketExpr -> "<" Modifier ModKey ">" {% bexpr=>bexpr.slice(1,-1) %}
              | "<" Key ">" {% bexpr=>[{}].concat(bexpr.slice(1,-1)) %}
-Modifier -> [acmsrudpACMSRUDP]:? [acmsrudpACMSRUDP]:? [acmsrudpACMSRUDP]:? [acmsrudpACMSRUDP]:? "-" {%
+Modifier -> [acmsrudpnACMSRUDPN]:? [acmsrudpnACMSRUDPN]:? [acmsrudpnACMSRUDPN]:? [acmsrudpnACMSRUDPN]:? "-" {%
     /** For each modifier present,
         add its long name as an attribute set to true to an object */
     (mods, _, reject) => {
@@ -15,6 +15,7 @@ Modifier -> [acmsrudpACMSRUDP]:? [acmsrudpACMSRUDP]:? [acmsrudpACMSRUDP]:? [acms
             ["D", "keydown"],
             ["U", "keyup"],
             ["P", "press"],
+            ["N", "noShadow"],
         ])
 
         let modifiersObj = {}

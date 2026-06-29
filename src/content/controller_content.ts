@@ -32,14 +32,21 @@ function PrintableKey(k) {
         return ""
     }
 
+    let prefix = ""
+    if (k.keyup) {
+        prefix += "U"
+    }
     if (k.altKey) {
-        result = "A-" + result
+        prefix += "A"
     }
     if (k.ctrlKey) {
-        result = "C-" + result
+        prefix += "C"
     }
     if (k.shiftKey) {
-        result = "S-" + result
+        prefix += "S"
+    }
+    if (prefix.length > 0) {
+        result = prefix + "-" + result
     }
     if (result.length > 1) {
         result = "<" + result + ">"
@@ -158,30 +165,61 @@ window.addEventListener("blur", e => {
 let keysToFeed: KeyEventLike[] = []
 let generatorIsWaiting = true
 
+// Thinking we could pass a state object to the key parser to keep things easy
+export interface ParserState {
+    trie: Map<string, any>
+    resetNode?: Map<string, any>
+    currentNode?: Map<string, any>
+    numericPrefix?: string | undefined
+    heldKeys: Set<string>
+    cancelKeyups: Set<string>
+    ignoreKeyupsContextual: Set<string>
+    ignoreKeyupsExplicit: Set<string>
+    ignoreRepeats: Set<string>
+}
+
 /** Accepts keyevents, resolves them to maps, maps to exstrs, executes exstrs */
 function* ParserController() {
     const parsers: {
         [mode_name in ModeName]: (keys: MinimalKey[], startNode?: Map<string, any>) => ParserResponse
     } = {
-        normal: (keys, node) => generic.parser("nmaps", keys, node),
-        insert: (keys, node) => generic.parser("imaps", keys, node),
-        input: (keys, node) => generic.parser("inputmaps", keys, node),
-        ignore: (keys, node) => generic.parser("ignoremaps", keys, node),
+        normal: keys => generic.parser("nmaps", keys),
+        insert: keys => generic.parser("imaps", keys),
+        input: keys => generic.parser("inputmaps", keys),
+        ignore: keys => generic.parser("ignoremaps", keys),
         hint: hinting.parser,
         gobble: gobblemode.parser,
-        visual: (keys, node) => generic.parser("vmaps", keys, node),
+        visual: keys => generic.parser("vmaps", keys),
         nmode: nmode.parser,
     }
 
+    const parserState: ParserState = {
+        heldKeys: new Set(),
+        cancelKeyups: new Set(),
+        ignoreKeyupsContextual: new Set(),
+        ignoreKeyupsExplicit: new Set(),
+        ignoreRepeats: new Set(),
+    }
+
+    // Removed the "startNode" stuff and now I think it would be better to have it
+    // just to make "noShadow" easier
+    // here's a problem case:
+    // :bind <DN-x> ...
+    // - so we cancel repeats, but not the keyup
+    // - we stay on the same node thanks to N
+    // - so press x - do command - release x - do command again!? Ugh!
+    // We return the same node because we pass a keyseq like [<D-x>, <U-x>]
+    // <U-x> doesn't match anything, but ... oh no i'm confused again!
+
     // I've just noticed the nested while loops and am now wondering about this
-    let node: Map<string, any> | null = null
-    let lastMode = contentState.mode
-    let numericPrefix = ""
+    // let node: Map<string, any> | null = null
+    // let lastMode = contentState.mode
+    let keyEvents: MinimalKey[] = [] // Moved out of loop to let noShadow work
+    let noShadowNode: Map<String, any> | null = null
+    let previousSuffix = ""
 
     while (true) {
         let exstr = ""
-        let previousSuffix = null
-        let keyEvents: MinimalKey[] = []
         try {
             while (true) {
                 generatorIsWaiting = true
@@ -191,13 +229,8 @@ function* ParserController() {
                 // keyEvents = []
 
                 // Getting nice and confusing at this point
-                if (keyevent.code) {
-                    if (
-                        (
-                            (keyevent as KeyboardEvent).type === "keyup" ||
-                            (keyevent as MinimalKey).keyup
-                        )
-                    ) {
+                if (keyevent.code && keyevent instanceof KeyboardEvent) {
+                    if (keyevent.type === "keyup") {
                         if (cancelKeyups.has(keyevent.code)) {
                             if (keyevent instanceof KeyboardEvent) {
                                 keyevent.preventDefault()
@@ -206,6 +239,7 @@ function* ParserController() {
                             cancelKeyups.delete(keyevent.code)
                         }
                         consumeRepeats.delete(keyevent.code)
+
                         if (consumeKeyups.has(keyevent.code) && !consumeKeyupsContextual.has(keyevent.code)) {
                             consumeKeyups.delete(keyevent.code)
 
@@ -216,7 +250,6 @@ function* ParserController() {
                                 keyevent.preventDefault()
                                 keyevent.stopImmediatePropagation()
                             }
-
                             continue
                         }
                     } else if (keyevent.repeat && consumeRepeats.has(keyevent.code)) {
@@ -250,6 +283,7 @@ function* ParserController() {
                     keyEvents.push(keyevent)
                 }
 
+
                 // _just to be safe_, cache this to make the following
                 // code more thread-safe.
                 const currentMode = contentState.mode
@@ -280,17 +314,14 @@ function* ParserController() {
                     previousSuffix = null
                 }
 
-                // My start node doesn't update with mode changes!
-                // That's three complications the startNode thing added
-                // are there any benefits?
                 // if (newMode !== lastMode) {
                 //     node = null
                 // }
 
                 const response = (
                     parsers[contentState.mode] ||
-                    ((keys, node) => generic.parser(contentState.mode + "maps", keys, node))
-                )(keyEvents, node || undefined)
+                    (keys => generic.parser(contentState.mode + "maps", keys))
+                )(keyEvents)
                 logger.debug(
                     currentMode,
                     contentState.mode,
@@ -302,6 +333,7 @@ function* ParserController() {
                 // Hmm. I'm throwing these preventDefaults and stopImmediatePropagations around now though
                 if (response.isMatch && keyevent instanceof KeyboardEvent) {
                     // canceller.push(keyevent)
+                    // This is basically what a new version of canceller.push would be:
                     if (keyevent instanceof KeyboardEvent) {
                         keyevent.preventDefault()
                         keyevent.stopImmediatePropagation()
@@ -314,13 +346,24 @@ function* ParserController() {
 
                 // we're saying, if we want to cancel a keyup contextually, we should only do it if the parser didn't have to start over
                 // so if you had "x" bound and typed "gx", that would be a "reset" because we didn't use the "g" node
-                if (keyevent.code && ((keyevent as KeyboardEvent).type === "keyup" && consumeKeyupsContextual.has(keyevent.code))) {
+                if (keyevent instanceof KeyboardEvent &&
+                    keyevent.type === "keyup" &&
+                    consumeKeyupsContextual.has(keyevent.code)
+                ) {
                     consumeKeyupsContextual.delete(keyevent.code)
                     consumeKeyups.delete(keyevent.code)
 
                     if (response.didReset) {
+                        keyEvents.pop()
                         continue
                     }
+                }
+
+
+                // Don't think you're reliably getting rid of the noShadowNode right now
+                // Umm, you're also not using it at all :)
+                if (response.trieNode?.has("noShadow") && noShadowNode === response.trieNode) {
+                    noShadowNode = null
                 }
 
                 // node = response.trieNode || null
@@ -341,15 +384,29 @@ function* ParserController() {
                     }
                 }
 
-                if (response.exstr) {
+                // With "noShadow" nodes, we can land on a command node without actually matching it (how?)
+                // so we want to check isMatch to make sure we've moved to a new node
+                // I wish I'd kept track of the different bind types i've tried and the issues they've had >:|
+                // now i don't remember what this response.isMatch check affected!
+                if (response.exstr && response.isMatch) {
+                    keyEvents = []
                     // stickyRepeat -> remain on same node so repeats keep firing this command even if in a sequence
-                    if (keyevent.code && response.trieNode?.has("stickyRepeat")) {
-                        // make sure we can escape the sticky node!
+                    if (response.trieNode?.has("stickyRepeat") && keyevent.code) {
+                        // make sure we can escape the sticky node by not consuming keyups
                         consumeKeyups.delete(keyevent.code)
                         consumeKeyupsContextual.delete(keyevent.code)
-                        // and that we can use it... could we be in this situation?
                         consumeRepeats.delete(keyevent.code)
+
+                        keyEvents = response.keys || []
                     }
+
+                    if (response.trieNode?.has("noShadow")) {
+                        noShadowNode = response.trieNode
+                        keyEvents = response.keys || []
+                    } else {
+                        noShadowNode = null
+                    }
+
                     exstr = response.exstr
                     if (
                         exstr.startsWith("fillcmdline") &&
@@ -361,9 +418,15 @@ function* ParserController() {
                         mustBufferPageKeysForClInput = true
                         bufferedPageKeys = []
                     }
+
+                    const suffix = keyEvents.map(x => PrintableKey(x)).join("")
+                    if (previousSuffix !== suffix) {
+                        contentState.suffix = suffix
+                        previousSuffix = suffix
+                    }
+
                     break
                 } else {
-                    // If I change to start nodes, we don't want to remember the full path
                     keyEvents = response.keys || []
 
                     // show current keyEvents as a suffix of the contentState
@@ -375,7 +438,6 @@ function* ParserController() {
                     logger.debug("suffix: ", suffix)
                 }
             }
-            contentState.suffix = ""
             controller.acceptExCmd(exstr)
         } catch (e) {
             // Rumsfeldian errors are caught here

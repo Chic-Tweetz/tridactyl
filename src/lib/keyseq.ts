@@ -88,7 +88,7 @@ const _trieNodeFlags: [string, number][] = [
     "cancelKeyup",
 ].map((name, i) => [name, 1 << (i + encodeFlagFns.length + encodeFlags.length)])
 
-// Encode usefult key event details to 2 chars and prepend them to the key name
+// Encode useful key event details to 2 chars and prepend them to the key name
 export function keyEventToString(ev: KeyEventLike) {
     let flags = 0
 
@@ -131,6 +131,45 @@ function _encodedKeystrToMinimalKey(enc) {
 
 /* eslint-enable no-bitwise */
 
+import { ParserState } from "@src/content/controller_content"
+// {{{ attempting to make different bind node types simpler to work with (<D-x>, <P-x>, <R-x>, <N-x> ... getting out of hand!)
+interface NodeBehaviour {
+    appliesTo: (keyevent: KeyEventLike) => boolean
+    onEnter: (keyevent: KeyEventLike, state: ParserState) => void
+}
+
+const standardNode: NodeBehaviour = {
+    // For some reason this gets a red squiggly without the Boolean constructor >:|
+    appliesTo: (keyevent) => Boolean((keyevent as MinimalKey).keydown && keyevent.code),
+    onEnter: (keyevent, state) => {
+        state.ignoreKeyupsContextual.add((keyevent as KeyboardEvent).code)
+    },
+}
+
+const DNode: NodeBehaviour = {
+    appliesTo: (keyevent) => Boolean((keyevent as MinimalKey).keydown && keyevent.code),
+    onEnter: (keyevent, state) => {
+        state.ignoreRepeats.add((keyevent as KeyboardEvent).code)
+    },
+}
+
+const PNode: NodeBehaviour = {
+    appliesTo: (keyevent) => Boolean((keyevent as MinimalKey).keydown && keyevent.code),
+    onEnter: (keyevent, state) => {
+        state.ignoreRepeats.add((keyevent as KeyboardEvent).code)
+        state.ignoreKeyupsExplicit.add((keyevent as KeyboardEvent).code)
+    },
+}
+
+const NoResetNode: NodeBehaviour = {
+    appliesTo: (_keyevent) => true,
+    onEnter: (_keyevent, state) => {
+        state.resetNode = state.currentNode
+    },
+}
+
+// }}}
+
 // On bitwise operators:
 // 1. the same could be achieved with equivalent maths operations
 // 2. a similar system could just be to start each key string with a known length string of yes/nos for each modifier
@@ -145,6 +184,7 @@ function _encodedKeystrToMinimalKey(enc) {
 
 // {{{ General types
 
+// I ought to separate trie-keys from trie-node-properties
 export interface KeyModifiers {
     altKey?: boolean
     ctrlKey?: boolean
@@ -156,6 +196,7 @@ export interface KeyModifiers {
     code?: string
     keydown?: boolean
     press?: boolean // here I mean "ignore repeats and keyups for this keypress"
+    noShadow?: boolean
 }
 
 // Format modifiers
@@ -168,6 +209,7 @@ const modifiers = new Map([
     ["U", "keyup"],
     ["D", "keydown"],
     ["P", "press"],
+    ["N", "noShadow"],
 ])
 
 export class MinimalKey {
@@ -182,6 +224,7 @@ export class MinimalKey {
     // type: string = "keydown" // why have both keyup and type
     code?: string // Can use this to keep track of held keys, even if you press a modifier while they're held
     press?: boolean
+    noShadow?: boolean // allow binds which are prefixes of other binds (eg ":bind <N-g> ..." && ":bind gg", where "N" means "noShadow")
 
     constructor(readonly key: string, modifiers?: KeyModifiers) {
         if (modifiers !== undefined) {
@@ -224,6 +267,7 @@ export class MinimalKey {
             keydown: this.keydown,
             code: this.code,
             press: this.press,
+            noShadow: this.noShadow,
             // type: this.type,
         })
         result.translated = true
@@ -365,19 +409,32 @@ export function parse(keyseq: MinimalKey[], map: KeyMap): ParserResponse {
     return { keys: numericPrefix.concat(keyseq), isMatch: keyseq.length > 0 }
 }
 
-// Kinda winging it
-// MinimalKey would eventually be replaced with pure strings also (probably)
-// I'm now thinking we might want to store extra, non-trie-key info
-//   eg "repeat OR not repeat" - that can't be encoded and matched (because keyevents will be one or the other)
-//   so MinimalKey might instead have encodedKey, allowRepeat, consumeKeyup, consumeRepeats, ... whatever else
-// Using MinimalKey to get something working for now
-//
-
-// I changed parsing to use a start node (so if you type "gg", the second "g" will already be at the "00g" node)
-// Not entirely sure why I felt the need, but it does basically work, except you'll have to repair numeric prefixes
-// I added parent keys for trie nodes, so you can walk back to the root to figure out what to display in the mode indicator
-// So yes, that's two broken things for essentially no gain? hehe
-export function parseTrie(keyseq: MinimalKey[], trie: Map<string, any>): ParserResponse {
+/**
+ * Between this and controller_content.ts I think I've got most of the logic right for:
+ * <D-x> - ignore repeats
+ * <P-x> - ignore repeats and keyup
+ * <R-x> - while key is held, keep executing bind (use at the end of a seqeuence, ab<R-c>)
+ * <N-x> - allow shadowed binds to work eg ":bind <N-a> first" ":bind ab second"
+ * <U-x> - keyup
+ *
+ * Keyup intricacies:
+ *
+ * For most unadorned binds (:bind abc ...), keyups corresponding to keydowns should behave intuitively:
+ * - "gg" won't be broken by releasing g the first time
+ * - a "<U-g>" bind" would be triggered after releasing "g" the second time
+ * - "g<U-g>" would also work
+ *
+ * in contrast, sequences with <D-...> keys will be broken when releasing that key:
+ * - with both a "<D-g>g" and "<U-g>" bind, the <U-g> bind WOULD trigger after releasing g the first time
+ * - in fact <D-g>g wouldn't work because <D-...> also prevents repeats
+ *
+ * the <P-...> behaviour prevents repeats and keyups:
+ * - So "<P-g>g" would work and <U-g> would not trigger after releasing g the first time.
+ * - <P-g><P-g> would also prevent <U-g> after releasing g the second time.
+ * - holding "g" would not trigger <P-g>g
+ *
+ */
+export function parseTrie(keyseq: MinimalKey[], trie: Map<string, any>, startNode?: Map<string, any>): ParserResponse {
     // keyseq = keyseq.filter(k => modifierKeys.has(k.slice(2)))
     keyseq = stripOnlyModifiers(keyseq)
     if (keyseq.length === 0) return { keys: [], isMatch: false, trieNode: trie }
@@ -404,12 +461,15 @@ export function parseTrie(keyseq: MinimalKey[], trie: Map<string, any>): ParserR
     // ... so you wouldn't replace keyseq, no, although you may change it from an array to a single key event?
     //
     // wish I had written down why i thought that was worth doing :)
-    let cursor: Map<string, any> = trie
+    let cursor: Map<string, any> = startNode || trie
     let keys: MinimalKey[] = []
+
+    // These needn't be arrays if we assume only the last key in keyseq was from a key event we haven't already parsed
     let cancelKeyups: string[] = []
     let cancelRepeats: string[] = []
     let cancelKeyupsContextual: string[] = []
     let didReset = false
+    let isMatch = false
     // let perfect = false
     for (const minKey of keyseq) {
         const key = keyEventToString(minKey)
@@ -418,56 +478,59 @@ export function parseTrie(keyseq: MinimalKey[], trie: Map<string, any>): ParserR
         if (next === undefined) {
             didReset = true
             // if keydown and not explicitly cancelling keyups, then we try again from the trie root
-            if (!minKey.keyup)
-                numericPrefix = []
+            // if (!minKey.keyup) numericPrefix = []
+            numericPrefix = []
 
             next = trie.get(key)
             if (next === undefined) {
-                // Shall I let root <U-...> binds work? This might be better (IDK)
-                // If we're "consuming" keyups and repeats do we still need this guard?
-
-                // if (minKey.keyup || minKey.repeat) continue
-                if (minKey.keyup) continue
-
                 next = trie
                 keys = []
                 cancelKeyups = []
                 cancelRepeats = []
+                isMatch = false
             } else {
                 keys = [minKey]
+                isMatch = true
             }
         } else {
-            keys.push(minKey)
+            // Don't collect collect repeat keydowns when holding a key for a stickyRepeat node
+            if (cursor !== next)
+                keys.push(minKey)
+            isMatch = true
         }
         cursor = next
 
-        if (!minKey.keyup && cursor.has("consumeKeyupContextual") && minKey.code) {
-            cancelKeyupsContextual.push(minKey.code)
-        } else if (!minKey.keyup && cursor.has("consumeKeyup") && minKey.code) {
-            cancelKeyups.push(minKey.code)
-        }
-        if (!minKey.keyup && cursor.has("consumeRepeats") && minKey.code) {
-            cancelRepeats.push(minKey.code)
+        // TODO: keyups/repeat cancelling:
+        // We should only block keyevents for real keydowns, which we can't check here (MinimalKeys only)
+        // only real keyevents will make a MinimalKey with a code property
+        // + AFAICT only the last key in keyseq need be checked
+        // sooo, silly workaround incoming:
+        if (minKey === keyseq[keyseq.length - 1] && isMatch && minKey.code && !minKey.keyup) {
+            if (cursor.has("consumeKeyupContextual")) {
+                cancelKeyupsContextual.push(minKey.code)
+            } else if (cursor.has("consumeKeyup")) {
+                cancelKeyups.push(minKey.code)
+            }
+            if (cursor.has("consumeRepeats")) {
+                cancelRepeats.push(minKey.code)
+            }
         }
 
-        if (cursor.has("command")) {
-            break
-        }
-
-        // if (typeof cursor === "string") {
-        //     perfect = true
+        // if (cursor.has("command") && !cursor.has("noShadow")) {
+        //     // what should happen if we have more keys here then?
+        //     // we shouldn't get into this situation, at least with normal keypresses
         //     break
         // }
     }
-    // const numericPrefixStr = numericPrefix.reduce((acc, k) => acc + k[2], "")
+
     const numericPrefixStr = numericPrefix.map(k => k.key).join("")
     if (cursor.has("command")) {
         return {
             value: cursor.get("command"),
             exstr: cursor.get("command") + (numericPrefix.length ? " " + numericPrefixStr : ""),
-            isMatch: true,
+            isMatch,
             numericPrefix: numericPrefix.length ? Number(numericPrefixStr) : undefined,
-            keys: numericPrefix.concat(keys),
+            keys: cursor.has("noShadow") ? keys : numericPrefix.concat(keys),
             cancelKeyups,
             cancelKeyupsContextual,
             cancelRepeats,
@@ -476,12 +539,72 @@ export function parseTrie(keyseq: MinimalKey[], trie: Map<string, any>): ParserR
         }
     }
     return {
-        isMatch: keys.length > 0,
+        isMatch,
         keys: numericPrefix.concat(keys),
         cancelRepeats,
         cancelKeyups,
         cancelKeyupsContextual,
         trieNode: cursor,
+        didReset,
+    }
+}
+
+export function parseTrie2(key: MinimalKey, trie: string, state?: ParserState) {
+    // keyseq = keyseq.filter(k => modifierKeys.has(k.slice(2)))
+    key = stripOnlyModifiers([key])[0]
+    if (!key) return {}
+
+    if (!state) {
+        state = {
+            trie: keyTrie(trie),
+            currentNode: keyTrie(trie),
+            heldKeys: new Set(), // I don't know that the parser has any business seeing the key sets like this
+            cancelKeyups: new Set(),
+            ignoreKeyupsContextual: new Set(),
+            ignoreKeyupsExplicit: new Set(),
+            ignoreRepeats: new Set(),
+        }
+    }
+
+    let isMatch: boolean | undefined
+
+    const enc = keyEventToString(key)
+    let next = (state.currentNode || state.trie).get(enc)
+
+    if (!next) {
+        state.currentNode = state.resetNode || state.trie
+
+        // Handle this here or in the controller?
+        if (key.code && key.keyup && state.ignoreKeyupsContextual.has(key.code)) {
+            return { }
+        }
+
+        next = state.currentNode.get(enc)
+        if (next) {
+            state.currentNode = next
+            isMatch = true
+        }
+    }
+
+    if (next) {
+        isMatch = true
+        state.currentNode = next
+        for (const behaviour of next.get("behaviours") || [])
+            if (behaviour.appliesTo(key)) behaviour.onEnter(key, state)
+    }
+
+    if (next.has("command")) {
+        state.currentNode = state.resetNode || state.trie
+        return {
+            isMatch,
+            exstr: next.get("command") + (state.numericPrefix ? " " + state.numericPrefix : ""),
+            state,
+        }
+    }
+
+    return {
+        isMatch,
+        state,
     }
 }
 
@@ -740,9 +863,16 @@ export function keyTrie(conf) {
     // const keymap = keyMap(conf)
 
     const unwrapInherits = (conf) => {
+        // Prevent infinite inherit loops (just in case)
+        const mapNames = new Set([conf])
+
         let confs = [config.get(conf)];
 
-        while (confs[confs.length - 1]["🕷🕷INHERITS🕷🕷"]) {
+        while (
+            confs[confs.length - 1]["🕷🕷INHERITS🕷🕷"] &&
+            !mapNames.has(confs[confs.length - 1]["🕷🕷INHERITS🕷🕷"])
+        ) {
+            mapNames.add(confs[confs.length - 1]["🕷🕷INHERITS🕷🕷"])
             confs.push(config.get(confs[confs.length - 1]["🕷🕷INHERITS🕷🕷"]))
             delete confs[confs.length - 2]["🕷🕷INHERITS🕷🕷"]
         }
@@ -782,7 +912,7 @@ export function keyTrie(conf) {
                 let enc = keyEventToString(minKey)
 
                 // This is just to deal with <R-x> adding the repeat property, it should be something separate
-                // <R-...> = noReset / sticky repeat (keep firing command while key is held)
+                // <R-...> = stickyRepeat (keep firing command while key is held)
                 enc = removeFlagsFromEncodedKeystr(enc, "repeat")
 
                 // Seems a bit much but something like this will be needed (for bovin3dom's WIP keyup PR too, not just my trie stuff)
@@ -795,8 +925,9 @@ export function keyTrie(conf) {
                         cursor.delete(addFlagsToEncodedKeystr(enc, "repeat"))
                         // maybe it is time to transition to a properties array :)
                         cursor.get(enc).delete("properties")
+                        cursor.get(enc).delete("behaviours")
                         // later...
-                        for (const prop of ["consumeKeyupContextual", "consueKeyup", "consumeRepeats", "stickyRepeat"]) {
+                        for (const prop of ["consumeKeyupContextual", "consumeKeyup", "consumeRepeats", "stickyRepeat"]) {
                             cursor.get(enc).delete(prop)
                         }
                         cursor.get(enc).set("inheritDepth", inheritDepth)
@@ -804,10 +935,11 @@ export function keyTrie(conf) {
                 }
 
                 if (!cursor.has(enc)) cursor.set(enc, new Map([["inheritDepth", inheritDepth]]))
-                cursor.get(enc).set("parent", cursor) // might use might not... probz can lose it
+                // cursor.get(enc).set("parent", cursor) // might use might not... probz can lose it
 
                 // Repeats... by default should work as normal (to match current tridactyl behaviour)
-                // Add equivalent repeat triekey pointing to same node?
+                // Add equivalent repeat triekey pointing to same node
+                // Nodes before this one may block repeats before we match it so this should be okay
                 if (!minKey.keyup) {
                     cursor.set(addFlagsToEncodedKeystr(enc, "repeat"), cursor.get(enc))
                 }
@@ -827,7 +959,8 @@ export function keyTrie(conf) {
                 // if (typeof cursor === "string") continue; // Shadowed bind
 
                 // shadowed bind - we could actually allow this you know... would that be useful though?
-                if (cursor.has("command")) continue
+                // giving it a whirl with "noShadow"
+                if (cursor.has("command") && !cursor.has("noShadow")) continue
 
                 // <D-x> : consume repeats
                 //    x  : consume keyup*
@@ -844,9 +977,11 @@ export function keyTrie(conf) {
                     cursor.set("consumeRepeats", true)
                     cursor.set("consumeKeyup", true)
                     cursor.set("properties", ["consumeRepeats", "consumeKeyup"])
+                    cursor.set("behaviours", [PNode]) // how do you handle conflicts with different behaviours
                 } else if (minKey.keydown) {
                     cursor.set("consumeRepeats", true)
                     cursor.set("properties", ["consumeRepeats"]) // thinking i'll have one "properties" key rather than checking multiple
+                    cursor.set("behaviours", [DNode])
                 } else if (!minKey.keyup) {
                     // Contextual keyup cancel (won't cancel if a matching keyup bind is at the trie root basically)
                     // if (minKey !== keyseq[keyseq.length - 1]) {
@@ -858,6 +993,7 @@ export function keyTrie(conf) {
                     // Ah, but that doesn't let you do things like ":bind g<U-g> ..." so we do need more
                     cursor.set("consumeKeyupContextual", true)
                     cursor.set("properties", ["consumeKeyupContextual"])
+                    cursor.set("behaviours", [standardNode])
                 }
 
                 // Maybe THIS can be what <R-...> does? (repeat a command while held, even if it's at the end of a sequence)
@@ -872,9 +1008,22 @@ export function keyTrie(conf) {
                     // hmmm, dunno about this :)
                     // cursor.get("parent").set(addFlagsToEncodedKeystr(enc, "keyup"), root)
                     cursor.set(addFlagsToEncodedKeystr(enc, "repeat", cursor), cursor)
+
+                    if (!cursor.has("behaviours")) cursor.set("behaviours", [NoResetNode])
+                    else cursor.get("behaviours").push(NoResetNode)
                 }
             }
             cursor.set("command", excmd)
+            // noShadow seems to be working
+            // :bind <N-g> ...
+            // will trigger without blocking gg
+            // Now, this entire operation needs some architectural thinking I say
+            if (keyseq[keyseq.length - 1].noShadow) {
+                if (!cursor.has("behaviours")) cursor.set("behaviours", [NoResetNode])
+                else cursor.get("behaviours").push(NoResetNode)
+
+                cursor.set("noShadow", true)
+            }
         }
     }
     return KEYTRIE_CACHE[conf] = root
