@@ -6498,4 +6498,16 @@ export function hintstylesdirect() {
     ;["fg", "bg", "outline"].forEach(type => config.set("hintstyles", type, "all"))
     ;["overlay", "overlayoutline"].forEach(type => config.set("hintstyles", type, "none"))
 }
+
+/**
+ * Potentially useful occasionally.
+ * Allows dummy binds, or page key event passthrough for parts of sequences.
+ * Example use case: allow gmail's built-in gi keyseqence to work:
+ * :bindurl https://mail.google.com <N!-g> noop
+ * :unbindurl https://mail.google.com gi
+ */
+//#content
+export function noop() {
+    return undefined
+}
 // }}}

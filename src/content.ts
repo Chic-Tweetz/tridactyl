@@ -137,24 +137,9 @@ const guardedAcceptKey = (keyevent: KeyboardEvent) => {
 }
 function listen(elem) {
     elem.removeEventListener("keydown", guardedAcceptKey, true)
-    elem.removeEventListener(
-        "keypress",
-        ContentController.canceller.cancelKeyPress,
-        true,
-    )
-    elem.removeEventListener(
-        "keyup",
-        ContentController.canceller.cancelKeyUp,
-        true,
-    )
+    elem.removeEventListener("keyup", guardedAcceptKey, true)
     elem.addEventListener("keydown", guardedAcceptKey, true)
     elem.addEventListener("keyup", guardedAcceptKey, true)
-
-    elem.addEventListener(
-        "keyup",
-        ContentController.canceller.cancelKeyUp,
-        true,
-    )
 }
 listen(window)
 document.addEventListener("readystatechange", _ =>

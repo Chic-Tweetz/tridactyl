@@ -39,7 +39,7 @@ export function parser(keys: keyseq.MinimalKey[]) {
         return { keys: [], exstr }
     }
     // const response = keyseq.parse(keys, maps)
-    const response = keyseq.parseTrie(keys, trie)
+    const response = keyseq.parse(keys, trie)
 
     // What if the nmode bind also has corresponding a keyup bind in the temporary mode?
     // Like :bind b nmode...  :bind --mode=whatever <U-b>  ...
