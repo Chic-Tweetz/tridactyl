@@ -183,6 +183,7 @@ const bindModifiers = new Map([
     ["N", "noReset"],
     ["!", "noCancel"],
     ["?", "optional"],
+    ["R", "repeat"],
 ])
 
 export class MinimalKey {
@@ -265,17 +266,25 @@ export class MinimalKey {
     }
 }
 
-class TrieKey extends MinimalKey {
+export class TrieKey extends MinimalKey {
     readonly keydown = false // <D-x> not really keydown, more "ignore repeats"
     readonly press = false // <P-x> - ignore repeats and keyup
     readonly noReset = false // <N-x> - don't reset keysequence if matching a command
     readonly noCancel = false // <!-x> - don't cancel keyevents (let page see them)
     readonly optional = false // <?-x>
 
-    constructor(readonly key: string, modifiers?: KeyModifiers) {
-        super(key, modifiers)
+    // Can pass more than one object so we can use an existing TrieKey as a base then set/unset
+    constructor(readonly key: string, ...modifiers: KeyModifiers[]) {
+        super(key, modifiers[0])
         for (const mod of bindModifiers.values())
-            this[mod] = modifiers?.[mod] || false
+            this[mod] = modifiers[0]?.[mod] || false
+
+        for (let i = 1; i < modifiers.length; ++i) {
+            for (const mod of bindModifiers.values()) {
+                if (modifiers[i][mod] !== undefined)
+                    this[mod] = modifiers[i][mod]
+            }
+        }
     }
 }
 
@@ -548,9 +557,9 @@ export function bracketexprToKey(inputStr) {
 
     (All four {modifier}Key flags are actually provided on all MinimalKeys)
 */
-export function mapstrToKeyseq(mapstr: string): MinimalKey[] {
-    const keyseq: MinimalKey[] = []
-    let key: MinimalKey
+export function mapstrToKeyseq(mapstr: string): TrieKey[] {
+    const keyseq: TrieKey[] = []
+    let key: TrieKey
     // Reduce mapstr by one character or one bracket expression per iteration
     while (mapstr.length) {
         if (mapstr[0] === "<") {
@@ -565,9 +574,76 @@ export function mapstrToKeyseq(mapstr: string): MinimalKey[] {
 }
 
 export function canonicaliseMapstr(mapstr: string): string {
-    return mapstrToKeyseq(mapstr)
+    // return mapstrToKeyseq(mapstr)
+    //     .map(k => k.toMapstr())
+    //     .join("")
+    const keyseq = mapstrToKeyseq(mapstr)
+
+    // No optional first or last keys (it wouldn't make sense)
+    if (keyseq[0].optional) {
+        keyseq[0] = new TrieKey(
+            keyseq[0].key,
+            keyseq[0],
+            { optional: false }
+        )
+    }
+    if (keyseq[keyseq.length - 1].optional) {
+        keyseq[keyseq.length - 1] = new TrieKey(
+            keyseq[keyseq.length - 1].key,
+            keyseq[keyseq.length - 1],
+            { optional: false }
+        )
+    }
+
+    // noReset/stickyRepeat only makes sense for final key
+    for (let i = 0; i < keyseq.length - 1; ++i) {
+        if (keyseq[i].noReset || keyseq[i].repeat) {
+            keyseq[i] = new TrieKey(
+                keyseq[i].key,
+                keyseq[i],
+                { noReset: false, repeat: false }
+            )
+        }
+    }
+    return keyseq
         .map(k => k.toMapstr())
         .join("")
+}
+
+export function walkKeyTrie(mapstr: string, conf = "nmaps") {
+    const keys = mapstrToKeyseq(
+        canonicaliseMapstr(mapstr))
+        .map(trieKey => removeFlagsFromEncodedKeystr(keyEventToString(trieKey), "stickyRepeat"))
+    const matches: any = []
+    let node = keyTrie(conf)
+    for (const key of keys) {
+        if (node.has(key)) {
+            node = node.get(key)
+            if (node.has("command")) {
+                matches.push(
+                    {
+                        command: node.get("command"),
+                        properties: node.get("properties") || [],
+                        mapstr: node.get("mapstr"),
+                    }
+                )
+                if (!matches[matches.length - 1].properties.includes("noShadow")) {
+                    node = keyTrie(conf)
+                }
+            }
+        } else {
+            node = keyTrie(conf)
+        }
+    }
+    return matches
+}
+
+export function checkForShadowedBinds(mapstr: string, conf = "nmaps") {
+    return walkKeyTrie(mapstr, conf)
+        .find(
+            match => !match.properties.includes("noShadow") ||
+                match.properties.includes("stickyRepeat")
+        )?.mapstr || null
 }
 
 export const commandKey2jsKey = {
@@ -720,6 +796,15 @@ export function keyTrie(conf) {
 
         for (const [keyseq, excmd] of keymap) {
 
+            // TODO: sort out conflicts (:bind <D-x> ... shouldn't be allowed to coexist with :bind d ...)
+            //   and nonsensical <?-x> or <N-x> positions (<N-x> should only appear at the end)
+            // - <N-x> only for the last key is enforced here but not in the config itself
+            // - optional key at the end of a sequence should show a warning/prevent the bind from being set
+            // - noReset on a key NOT at the end of a sequence should be stripped/ignored
+            // - different but incompatible binds should overwrite
+            //   eg a<ND-b> should overwrite a<D-b> which should overwrite ab
+            // priority shouldn't really matter, conflicting binds should just overwrite with the newest one
+
             // Set of active node "cursors", lets us add properties to optional nodes if needed
             let active = new Set([root])
 
@@ -793,6 +878,7 @@ export function keyTrie(conf) {
 
             for (const cursor of active) {
                 cursor.set("command", excmd)
+                cursor.set("mapstr", keyseq.reduce((acc, minkey) => acc + minkey.toMapstr(), ""))
 
                 // noReset binds, eg :bind <N-g> ...
                 // will trigger without blocking gg

@@ -15,7 +15,7 @@ Modifier -> [acmsrudpnACMSRUDPN!\?]:? [acmsrudpnACMSRUDPN!\?]:? [acmsrudpnACMSRU
             ["D", "keydown"],
             ["U", "keyup"],
             ["P", "press"],
-            ["N", "noShadow"],
+            ["N", "noReset"],
             ["!", "noCancel"],
             ["?", "optional"],
         ])
