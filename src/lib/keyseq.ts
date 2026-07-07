@@ -157,7 +157,7 @@ export interface KeyModifiers {
     code?: string
     keydown?: boolean
     press?: boolean // here I mean "ignore repeats and keyups for this keypress"
-    noShadow?: boolean
+    noReset?: boolean
     noCancel?: boolean // allow page to see the key event
     optional?: boolean
 }
@@ -172,7 +172,7 @@ const modifiers = new Map([
     ["U", "keyup"],
     ["D", "keydown"],
     ["P", "press"],
-    ["N", "noShadow"],
+    ["N", "noReset"],
     ["!", "noCancel"],
     ["?", "optional"],
 ])
@@ -180,7 +180,7 @@ const modifiers = new Map([
 const bindModifiers = new Map([
     ["D", "keydown"],
     ["P", "press"],
-    ["N", "noShadow"],
+    ["N", "noReset"],
     ["!", "noCancel"],
     ["?", "optional"],
 ])
@@ -268,7 +268,7 @@ export class MinimalKey {
 class TrieKey extends MinimalKey {
     readonly keydown = false // <D-x> not really keydown, more "ignore repeats"
     readonly press = false // <P-x> - ignore repeats and keyup
-    readonly noShadow = false // <N-x> - don't reset keysequence if matching a command
+    readonly noReset = false // <N-x> - don't reset keysequence if matching a command
     readonly noCancel = false // <!-x> - don't cancel keyevents (let page see them)
     readonly optional = false // <?-x>
 
@@ -294,10 +294,6 @@ export interface ParserResponse {
     exstr?: string
     isMatch?: boolean
     numericPrefix?: number
-    cancelKeyups?: string[]
-    cancelKeyupsContextual?: string[]
-    cancelRepeats?: string[]
-    trieNode?: Map<string, any>
     didReset?: boolean
     actions?: string[]
 }
@@ -360,7 +356,7 @@ export function stripOnlyModifiers(keyseq) {
  */
 export function parse(keyseq: MinimalKey[], trie: Map<string, any>): ParserResponse {
     keyseq = stripOnlyModifiers(keyseq)
-    if (keyseq.length === 0) return { keys: [], isMatch: false, trieNode: trie, actions: [] }
+    if (keyseq.length === 0) return { keys: [], isMatch: false, actions: [] }
 
     let numericPrefix: MinimalKey[]
     [numericPrefix, keyseq] = splitNumericPrefix(keyseq)
@@ -404,7 +400,7 @@ export function parse(keyseq: MinimalKey[], trie: Map<string, any>): ParserRespo
             exstr: cursor.get("command") + numericPrefixStr,
             isMatch,
             numericPrefix: numericPrefix.length ? Number(numericPrefixStr) : undefined,
-            keys: cursor.has("noShadow") ? keys : numericPrefix.concat(keys),
+            keys: cursor.has("noReset") ? keys : numericPrefix.concat(keys),
             didReset,
             actions: isMatch ? (cursor.get("properties") || []) : []
         }
@@ -677,20 +673,18 @@ let KEYTRIE_CACHE = {}
  *  Encode keybinds as strings to use as the keys for nested maps.
  *  Key events can be similarly encoded to walk the trie.
  *
- *  TODO: sort out inherits/conflicting binds
- *      - if you do a :bind <D-j> ... in normal mode, the visual mode "j" bind will have the "consumeRepeats" property too
- *        I think that's because both binds are created and we overwrite the command with whichever comes last
- *      - what rules should I enforce for that though? We should know that "<D-x>" "<R-x>" and "x" conflict
- *            but whatever priority you give those, you'd still want any inherited key to be overwritten
- *            eg ":bind <D-j> ..." should be overwritten by ":bind --mode=visual j ..."
- *               ":bind j ..."     should be overwritten by ":bind --mode=visual <D-j> ..."
- *            that means you need to do some special config logic here I think :(
+ *  TODO: decide on node property priorities/incompatibilities
+*    - should a <P-x> node take priority over an x node? (I think so)
+*    - some things are obviously incompatible: <DU-x>
+*      though that could essentially be interpreted as <P-x> or <D-x><U-x>
+*   TODO: improve shadow detection and warning to consider various keydown types
+*    - :bind g ... shadows :bind gg ...
+*    - :bind <D-g> ... also shadows gg and the cmdline should show a warning
  */
 export function keyTrie(conf) {
     if (KEYTRIE_CACHE[conf]) return KEYTRIE_CACHE[conf]
-    // Eventually we'd replace keymaps altogether I suppose
-    // const keymap = keyMap(conf)
 
+    // Get only the binds unique to each keymap (filter out inherited binds)
     const unwrapInherits = (conf) => {
         // Prevent infinite inherit loops (just in case)
         const mapNames = new Set([conf])
@@ -717,9 +711,7 @@ export function keyTrie(conf) {
         return confs.map(c => mapstrMapToKeyMap(new Map(Object.entries(c))))
     }
 
-    // Unique values only, so we can reset inherited keydown nodes
     const keymaps = unwrapInherits(conf)
-
     const root = new Map()
 
     while (keymaps.length) {
@@ -728,38 +720,23 @@ export function keyTrie(conf) {
 
         for (const [keyseq, excmd] of keymap) {
 
-            // Handle optional nodes by following multiple at a time
+            // Set of active node "cursors", lets us add properties to optional nodes if needed
             let active = new Set([root])
-            // let cursor = root
 
-            // :bind a<?-b><?-c?>d cmd
-            // a -> d -> cmd
-            // a -> b -> d -> cmd
-            // a -> c -> d -> cmd
-            // a -> b -> c -> d -> cmd
             for (const minKey of keyseq) {
                 const nextActive: Set<Map<any, any>> = new Set()
 
                 let enc = keyEventToString(minKey)
 
-                // TODO: separate repeat keyevent property from stickyRepeat node property
-                // TODO: separate ALL node properties from keyevent properties
-                // <R-x> binds create MinimalKeys with the repeat property, but that's just because I'm lazy
+                // <R-x> binds create MinimalKeys with the repeat property
+                // Can either change that or remove the repeat flag here (which is easier!)
                 enc = removeFlagsFromEncodedKeystr(enc, "repeat")
-
-                // TODO: decide on node property priorities/incompatibilities
-                //  - should a <P-x> node take priority over an x node? (I think so)
-                //  - some things are obviously incompatible: <DU-x>
-                //    though that could essentially be interpreted as <P-x> or <D-x><U-x>
-                // TODO: improve shadow detection and warning to consider various keydown types
-                //  - :bind g ... shadows :bind gg ...
-                //  - :bind <D-g> ... also shadows gg and the cmdline should show a warning
 
                 // "Reset" inherited nodes on conflicting keydown binds
                 // child nodes are NOT removed
                 // This was added due to this specific scenario:
                 // :bind <D-j> smoothscrollstart
-                // :bind --mode=visual j extendline
+                // :bind --mode=visual j extendline # not a real command but you get the gist
                 // (visual mode's j wasn't allowed to repeat)
                 for (let cursor of active) {
                     if (cursor.has(enc)) {
@@ -773,38 +750,20 @@ export function keyTrie(conf) {
                         cursor.set(enc, new Map([["inheritDepth", inheritDepth]]))
                     }
 
-                    // Repeats:
-                    // By default, treat as normal keydown
-                    // Add equivalent repeat triekey pointing to same node
-                    // <D-x> or <P-x> will prevent repeats so we don't need to add any extra logic
-                    // eg ":bind <D-x>x" ... won't trigger if holding x, but ":bind xx ..." will
-                    if (!minKey.keyup) {
+                    // Add equivalent repeat keys for keydowns
+                    if (!minKey.keyup)
                         cursor.set(addFlagsToEncodedKeystr(enc, "repeat"), cursor.get(enc))
-                    }
 
-                    if (minKey.optional) {
-                        console.log("optional?!")
-                        nextActive.add(cursor)
-                    }
+                    // Multiple active cursors means we're handling optional nodes
+                    if (minKey.optional) nextActive.add(cursor)
 
                     cursor = cursor.get(enc)
                     nextActive.add(cursor)
 
-                    // Usually we'll want to skip shadowed binds
-                    // The noShadow property lets shadowed binds be triggered
-                    // ":bind <N-g> one" ":bind gg two" will both work
-                    // This should work either way when parsing
-                    if (cursor.has("command") && !nodeHasProperty(cursor, "noShadow")) continue
+                    // "noReset" property lets otherwise shadowed binds work: ":bind <N-x> one", ":bind xx two"
+                    if (cursor.has("command") && !nodeHasProperty(cursor, "noReset")) continue
 
-                    // TODO: Again, separate node properties from keyevent properties.
-                    //  - MinimalKey.press is meaningless for key events, it represents means <P-x> type binds
-                    //    (that means "ignore repeats and keyups for this key press")
-                    //  - <P-x>/press is another bit of a misnomer, consider something else!
-                    //  - Similarly, MinimalKey.keydown / <D-x> just means "ignore repeats while x is held"
-
-                    // TODO: here's where priorities should be enforced
-                    //  - should we be adding ignoreKeyupContextual to a node with ignoreKeyupExplicit?
-                    //    I think not. Added a check for that.
+                    // stickyRepeat nodes mustn't prevent keyups, we can get stuck in them otherwise
                     if (!nodeHasProperty(cursor, "stickyRepeat")) {
                         if (minKey.press) {
                             addPropertyToNode(cursor, "ignoreRepeats", "ignoreKeyupExplicit")
@@ -816,21 +775,12 @@ export function keyTrie(conf) {
                             addPropertyToNode(cursor, "ignoreKeyupContextual")
                         }
 
-                        // TODO: separate node properties from keyevent properties
-                        //  - MinimalKey.repeat has one meaning for key events and another for <R-x> binds
-                        //  - <R-x> means "while the key is held, keep executing the bind"
-                        //    add it to the end of a sequence: ":bind ab<R-c> ..."
+                        // <R-x> means stickyRepeat but is misleadingly represented by the repeat property
                         if (minKey.repeat && minKey === keyseq[keyseq.length - 1] && keyseq.length > 1) {
-                            addPropertyToNode(cursor, "stickyRepeat", "noShadow")
-
-                            // stickyRepeats need to let repeats through (obviously!)
-                            // but also must let keyups through so the sticky node is
-                            // exited when releasing the key
-                            removePropertyFromNode(cursor, "ignoreRepeats", "ignoreKeyupExplicit", "ignoreKeyupContextual")
-
-                            // Make repeats point to the same node so holding
-                            // the key keeps matching and executing the command
+                            // Repeats -> trigger command, keyup -> exit node
                             cursor.set(addFlagsToEncodedKeystr(enc, "repeat", cursor), cursor)
+                            removePropertyFromNode(cursor, "ignoreRepeats", "ignoreKeyupExplicit", "ignoreKeyupContextual")
+                            addPropertyToNode(cursor, "stickyRepeat", "noReset")
                         }
                     }
                     // Key event passthrough (page receives event, suggest careful use with :bindurl)
@@ -844,10 +794,10 @@ export function keyTrie(conf) {
             for (const cursor of active) {
                 cursor.set("command", excmd)
 
-                // noShadow binds, eg :bind <N-g> ...
+                // noReset binds, eg :bind <N-g> ...
                 // will trigger without blocking gg
-                if (keyseq[keyseq.length - 1].noShadow) {
-                    addPropertyToNode(cursor, "noShadow")
+                if (keyseq[keyseq.length - 1].noReset) {
+                    addPropertyToNode(cursor, "noReset")
                 }
             }
         }
@@ -922,7 +872,7 @@ browser.storage.onChanged.addListener(changes => {
     if ("userconfig" in changes) {
         KEYMAP_CACHE = {}
         KEYTRIE_CACHE = {}
-    }
+}
 })
 
 // ideally this would get called via a config.addChangeListener but they are not fired for mysterious reasons

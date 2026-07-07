@@ -7,7 +7,6 @@ import {
     ParserResponse,
     minimalKeyFromKeyboardEvent,
     MinimalKey,
-    keyEventToString,
 } from "@src/lib/keyseq"
 import { deepestShadowRoot } from "@src/lib/dom"
 
@@ -101,10 +100,11 @@ function* ParserController() {
         nmode: nmode.parser,
     }
 
-    // Cancel these keyups so the page doesn't receive them
     const ignoreKeyupsExplicit = new Set()
     const ignoreKeyupsContextual = new Set()
     const ignoreRepeats = new Set()
+    let keyEvents: MinimalKey[] = []
+    let previousSuffix = ""
 
     // If we lose focus we have no idea whether keys are held
     window.addEventListener("blur", e => {
@@ -134,13 +134,13 @@ function* ParserController() {
             if (keyevent instanceof KeyboardEvent)
                 ignoreRepeats.add(keyevent.code)
         },
-        "noShadow": (_keyevent: KeyEventLike, response: ParserResponse) => {
+        "noReset": (_keyevent: KeyEventLike, response: ParserResponse) => {
             keyEvents = response.keys || []
         },
     }
 
-    // Returns boolean indicating whether to skip the keyevent entirely
-    function updateKeySetsPreParse(keyevent: KeyboardEvent) {
+    function preParseUpdateStateAndShouldSkip(keyevent: KeyEventLike) {
+        if (!(keyevent instanceof KeyboardEvent)) return false
         if (keyevent.type === "keyup") {
             if (cancelKeyups.has(keyevent.code)) {
                 keyevent.preventDefault()
@@ -166,8 +166,8 @@ function* ParserController() {
         return false
     }
 
-    // Again, returns true if the keypress should be ignored
-    function updateKeySetsPostParse(keyevent: KeyboardEvent, response: ParserResponse) {
+    function postParseUpdateStateAndShouldSkip(keyevent: KeyEventLike, response: ParserResponse) {
+        if (!(keyevent instanceof KeyboardEvent)) return false
         // Added a "noCancel" property which lets keys through to the page
         // Suggest only careful use with :bindurl, for instance,
         // allow gmail gi shortcut to work:
@@ -199,9 +199,6 @@ function* ParserController() {
         return false
     }
 
-    let keyEvents: MinimalKey[] = []
-    let previousSuffix = ""
-
     while (true) {
         let exstr = ""
         try {
@@ -213,10 +210,9 @@ function* ParserController() {
                 let shadowRoot = null
                 let textEditable = false
 
-                if (keyevent instanceof KeyboardEvent) {
-                    if (updateKeySetsPreParse(keyevent))
-                        continue
+                if (preParseUpdateStateAndShouldSkip(keyevent)) continue
 
+                if (keyevent instanceof KeyboardEvent) {
                     shadowRoot = deepestShadowRoot(
                         (keyevent.target as Element).shadowRoot,
                     )
@@ -271,9 +267,7 @@ function* ParserController() {
                     response,
                 )
 
-                if (keyevent instanceof KeyboardEvent)
-                    if (updateKeySetsPostParse(keyevent, response))
-                        continue
+                if (postParseUpdateStateAndShouldSkip(keyevent, response)) continue
 
                 keyEvents = []
 
@@ -291,10 +285,6 @@ function* ParserController() {
                 }
                 logger.debug("suffix: ", suffix)
 
-                // With "noShadow" nodes, we can land on a command node without actually matching it (how?)
-                // so we want to check isMatch to make sure we've moved to a new node
-                // I wish I'd kept track of the different bind types i've tried and the issues they've had >:|
-                // now i don't remember what this response.isMatch check affected!
                 if (response.exstr && response.isMatch) {
                     exstr = response.exstr
                     if (
