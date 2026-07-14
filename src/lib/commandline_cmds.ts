@@ -210,11 +210,13 @@ export function getCommandlineFns(cmdline_state: {
             // Delete all completion sources - I don't think this is required, but this
             // way if there is a transient bug in completions it shouldn't persist.
             if (cmdline_state.activeCompletions)
-                cmdline_state.activeCompletions.forEach(comp =>
-                    cmdline_state.completionsDiv.removeChild(comp.node),
-                )
+                cmdline_state.activeCompletions.forEach(comp => {
+                    comp.destroy?.()
+                    cmdline_state.completionsDiv.removeChild(comp.node)
+                })
             cmdline_state.activeCompletions = undefined
             cmdline_state.isVisible = false
+            cmdline_state.resolveCloseWaiters?.()
         },
 
         /**
@@ -289,7 +291,7 @@ export function getCommandlineFns(cmdline_state: {
             // shim to the background, but the latency increase should
             // be acceptable becuase the background-mode excmds tend
             // to be a touch less latency-sensitive.
-            return messageOwnTab("controller_content", "acceptExCmd", [command])
+            return messageOwnTab("controller_content", "acceptExCmd", [command, "commandline"])
         },
 
         execute_ex_on_completion_args: (excmd: string) =>

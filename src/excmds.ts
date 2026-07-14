@@ -113,7 +113,7 @@ let ALL_EXCMDS
 import * as controller from "@src/lib/controller"
 
 //#content_helper
-import { generator as KEY_MUNCHER } from "@src/content/controller_content"
+import { keyMuncher as KEY_MUNCHER } from "@src/content/controller_content"
 
 /**
  * Used to store the types of the parameters for each excmd for
@@ -154,7 +154,14 @@ ALL_EXCMDS = {
 }
 // }
 
-import { mapstrToKeyseq, mozMapToMinimalKey, minimalKeyToMozMap, MinimalKey } from "@src/lib/keyseq"
+import {
+    mapstrToKeyseq,
+    mozMapToMinimalKey,
+    minimalKeyToMozMap,
+    MinimalKey,
+    findShadowingMapstr,
+    parseMapstr,
+} from "@src/lib/keyseq"
 
 //#background_helper
 // {
@@ -1464,7 +1471,7 @@ window.addEventListener("HistoryState", addTabHistory)
 /** Blur (unfocus) the active element and enter normal mode */
 //#content
 export function unfocus() {
-    ;((document.activeElement.shadowRoot ? DOM.deepestShadowRoot(document.activeElement.shadowRoot) : document).activeElement as HTMLInputElement).blur()
+    ((DOM.activeElement() || document.activeElement) as HTMLInputElement)?.blur()
     contentState.mode = "normal"
 }
 
@@ -2984,12 +2991,15 @@ export async function tabopen_helper({ addressarr = [], waitForDom = false }): P
         return nativeopen(address) as unknown as browser.tabs.Tab // I don't understand why changing the final return below meant I had to change this
     }
 
-    const aucon = new AutoContain()
-    if (!container && aucon.autocontainConfigured()) {
-        const [autoContainer] = await aucon.getAuconAndProxiesForUrl(address)
-        if (autoContainer && autoContainer !== "firefox-default") {
-            container = autoContainer
-            logger.debug("tabopen setting container automatically using autocontain directive")
+    const maybeURL = await queryAndURLwrangler(query)
+    if (typeof maybeURL === "string" && !container) {
+        const aucon = new AutoContain()
+        if (aucon.autocontainConfigured()) {
+            const [autoContainer] = await aucon.getAuconAndProxiesForUrl(maybeURL)
+            if (autoContainer && autoContainer !== "firefox-default") {
+                container = autoContainer
+                logger.debug("tabopen setting container automatically using autocontain directive")
+            }
         }
     }
 
@@ -3006,7 +3016,6 @@ export async function tabopen_helper({ addressarr = [], waitForDom = false }): P
     args.bypassFocusHack = bypassFocusHack
     args.discarded = discarded
     args.pinned = pinned
-    const maybeURL = await queryAndURLwrangler(query)
     if (typeof maybeURL === "string") {
         return openInNewTab(maybeURL, args, waitForDom)
     }
@@ -4106,15 +4115,12 @@ export function sleep(time_ms: number) {
 
 /** @hidden */
 //#content
-export function showcmdline(focus = true) {
+export async function showcmdline(focus = true) {
     logger.debug("excmds showcmdline()")
     const hidehover = true
-    CommandLineContent.show(hidehover)
-    let done = Promise.resolve()
-    if (focus) {
-        done = Messaging.messageOwnTab("commandline_frame", "focus")
-    }
-    return done
+    const shown = await CommandLineContent.show(hidehover)
+    if (!shown) await Messaging.messageOwnTab("stop_buffering_page_keys")
+    else if (focus) return Messaging.messageOwnTab("commandline_frame", "focus")
 }
 
 /** @hidden */
@@ -4174,44 +4180,51 @@ export async function cmdlinepopupfortab(tabid: number, trailspace: boolean, ...
     browser.tabs.onUpdated.addListener(waitForScript)
 }
 
-/** Set the current value of the commandline to string *with* a trailing space */
+/** 
+* Set the current value of the commandline to string *with* a trailing space.
+*
+* `fillcmdline --wait` will only return after the command line is closed. It can only be invoked in binds to avoid deadlock.
+*/
 //#content
-export function fillcmdline(...strarr: string[]) {
+export async function fillcmdline(...strarr: string[]) {
+    const wait = strarr[0] === "--wait"
+    if (wait) strarr.shift()
+    if (wait && controller.getCurrentExCmdSource() === "commandline") {
+        throw new Error("fillcmdline --wait cannot be run from the commandline")
+    }
     const str = strarr.join(" ")
-    showcmdline(false)
+    await showcmdline(false)
     logger.debug("excmds fillcmdline sending fillcmdline to commandline_frame")
-    return Messaging.messageOwnTab("commandline_frame", "fillcmdline", [str, true /*trailspace*/, true /*focus*/])
+    return Messaging.messageOwnTab("commandline_frame", "fillcmdline", [str, true /*trailspace*/, true /*focus*/, wait])
 }
 
 /** Set the current value of the commandline to string *without* a trailing space */
 //#content
-export function fillcmdline_notrail(...strarr: string[]) {
+export async function fillcmdline_notrail(...strarr: string[]) {
     const str = strarr.join(" ")
-    showcmdline(false)
+    await showcmdline(false)
     return Messaging.messageOwnTab("commandline_frame", "fillcmdline", [str, false /*trailspace*/, true /*focus*/])
 }
 
 /** Show and fill the command line without focusing it */
 //#content
-export function fillcmdline_nofocus(...strarr: string[]) {
-    showcmdline(false)
+export async function fillcmdline_nofocus(...strarr: string[]) {
+    await showcmdline(false)
     return Messaging.messageOwnTab("commandline_frame", "fillcmdline", [strarr.join(" "), false, false])
 }
 
 /** Shows str in the command line for ms milliseconds. Recommended duration: 3000ms. */
 //#content
 export async function fillcmdline_tmp(ms: number, ...strarr: string[]) {
-    showcmdline(false)
-    Messaging.messageOwnTab("commandline_frame", "fillcmdline", [strarr.join(" "), false, false])
-    return new Promise<void>(resolve =>
-        setTimeout(async () => {
-            if (document.activeElement?.id !== "cmdline_iframe") {
-                CommandLineContent.hide_and_blur()
-                resolve(Messaging.messageOwnTab("commandline_frame", "clear", [true]))
-            }
-            resolve()
-        }, ms),
-    )
+    await showcmdline(false)
+    const done = Messaging.messageOwnTab("commandline_frame", "fillcmdline", [strarr.join(" "), false, false])
+    setTimeout(() => {
+        if (document.activeElement?.id !== "cmdline_iframe") {
+            CommandLineContent.hide_and_blur()
+            Messaging.messageOwnTab("commandline_frame", "clear", [true])
+        }
+    }, ms)
+    return done
 }
 
 /**
@@ -4563,22 +4576,22 @@ export function comclear(name: string) {
 
     You can bind to modifiers and special keys by enclosing them with angle brackets, for example `bind <C-\>z fullscreen`, `unbind <F1>` (a favourite of people who use TreeStyleTabs :) ), or `bind <Backspace> forward`.
 
+    Firefox reserves some keybinds for its own use such as `<C-n>`. If you want to bind to one of these, you need to go to `about:keyboard` and unbind them there before Tridactyl can access them.
+
     You can view all special key names here: https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/key/Key_Values
 
     Modifiers are truncated to a single character, so Ctrl -> C, Alt -> A, and Shift -> S. Shift is a bit special as it is only required if Shift does not change the key inputted, e.g. `<S-ArrowDown>` is OK, but `<S-a>` should just be `A`.
 
-    Additionally, you can bind explicitly to a keydown or keyup event with the `D` and `U` modifiers respectively. You can make any bind optional by giving it a `?` modifier. Any bind which does not have an explicit `U` or `D` is interpreted as if it is followed by an optional keyup event, unless it is the final key. For example, `gg` becomes `g<?U-g>g`. Explicit keydown events, e.g. `<D-z>`, are not allowed to be the automatic repeat firings you get if you hold the key down.
+    Additionally, you can bind explicitly to a keydown or keyup event with the `D` and `U` modifiers respectively. You can make any bind optional by giving it a `?` modifier. Any bind which does not have an explicit `U` or `D` is interpreted as if it is followed by an optional keyup event, unless it is the final key. For example, `gg` becomes `g<?U-g>g`. Explicit keydown events, e.g. `<D-z>`, are not allowed to be the automatic repeat firings you get if you hold the key down. `hint` and `gobble` mode do not currently support `keyup` events.
 
     An imaginative use of this is a "layer" where holding a key down changes the rest of the bindings:
 
     ```
-    bind <U-\> --mode=fastscroll mode normal
-    bind <D-\> mode fastscroll
-    bind j --mode=fastscroll scrollpage 1
-    bind k --mode=fastscroll scrollpage -1
+    bind <D-\> mode ignore
+    bind --mode=ignore <U-\> mode normal
     ```
 
-    With these bindings, holding \ would make j/k scroll further distances.
+    With these bindings, holding backslash would let you send keys to the web page, such as `<C-f>` for using Firefox's built-in find mode.
 
     Use [[composite]] if you want to execute multiple excmds. Use
     [[fillcmdline]] to put a string in the cmdline and focus the cmdline
@@ -4609,13 +4622,14 @@ export async function bind(...args: string[]) {
     const args_obj = parse_bind_args(...args)
     let p = Promise.resolve()
     if (args_obj.excmd !== "") {
-        for (let i = 0; i < args_obj.key.length; i++) {
-            // Check if any initial subsequence of the key exists and will shadow the new binding
-            const key_sub = args_obj.key.slice(0, i)
-            if (config.getDynamic(args_obj.configName, key_sub)) {
-                fillcmdline_notrail("# Warning: bind `" + key_sub + "` exists and will shadow `" + args_obj.key + "`. Try running `:unbind --mode=" + args_obj.mode + " " + key_sub + "`")
-                break
-            }
+        if (args_obj.mode === "browser" && parseMapstr(args_obj.key).hasExplicitDirection)
+            throw new Error("Browser-mode binds do not support D/U modifiers.")
+        const key_sub = findShadowingMapstr(
+            args_obj.key,
+            Object.keys(config.getDynamic(args_obj.configName) || {}),
+        )
+        if (key_sub) {
+            fillcmdline_notrail("# Warning: bind `" + key_sub + "` exists and will shadow `" + args_obj.key + "`. Try running `:unbind --mode=" + args_obj.mode + " " + key_sub + "`")
         }
         if (args_obj.mode == "browser") {
             const commands = await browser.commands.getAll()
@@ -5546,8 +5560,8 @@ export async function hint(...args: string[]): Promise<any> {
         }
     }
 
+    const hintables = await config.hintables()
     return new Promise(async (resolve, reject) => {
-        const hintables = await config.hintables()
 
         // If the user specified a callback, eval it, else use the default
         // action which performs the action matching the open mode
@@ -6375,7 +6389,7 @@ export async function updatecheck(source: "manual" | "auto_polite" | "auto_impol
     }
 
     const notify = () => {
-        fillcmdline_tmp(30000, "Tridactyl " + highestKnownVersion.version + " is available (you're on " + Updates.getInstalledVersion() + "). Visit about:addons, right click Tridactyl, click 'Find Updates'. Restart Firefox once it has downloaded.")
+        fillcmdline_tmp(30000, "Tridactyl " + highestKnownVersion.version + " is available (you're on " + Updates.getInstalledVersion() + "). Visit about:addons, click Extensions, click Tridactyl, click the cog, click 'Check for Updates'. Restart Firefox once it has downloaded.")
     }
 
     // A bit verbose, but I figured it was important to have the logic
@@ -6435,7 +6449,7 @@ export async function keyfeed(...args: string[]) {
     }
 
     for (const k of keyseq) {
-        usePage ? spoofKey(k) : KEY_MUNCHER.next(k)
+        usePage ? spoofKey(k) : KEY_MUNCHER(k)
         await sleep(10)
     }
 }
@@ -6639,6 +6653,7 @@ export async function profilerename(oldName: string, newName: string) {
         throw new Error(`Profile rename failed. Is the native messenger installed? Error: ${e}`)
     }
 }
+// }}}
 
 /**
  * Disable all hilighting of hintable elements when hinting.
@@ -6725,4 +6740,35 @@ export function searchbar(reverse: string | boolean, fromView: string | boolean)
         fromView === "true" || fromView === true
     )
 }
-// }}}
+
+/**
+ * Set the x and y velocities to smooth scroll until `:scrollstop` is called.
+ *
+ * Use `:set scrollduration` to adjust the speed of all `:scrollstart` binds.
+ * Smaller `scrollduration` = faster scroll speed.
+ *
+ * Use `:smoothscrollwizard` to overwrite default scroll binds automatically.
+ *
+ * Or bind manually, pairing `:scrollstart` keydown binds with `:scrollstop` keyups:
+ *
+ * ```
+ * :bind <D-j> scrollstart 0 1000
+ * :bind <U-j> scrollstop
+ * :unbind j
+ * # etc.
+ * ```
+ */
+//#content
+export async function scrollstart(xVelocity: string, yVelocity: string, mult?: string) {
+    scrolling.scrollstart(xVelocity, yVelocity, mult)
+}
+
+/**
+ * Stop scrolling initiated by `:scrollstart`.
+ *
+ * See [[scrollstart]].
+ */
+//#content
+export async function scrollstop() {
+    scrolling.scrollstop()
+}

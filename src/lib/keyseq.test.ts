@@ -27,6 +27,10 @@ function mk(k, mod?: ks.KeyModifiers) {
         [mks("<c-6>"), "tablast"],
         [mks("<c-5><c-5>"), "tablast"],
     ])
+    const backslashKeymap = new Map([
+        [mks("\\"), "fillcmdline bare"],
+        [mks("<C-\\>"), "fillcmdline control"],
+    ])
 
     // This one actually found a bug once!
     testAllObject(ks.parse, [
@@ -142,6 +146,16 @@ function mk(k, mod?: ks.KeyModifiers) {
             [[mk(" ")], new Map([[mks("<Space>"), "spacetest"]])],
             { value: "spacetest", isMatch: true },
         ],
+
+        // A bare key binding must not match events with extra modifiers.
+        [
+            [[mk("\\", { ctrlKey: true })], backslashKeymap],
+            { value: "fillcmdline control", isMatch: true },
+        ],
+        [
+            [[mk("\\")], backslashKeymap],
+            { value: "fillcmdline bare", isMatch: true },
+        ],
     ])
 
     testAllObject(ks.completions, [
@@ -192,7 +206,14 @@ testAllObject(ks.mapstrMapToKeyMap, [
             ["gg", "scrolltop"],
         ]),
         new Map([
-            [[mk("u", { ctrlKey: true }), mk("j")], "scrollline 10"],
+            [
+                [
+                    mk("u", { ctrlKey: true }),
+                    mk("u", { ctrlKey: true, keyup: true, optional: true }),
+                    mk("j"),
+                ],
+                "scrollline 10",
+            ],
             [
                 [mk("g"), mk("g", { keyup: true, optional: true }), mk("g")],
                 "scrolltop",
@@ -809,6 +830,31 @@ testAll(ks.canonicaliseMapstr, [
     // Regular keys stay the same
     ["j", "j"],
     ["<C-a>", "<C-a>"],
+])
+
+testAll((k: string) => ks.parseMapstr(k).hasExplicitDirection, [
+    ["<DC-4>", true],
+    ["<UC-4>", true],
+    ["gg", false],
+])
+
+testAll(ks.findShadowingMapstr, [
+    [["gg", ["g"]], "g"],
+    [["g", ["gg"]], undefined],
+    [["v", ["v"]], undefined],
+    [["<C-v>", ["v"]], undefined],
+    [["<D-v>", ["v"]], "v"],
+])
+
+testAll(ks.formatKeysForModeIndicator, [
+    [[[mk("g"), mk("g", { keyup: true })], ["gg"]], "g"],
+    [[[mk("v")], ["<D-v>j"]], "<D-v>"],
+    [[[mk("v", { ctrlKey: true })], ["<CD-v>j"]], "<CD-v>"],
+    [[[mk("v", { keyup: true })], ["<U-v>j"]], "<U-v>"],
+    [
+        [[mk("v"), mk("v", { keyup: true })], ["v<U-v>j"]],
+        "<D-v><U-v>",
+    ],
 ])
 
 // }}}

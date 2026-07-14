@@ -44,21 +44,6 @@ export interface KeyModifiers {
     repeat?: boolean
 }
 
-/**
- * Do I really have to do this, JS?
- */
-export function minimalKeyFromObj(obj) {
-    return new MinimalKey(obj.key, {
-        altKey: obj.altKey,
-        ctrlKey: obj.ctrlKey,
-        metaKey: obj.metaKey,
-        shiftKey: obj.shiftKey,
-        keyup: obj.keyup,
-        keydown: obj.keydown,
-        optional: obj.optional,
-    })
-}
-
 // Format modifiers
 const modifiers = new Map([
     ["A", "altKey"],
@@ -168,6 +153,7 @@ function normaliseAltChar(keyEvent) {
     return altChars[keyEvent.key] || keyEvent.key
 }
 
+const mapstrModifiers = new Map([...modifiers, ["D", "keydown"], ["U", "keyup"], ["?", "optional"]])
 export class MinimalKey {
     readonly altKey = false
     readonly ctrlKey = false
@@ -198,23 +184,14 @@ export class MinimalKey {
     /** Does this key match another MinimalKey */
     // NB: not symmetric!
     public match(keyevent: MinimalKey): true | false | "skip" {
-        if (this.key !== keyevent.key) {
-            if (this.optional) return "skip"
-            return false
-        }
+        const fail = () => (this.optional ? "skip" as const : false)
+        if (this.key !== keyevent.key) return fail()
         for (const [_, attr] of modifiers.entries()) {
             if (attr === "shiftKey" && this.key.length === 1) continue
-            if (this[attr] !== keyevent[attr]) {
-                if (this.optional) return "skip"
-                return false
-            }
+            if (this[attr] !== keyevent[attr]) return fail()
         }
-        if (this.keyup !== keyevent.keyup) {
-            if (this.optional) return "skip"
-            return false
-        }
-        if (this.keydown && keyevent.repeat) return false
-        return true
+        if (this.keyup !== keyevent.keyup) return fail()
+        return !(this.keydown && keyevent.repeat)
     }
     public translate(keytranslatemap: { [inkey: string]: string }): MinimalKey {
         let newkey = keytranslatemap[this.key]
@@ -236,16 +213,7 @@ export class MinimalKey {
         let str = ""
         let needsBrackets = this.key.length > 1
 
-        const modifiers = new Map([
-            ["A", "altKey"],
-            ["C", "ctrlKey"],
-            ["M", "metaKey"],
-            ["S", "shiftKey"],
-            ["D", "keydown"],
-            ["U", "keyup"],
-            ["?", "optional"],
-        ])
-        for (const [letter, attr] of modifiers.entries()) {
+        for (const [letter, attr] of mapstrModifiers.entries()) {
             if (this[attr]) {
                 str += letter
                 needsBrackets = true
@@ -431,6 +399,53 @@ export function completions(keyseq: MinimalKey[], map: KeyMap): KeyMap {
     )
 }
 
+function printableKey(k: MinimalKey, showDirection: boolean) {
+    if (["Control", "Meta", "Alt", "Shift", "OS"].includes(k.key)) return ""
+
+    let modstr = Array.from(modifiers, ([letter, attr]) => k[attr] ? letter : "").join("")
+    if (showDirection) modstr += k.keyup ? "U" : "D"
+    const result = modstr ? modstr + "-" + k.key : k.key
+    return result.length > 1 ? "<" + result + ">" : result
+}
+
+export function formatKeysForModeIndicator(
+    keys: MinimalKey[],
+    mapstrs: Iterable<string> = [],
+) {
+    const showDirection = Array.from(mapstrs)
+        .map(parseMapstr)
+        .some(({ keyseq, hasExplicitDirection }) =>
+            hasExplicitDirection && prefixes(keys, keyseq),
+        )
+    return keys
+        .filter(key => showDirection || !key.keyup)
+        .map(key => printableKey(key, showDirection))
+        .join("")
+}
+
+/** Return the first existing mapstr that would match before mapstr can complete. */
+export function findShadowingMapstr(
+    mapstr: string,
+    existingMapstrs: Iterable<string>,
+): string | undefined {
+    const keyseq = mapstrToKeyseq(mapstr)
+    const existing = Array.from(existingMapstrs)
+        .filter(existingMapstr => existingMapstr !== mapstr)
+        .map(existingMapstr =>
+            [existingMapstr, mapstrToKeyseq(existingMapstr)] as [
+                string,
+                MinimalKey[],
+            ],
+        )
+
+    for (let i = 1; i <= keyseq.length; i++) {
+        const prefix = keyseq.slice(0, i)
+        for (const [existingMapstr, existingKeyseq] of existing) {
+            if (isPerfectMatch(prefix, existingKeyseq)) return existingMapstr
+        }
+    }
+}
+
 // }}}
 
 // {{{ mapStrToKeySeq stuff
@@ -547,32 +562,31 @@ export function bracketexprToKey(inputStr) {
 
     (All four {modifier}Key flags are actually provided on all MinimalKeys)
 */
-const hasExplicitDirection = (key: MinimalKey) => key.keyup || key.keydown
+const hasDirection = (key: MinimalKey) => key.keyup || key.keydown
 
-export function mapstrToKeyseq(mapstr: string): MinimalKey[] {
+export function parseMapstr(mapstr: string) {
     const keyseq: MinimalKey[] = []
-    let key: MinimalKey
+    let hasExplicitDirection = false
+
     while (mapstr.length) {
+        let key: MinimalKey
         if (mapstr[0] === "<") {
             ;[key, mapstr] = bracketexprToKey(mapstr)
-            const explicitDirection = hasExplicitDirection(key)
-            keyseq.push(explicitDirection ? key : minimalKeyFromObj(key))
-            if (mapstr.length > 0 && !explicitDirection)
-                keyseq.push(
-                    minimalKeyFromObj(
-                        R.mergeRight(key, { keyup: true, optional: true }),
-                    ),
-                )
         } else {
-            keyseq.push(new MinimalKey(mapstr[0]))
-            if (mapstr.length > 1)
-                keyseq.push(
-                    new MinimalKey(mapstr[0], { keyup: true, optional: true }),
-                )
+            key = new MinimalKey(mapstr[0])
             mapstr = mapstr.slice(1)
         }
+        const explicitDirection = hasDirection(key)
+        hasExplicitDirection = hasExplicitDirection || explicitDirection
+        keyseq.push(explicitDirection ? key : new MinimalKey(key.key, key))
+        if (mapstr.length > 0 && !explicitDirection)
+            keyseq.push(new MinimalKey(key.key, R.mergeRight(key, { keyup: true, optional: true })))
     }
-    return keyseq
+    return { keyseq, hasExplicitDirection }
+}
+
+export function mapstrToKeyseq(mapstr: string): MinimalKey[] {
+    return parseMapstr(mapstr).keyseq
 }
 
 export function canonicaliseMapstr(mapstr: string): string {

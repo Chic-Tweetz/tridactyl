@@ -27,7 +27,7 @@ import {
 import { CmdlineCmds } from "@src/content/commandline_cmds"
 import { EditorCmds } from "@src/content/editor"
 
-import { getAllDocumentFrames } from "@src/lib/dom"
+import { getAllDocumentFrames, activeElement } from "@src/lib/dom"
 
 import state from "@src/state"
 import { EditorCmds as editor } from "@src/content/editor"
@@ -142,9 +142,7 @@ messaging.addListener(
 messaging.addListener("alive", async () => true)
 
 const guardedAcceptKey = (keyevent: KeyboardEvent) => {
-    if (!keyevent.isTrusted) return
-    (keyevent as any).keyup = keyevent.type == "keyup"
-    ContentController.acceptKey(keyevent)
+    ContentController.acceptTrustedKey(keyevent)
 }
 function listen(elem) {
     elem.removeEventListener("keydown", guardedAcceptKey, true)

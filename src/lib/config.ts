@@ -180,7 +180,7 @@ export class default_config {
         "<AC-Escape>": "mode normal",
         "<AC-`>": "mode normal",
         "<S-Escape>": "mode normal",
-        "<C-o>": "nmode normal 1 mode ignore",
+        "<CD-o><CU-o>": "nmode normal 1 mode ignore",
     }
 
     /**
@@ -220,7 +220,7 @@ export class default_config {
     }
 
     /**
-     * Disable Tridactyl almost completely within a page, e.g. `seturl ^https?://mail.google.com disable true`. Only takes affect on page reload.
+     * Disable Tridactyl almost completely within a page, e.g. `seturl ^https?://mail.google.com superignore true`. Only takes affect on page reload.
      *
      * You are usually better off using `blacklistadd` and `seturl [url] noiframe true` as you can then still use some Tridactyl binds, e.g. `shift-insert` for exiting ignore mode.
      *
@@ -260,10 +260,8 @@ export class default_config {
         gH: "home true",
         p: "clipboard open",
         P: "clipboard tabopen",
-        "<D-j>": "smoothscrollstart 60",
-        "<D-k>": "smoothscrollstart -60",
-        "<U-j>": "smoothscrollstop",
-        "<U-k>": "smoothscrollstop",
+        j: "scrollline 10",
+        k: "scrollline -10",
         "<C-e>": "scrollline 10",
         "<C-y>": "scrollline -10",
         h: "scrollpx -50",
@@ -274,7 +272,7 @@ export class default_config {
         "<C-d>": "scrollpage 0.5",
         "<C-f>": "scrollpage 1",
         "<C-b>": "scrollpage -1",
-        "<C-v>": "nmode ignore 1 mode normal", // Is this a terrible idea? Pentadactyl did it http://bug.5digits.org/help/pentadactyl/browsing.xhtml#send-key
+        "<CD-v><CU-v>": "nmode ignore 1 mode normal",
         $: "scrollto 100 x",
         // "0": "scrollto 0 x", // will get interpreted as a count
         "^": "scrollto 0 x",
@@ -412,6 +410,7 @@ export class default_config {
         "<C-[>":
             "composite js document.getSelection().empty(); mode normal ; hidecmdline",
         y: "composite js document.getSelection().toString() | clipboard yank",
+        "#": "composite js document.location + '#:~:text=' + encodeURIComponent(document.getSelection().toString()) | clipboard yank",
         s: "composite js document.getSelection().toString() | fillcmdline open search",
         S: "composite js document.getSelection().toString() | fillcmdline tabopen search",
         l: `js
@@ -744,49 +743,11 @@ export class default_config {
         tabclosealltoright: "tabcloseallto right",
         tabclosealltoleft: "tabcloseallto left",
         reibadailty: "jumble",
-        hints_nohl:
-            "js for(const k in tri.config.get('hintstyles'))tri.config.set('hintstyles',k,'none')",
-        hints_overlays:
-            "js ['bg','outline'].forEach(k=>tri.config.set('hintstyles',k,'none'));['overlay','overlayoutline'].forEach(k=>tri.config.set('hintstyles',k,'all'))",
-        hints_direct:
-            "js ['bg','outline'].forEach(k=>tri.config.set('hintstyles',k,'all'));['overlay','overlayoutline'].forEach(k=>tri.config.set('hintstyles',k,'none'))",
-        vimium: "composite hints_nohl; colours vimium",
+        smoothscrollwizard: "composite unbind h; unbind j; unbind k; unbind l; unbind <C-u>; unbind <C-d>; bind <D-j> scrollstart 0 100; bind <D-k> scrollstart 0 -100; bind <D-h> scrollstart -100 0; bind <D-l> scrollstart 100 0; bind <DC-d> scrollstart 0 500; bind <DC-u> scrollstart 0 -500; bind <U-j> scrollstop; bind <U-k> scrollstop; bind <U-h> scrollstop; bind <U-l> scrollstop; bind <U-J> scrollstop; bind <U-K> scrollstop; bind <U-H> scrollstop; bind <U-L> scrollstop; bind <UC-u> scrollstop; bind <UC-d> scrollstop; bind <UC-U> scrollstop; bind <UC-D> scrollstop; fillcmdline_tmp 2000 smooth scroll binds set up",
+        nosmoothscrollwizard: "composite reset <D-j>; reset <D-k>; reset <D-h>; reset <D-l>; reset <DC-d>; reset <DC-u>; reset <U-j>; reset <U-k>; reset <U-h>; reset <U-l>; reset <U-J>; reset <U-K>; reset <U-H>; reset <U-L>; reset <UC-u>; reset <UC-d>; reset <UC-U>; reset <UC-D>; reset j; reset k; reset h; reset l; fillcmdline_tmp 2000 original scroll binds restored",
+        vimium: "composite hintstylesoverlays; colours vimium",
         tokyonight:
-                "composite hints_overlays; set hintstyles.fg active; colours tokyonight",
-        // I've gone with scrollline for now so this'll only work for vertical scrolling
-        // funnily enough you'll have to set :smoothscroll false
-        smoothscrollstart: `js -dΩ
-            if (!tri.scrolling.smoothscroll_state) {
-              tri.scrolling.smoothscroll_state = {
-                scrolling: false,
-                speed: 60,
-                mult: 1,
-                lastTick: null,
-              };
-              tri.scrolling.smoothscroll_tick = () => {
-                if (!tri.scrolling.smoothscroll_state.scrolling) return;
-                const thisTick = Date.now();
-                const tickDur = thisTick - tri.scrolling.smoothscroll_state.lastTick;
-                tri.scrolling.smoothscroll_state.lastTick = thisTick;
-                const lines = tri.scrolling.smoothscroll_state.mult * tri.scrolling.smoothscroll_state.speed * tickDur / 1000;
-                tri.excmds.scrollline(lines);
-                requestAnimationFrame(tri.scrolling.smoothscroll_tick);
-              };
-              tri.scrolling.smoothscrollstart = (speed = 400, mult = 1) => {
-                tri.scrolling.smoothscroll_state.lastTick = Date.now();
-                tri.scrolling.smoothscroll_state.speed = speed;
-                tri.scrolling.smoothscroll_state.mult = mult;
-                tri.scrolling.smoothscroll_state.scrolling = true;
-                tri.scrolling.smoothscroll_tick();
-              };
-              tri.scrolling.smoothscrollstop = () => {
-                tri.scrolling.smoothscroll_state.scrolling = false;
-              };
-            }
-            tri.scrolling.smoothscrollstart(JS_ARGS[1] || 20, JS_ARGS[2] || 1);
-            Ω`,
-
-        smoothscrollstop: "js if (tri.scrolling.smoothscroll_state) tri.scrolling.smoothscroll_state.scrolling = false;",
+                "composite hintstylesoverlays; set hintstyles.fg active; colours tokyonight",
     }
 
     /**
@@ -940,6 +901,8 @@ export class default_config {
     commandlineterriblewebsitefix: "true" | "false" = "false"
 
     /**
+     * **Deprecated** Use `:smoothscrollwizard` instead.
+     *
      * Whether to use Tridactyl's (bad) smooth scrolling.
      */
     smoothscroll: "true" | "false" = "false"
@@ -1060,9 +1023,9 @@ export class default_config {
     }
 
     /**
-     * Disables the commandline iframe. Dangerous setting, use [[seturl]] to set it. If you ever set this setting to "true" globally and then want to set it to false again, you can do this by opening Tridactyl's preferences page from about:addons.
+     * Disables the commandline iframe. Dangerous setting, use [[seturl]] to set it. If you ever set this setting to "true" globally and then want to set it to false again, you can do this by opening Tridactyl's preferences page from about:addons. By default, it is set to 'lazy' which should be ideal for the widest level of compatibility.
      */
-    noiframe: "true" | "false" = "false"
+    noiframe: "true" | "false" | "lazy" = "lazy"
 
     /**
      * @deprecated A list of URLs on which to not load the iframe. Use `seturl [URL] noiframe true` instead, as shown in [[noiframe]].

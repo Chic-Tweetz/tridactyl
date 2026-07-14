@@ -246,83 +246,6 @@ export function isVisibleFilter(
     return (elem: Element | Range) => includeInvisible || isVisible(elem)
 }
 
-export async function getVisibleElems(selector = "*") {
-    const frameWins = [window as any].concat(
-        ...getAllDocumentFrames()
-            .filter(frame => {
-                try {
-                    return (
-                        (frame.contentWindow as any).IntersectionObserver &&
-                        isVisible(frame)
-                    )
-                } catch (e) {
-                    return false
-                }
-            })
-            .map(frame => frame.contentWindow),
-    )
-
-    return Promise.all(
-        frameWins.map(async win => {
-            const elems = Array.from(
-                win.document.querySelectorAll(selector),
-            ).concat(...getShadowElementsBySelector(selector, win.document))
-            if (elems.length === 0) {
-                return []
-            }
-
-            return new Promise(resolve => {
-                const visible = []
-                let observer
-                let started = false
-                try {
-                    observer = new win.IntersectionObserver(
-                        entries => {
-                            started = true
-                            for (const entry of entries) {
-                                if (
-                                    entry.isIntersecting &&
-                                    entry.boundingClientRect.width > 3 &&
-                                    entry.boundingClientRect.height > 3
-                                ) {
-                                    visible.push(entry.target)
-                                }
-                            }
-                            resolve(visible)
-                            observer.disconnect()
-                        },
-                        { threshold: 0.01 },
-                    )
-                    elems.forEach(elem => observer.observe(elem))
-                } catch (e) {
-                    resolve([])
-                }
-                setTimeout(() => {
-                    if (!started) {
-                        console.error("observer never observed", elems, win)
-                        observer.disconnect()
-                        resolve([])
-                    }
-                }, 100)
-            })
-        }),
-    ).then(r =>
-        r
-            .flat()
-            // just when I thought it was going well i realised the observer doesn't catch visibility:hidden:(
-            .filter(el => isPainted(el)),
-    )
-}
-
-// No rect checks is the only difference between this and isVisible really
-// could be more thorough (css transforms n stuff) but meeehhh
-function isPainted(elem) {
-    const s = getComputedStyle(elem)
-    return (
-        s.visibility !== "hidden" && s.display !== "none" && s.opacity !== "0"
-    )
-}
-
 // Saka-key caches getComputedStyle. Maybe it's a good idea!
 /* let cgetComputedStyle = cacheDecorator(getComputedStyle) */
 
@@ -403,6 +326,94 @@ export function isVisible(thing: Element | Range) {
     /*     return false */
     /* } */
     /* return true */
+}
+
+/** More accurate element visibility checking than isVisible.
+ */
+export async function getVisibleElemsBySelector(selector: string | null = "*", filters: ElementFilter[] = [], elements: Element[] = []): Promise<HTMLElement[]> {
+    // Get frames with an accessible ItersectionObserver constructor (including top window)
+    const frameWins = [window as any].concat(
+        ...getAllDocumentFrames()
+            .filter(frame => {
+                try {
+                    return (
+                        (frame.contentWindow as Window & typeof globalThis).IntersectionObserver &&
+                        isVisible(frame)
+                    )
+                } catch (e) {
+                    return false
+                }
+            })
+            .map(frame => frame.contentWindow),
+    )
+
+    // Create IntersectionObservers in all frames
+    return Promise.all(
+        frameWins.map(async win => {
+            const elems = selector
+                ? Array.from(
+                    win.document.querySelectorAll(selector),
+                ).concat(...getShadowElementsBySelector(selector, win.document))
+                : elements.filter(elem => elem.ownerDocument === win.document)
+            if (elems.length === 0) {
+                return []
+            }
+
+            // Entries won't be available immediately, wait for a promise
+            return new Promise(resolve => {
+                const visible: HTMLElement[] = []
+                let observer
+                let started = false
+                try {
+                    observer = new win.IntersectionObserver(
+                        entries => {
+                            started = true
+                            for (const entry of entries) {
+                                if (
+                                    entry.isIntersecting &&
+                                    entry.boundingClientRect.width > 3 &&
+                                    entry.boundingClientRect.height > 3
+                                ) {
+                                    visible.push(entry.target)
+                                }
+                            }
+                            observer.disconnect()
+
+                            resolve(visible)
+                        },
+                        { threshold: 0.01 },
+                    )
+                    elems.forEach(elem => observer.observe(elem))
+                } catch (e) {
+                    resolve([])
+                }
+
+                // Just in case the IntersectionObserver fails somehow (can this happen?)
+                setTimeout(() => {
+                    if (!started) {
+                        logger.error("IntersectionObserver failed to observe")
+                        observer.disconnect()
+                        resolve([])
+                    }
+                }, 500)
+            })
+        }),
+    ).then(intersectingElems =>
+        intersectingElems
+            .flat()
+            .filter(el => isPainted(el as HTMLElement) &&
+                filters.every(filter => filter(el as HTMLElement))
+            ) as HTMLElement[]
+    )
+}
+
+// Like isVisible with no rect checks
+// Useful to catch "visibility: hidden;" css rule which eludes the IntersectionObserver
+export function isPainted(elem: HTMLElement) {
+    const s = getComputedStyle(elem)
+    return (
+        s.visibility !== "hidden" && s.display !== "none" && s.opacity !== "0"
+    )
 }
 
 /** Return all frames that belong to the document (frames that belong to
@@ -544,16 +555,15 @@ function getShadowElementsBySelector(selector: string, within: Document | Shadow
 
     let elems = []
     while (roots.length) {
-        const root = roots.pop()
+        const root = roots.pop() as ShadowRoot
         root.querySelectorAll("*").forEach(elem => {
-            if ((elem as any).openOrClosedShadowRoot) {
+            if ((elem as HTMLElement).openOrClosedShadowRoot) {
+                roots.push((elem as HTMLElement).openOrClosedShadowRoot)
                 try {
-                    (elem as any).openOrClosedShadowRoot.querySelectorAll
-                    roots.push((elem as any).openOrClosedShadowRoot)
                     elems = elems.concat(
                         ...roots[roots.length - 1].querySelectorAll(selector),
                     )
-                } catch (e) {}
+                } catch {}
             }
         })
     }
@@ -623,6 +633,21 @@ export function compareElementArea(a: HTMLElement, b: HTMLElement): number {
 }
 
 export const hintworthy_js_elems: Set<Element> = new Set()
+const MAX_HINTWORTHY_JS_ELEMS = 1000
+const HINTWORTHY_JS_ELEMS_PRUNE_INTERVAL = 100
+let hintworthy_js_elems_additions = 0
+
+export function pruneHintworthyJSElems() {
+    for (const elem of hintworthy_js_elems) {
+        if (!elem.isConnected) {
+            hintworthy_js_elems.delete(elem)
+        }
+    }
+    while (hintworthy_js_elems.size > MAX_HINTWORTHY_JS_ELEMS) {
+        hintworthy_js_elems.delete(hintworthy_js_elems.values().next().value)
+    }
+    hintworthy_js_elems_additions = 0
+}
 
 /** Adds or removes an element from the hintworthy_js_elems array of the
  *  current tab.
@@ -679,6 +704,14 @@ export function registerEvListenerAction(
         case "mouseover":
             if (add) {
                 hintworthy_js_elems.add(elem)
+                hintworthy_js_elems_additions += 1
+                if (
+                    hintworthy_js_elems_additions >=
+                        HINTWORTHY_JS_ELEMS_PRUNE_INTERVAL ||
+                    hintworthy_js_elems.size > MAX_HINTWORTHY_JS_ELEMS
+                ) {
+                    pruneHintworthyJSElems()
+                }
             } else {
                 // Possible bug: If a page adds an event listener for "click" and
                 // "mousedown" and removes "mousedown" twice, we lose track of the
@@ -757,9 +790,11 @@ export function getLastUsedInput(): HTMLElement {
  *  https://bugzilla.mozilla.org/show_bug.cgi?id=1406825
  * */
 function onPageFocus(elem: HTMLElement): boolean {
-    elem = elem.shadowRoot
-        ? (elem.shadowRoot.activeElement as HTMLElement)
-        : elem
+    try {
+        elem = elem.openOrClosedShadowRoot
+            ? elem.openOrClosedShadowRoot.activeElement as HTMLElement
+            : elem
+    } catch {}
     if (isTextEditable(elem) && isSubstantial(elem)) {
         LAST_USED_INPUT = elem
     }
@@ -822,7 +857,7 @@ export function setupFocusHandler(doc = document, onNewIframeFound = null): void
     }
     const handler = e => {
         let elem = e.target as HTMLElement
-        const r = elem.shadowRoot
+        const r = elem.openOrClosedShadowRoot
         if (!r) {
             setFocus(elem)
             return
@@ -831,9 +866,15 @@ export function setupFocusHandler(doc = document, onNewIframeFound = null): void
             // r[handler] will handle it
             return
         }
-        while (elem.shadowRoot) {
-            listen(elem.shadowRoot)
-            elem = elem.shadowRoot.activeElement as HTMLElement
+        while (elem.openOrClosedShadowRoot) {
+            try {
+                listen(elem.openOrClosedShadowRoot)
+                elem = elem.openOrClosedShadowRoot.activeElement as HTMLElement
+            } catch {
+                // Inaccessible closed shadow
+                knownRoot.add(r)
+                break
+            }
             if (!elem) return
         }
         setFocus(elem)
@@ -1051,10 +1092,39 @@ export function simulateClick(
 export function deepestShadowRoot(sr: ShadowRoot | null): ShadowRoot | null {
     if (sr === null) return sr
     let shadowRoot = sr
-    while (shadowRoot.activeElement?.shadowRoot != null) {
-        shadowRoot = shadowRoot.activeElement.shadowRoot
+    while ((shadowRoot.activeElement as HTMLElement)?.openOrClosedShadowRoot != null) {
+        try {
+            shadowRoot = (shadowRoot.activeElement as HTMLElement).openOrClosedShadowRoot
+        } catch {
+            // Restricted shadow, may not be able to access its properties
+            break
+        }
     }
     return shadowRoot
+}
+
+/** Return the active element, within shadow DOMs or iframes if necessary. */
+export function activeElement(elem = document.activeElement) {
+    while (elem !== null) {
+        while ((elem as HTMLElement).openOrClosedShadowRoot !== null) {
+            try {
+                elem = (elem as HTMLElement).openOrClosedShadowRoot.activeElement
+            } catch {
+                // Restricted shadow root, can't access activeElement property
+                return elem
+            }
+            if (!elem) return null
+        }
+        if (elem.tagName !== "IFRAME") return elem
+        // Search within iframes if they're accessible
+        try {
+            const iframeActiveElem = (elem as HTMLIFrameElement).contentDocument.activeElement
+            if (!iframeActiveElem) return elem
+            elem = iframeActiveElem
+        } catch (e) {
+            return elem
+        }
+    }
 }
 
 export function getElementCentre(el) {
@@ -1067,24 +1137,5 @@ export function getAbsoluteCentre(el) {
     return {
         x: pos.x + (window as any).mozInnerScreenX,
         y: pos.y + (window as any).mozInnerScreenY,
-    }
-}
-
-// This is mainly for the benefit of the mode indicator when focused on an element in an iframe
-export function activeElement(doc = document) {
-    let elem = doc.activeElement
-    while (elem) {
-        while (elem.shadowRoot) {
-            elem = elem.shadowRoot.activeElement
-            if (!elem) return null
-        }
-        if (elem.tagName !== "IFRAME") return elem
-        try {
-            const iframeActiveElem = (elem as HTMLIFrameElement).contentDocument.activeElement
-            if (!iframeActiveElem) return elem
-            elem = iframeActiveElem
-        } catch (e) {
-            return elem
-        }
     }
 }

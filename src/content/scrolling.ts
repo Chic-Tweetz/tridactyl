@@ -4,12 +4,78 @@ import * as dom from "@src/lib/dom"
 type scrollingDirection = "scrollLeft" | "scrollTop"
 
 const opts = { smooth: null, duration: null }
+
+// Stopgap keydown/keyup smooth scrolling support
+const continuousScrollState = {
+    xVel: 0,
+    yVel: 0,
+    lastStep: 0,
+    scrolling: false,
+}
+
+/** Scroll continuously until scrollstop is called.
+ *  Pass an x and y velocity, or just a y velocity.
+ *  If only a single arg is passed, it will be treated as y (vertical scroll).
+ *  Can also pass a multiplier, intented to be used as a numeric arg when `:scrollstart` is bound to a key.
+ *
+ *  Velocity unit = px/second
+ */
+export function scrollstart(aVelocity, bVelocity, mult) {
+    mult = (Number(mult) || 1) / (Number(config.get("scrollduration")) || 100)
+    if (!bVelocity) {
+        continuousScrollState.xVel = 0
+        continuousScrollState.yVel = (Number(aVelocity) || 0) * mult
+    } else {
+        continuousScrollState.xVel = (Number(aVelocity) || 0) * mult
+        continuousScrollState.yVel = (Number(bVelocity) || 0) * mult
+    }
+
+    const wasScrolling = continuousScrollState.scrolling
+
+    continuousScrollState.scrolling = continuousScrollState.xVel !== 0 || continuousScrollState.yVel !== 0
+
+    if (!wasScrolling && continuousScrollState.scrolling) {
+        continuousScrollState.lastStep = performance.now()
+        continuousScrollStep()
+    }
+}
+
+// Calculate distance to scroll based on time since last scroll and scroll velocity
+function continuousScrollStep() {
+    const thisStep = performance.now()
+    const dt = thisStep - continuousScrollState.lastStep
+    continuousScrollState.lastStep = thisStep
+    const xDistance = continuousScrollState.xVel * dt
+    const yDistance = continuousScrollState.yVel * dt
+
+    // We could only call continuousScrollStep if recursiveScroll returns true
+    // But sub-pixel/unsuccessful scrolls accumulate and would eventually cause a successful scroll
+    // So if recursiveScroll returns false, holding the scroll key down a bit longer might still work
+    recursiveScroll(xDistance, yDistance)
+    .then(() => {
+        if (continuousScrollState.scrolling) requestAnimationFrame(continuousScrollStep)
+    })
+}
+
+/** Call after scrollstart() to cease scrolling.
+ */
+export function scrollstop() {
+    continuousScrollState.xVel = 0
+    continuousScrollState.yVel = 0
+    continuousScrollState.scrolling = false
+}
+
 async function getSmooth(): Promise<string> {
+    // Continuous scroll will break with existing smoothscroll behaviour
+    if (continuousScrollState.scrolling) return "false"
+
     if (opts.smooth === null)
         opts.smooth = await config.getAsync("smoothscroll")
     return opts.smooth
 }
 async function getDuration(): Promise<number> {
+    if (continuousScrollState.scrolling) return 0
+
     if (opts.duration === null)
         opts.duration = await config.getAsync("scrollduration")
     return opts.duration
