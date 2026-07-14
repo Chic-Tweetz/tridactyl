@@ -1679,15 +1679,6 @@ export class default_config {
     blockpagekeypressesmodes: { [key: string]: "true" | "false" } = {}
 
     /**
-     * Allow specific keypresses to reach the page, even if they match a Tridactyl bind.
-     * Useful for cases like gmail where the `g` key prefixes both Tridactyl and gmail binds.
-     *
-     * Set using the :allowpagebind excmd, e.g:
-     * :allowpagebind mail.gmail.com g
-     */
-    whitelistpagebinds = {}
-
-    /**
      *  Override CSS selectors for all :hint modes that use them. Will be respected by :hint -C.
      *
      *  Alternative to multiple `:bindurl`s with different hint flags (`hint`, `hint -t`, `hint -b`...) with custom CSS selectors.

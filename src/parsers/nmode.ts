@@ -29,7 +29,8 @@ export function parser(keys: keyseq.MinimalKey[]) {
     keys = keyseq.stripOnlyModifiers(keys)
     if (keys.length === 0) return { keys: [], isMatch: false }
     const conf = mode2maps.get(modeState.mode) || modeState.mode + "maps"
-    const maps = keyseq.keyMap(conf)
+    // const maps = keyseq.keyMap(conf)
+    const trie = keyseq.keyTrie(conf)
     const key = keys[0].key
 
     if (key === "Escape") {
@@ -37,10 +38,20 @@ export function parser(keys: keyseq.MinimalKey[]) {
         modeState = undefined
         return { keys: [], exstr }
     }
-    const response = keyseq.parse(keys, maps)
+    // const response = keyseq.parse(keys, maps)
+    const response = keyseq.parse(keys, trie)
+
+    // What if the nmode bind also has corresponding a keyup bind in the temporary mode?
+    // Like :bind b nmode...  :bind --mode=whatever <U-b>  ...
+    // We'd want to ignore that entirely wouldn't we
+    // Would quite like to "capture" keypresses entirely in situations like this, cancelling the keyup/repeats completely
+    let inc = 1
+    if (!response.isMatch && keys[0].keyup) {
+        inc = 0
+    }
 
     if ((response.exstr !== undefined && response.isMatch) || !response.isMatch)
-        modeState.curCommands += 1
+        modeState.curCommands += inc
     if (modeState.curCommands >= modeState.numCommands) {
         const prefix =
             response.exstr === undefined

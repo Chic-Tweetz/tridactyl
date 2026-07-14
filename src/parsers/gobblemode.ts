@@ -40,6 +40,7 @@ function reset() {
 
 /** Receive keypress. If applicable, execute a command. */
 export function parser(keys: MinimalKey[]) {
+    if (keys[0].keyup || keys[0].repeat) return { keys: [], exstr: "", isMatch: true }
     function exec() {
         contentState.pseudo_mode = ""
         const exstr = [
@@ -66,7 +67,7 @@ export function parser(keys: MinimalKey[]) {
             typeof modeState.numKeysOrTerminator === "number" &&
             --modeState.numKeysOrTerminator <= 0
         )
-            return exec()
+        return exec()
     }
     return { keys: [], exstr: "", isMatch: true }
 }

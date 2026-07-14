@@ -7,6 +7,5 @@ export function parser(
     keys: keyseq.MinimalKey[],
     useNumericPrefixes = true,
 ): keyseq.ParserResponse {
-    const maps = keyseq.keyMap(conf)
-    return keyseq.parse(keys, maps, useNumericPrefixes)
+    return keyseq.parse(keys, keyseq.keyTrie(conf), useNumericPrefixes)
 }

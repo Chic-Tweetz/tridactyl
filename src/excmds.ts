@@ -159,8 +159,9 @@ import {
     mozMapToMinimalKey,
     minimalKeyToMozMap,
     MinimalKey,
-    findShadowingMapstr,
-    parseMapstr,
+    // findShadowingMapstr,
+    // parseMapstr,
+    checkForShadowedBinds,
 } from "@src/lib/keyseq"
 
 //#background_helper
@@ -4622,14 +4623,19 @@ export async function bind(...args: string[]) {
     const args_obj = parse_bind_args(...args)
     let p = Promise.resolve()
     if (args_obj.excmd !== "") {
-        if (args_obj.mode === "browser" && parseMapstr(args_obj.key).hasExplicitDirection)
-            throw new Error("Browser-mode binds do not support D/U modifiers.")
-        const key_sub = findShadowingMapstr(
-            args_obj.key,
-            Object.keys(config.getDynamic(args_obj.configName) || {}),
-        )
-        if (key_sub) {
-            fillcmdline_notrail("# Warning: bind `" + key_sub + "` exists and will shadow `" + args_obj.key + "`. Try running `:unbind --mode=" + args_obj.mode + " " + key_sub + "`")
+
+        const shadow = checkForShadowedBinds(args_obj.key, args_obj.configName)
+        if (shadow !== null) {
+            fillcmdline_notrail("# Warning: bind `" + shadow + "` exists and will shadow `" + args_obj.key + "`. Try running `:unbind --mode=" + args_obj.mode + " " + shadow + "`")
+        } else {
+            for (let i = 0; i < args_obj.key.length; i++) {
+                // Check if any initial subsequence of the key exists and will shadow the new binding
+                const key_sub = args_obj.key.slice(0, i)
+                if (config.getDynamic(args_obj.configName, key_sub)) {
+                    fillcmdline_notrail("# Warning: bind `" + key_sub + "` exists and will shadow `" + args_obj.key + "`. Try running `:unbind --mode=" + args_obj.mode + " " + key_sub + "`")
+                    break
+                }
+            }
         }
         if (args_obj.mode == "browser") {
             const commands = await browser.commands.getAll()
@@ -6771,4 +6777,16 @@ export async function scrollstart(xVelocity: string, yVelocity: string, mult?: s
 //#content
 export async function scrollstop() {
     scrolling.scrollstop()
+}
+
+/**
+ * Potentially useful occasionally.
+ * Allows dummy binds, or page key event passthrough for parts of sequences.
+ * Example use case: allow gmail's built-in gi keyseqence to work:
+ * :bindurl https://mail.google.com <N!-g> noop
+ * :unbindurl https://mail.google.com gi
+ */
+//#content
+export function noop() {
+    return undefined
 }

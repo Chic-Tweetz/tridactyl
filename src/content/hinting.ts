@@ -1732,19 +1732,14 @@ function focusParentHint() {
 export function parser(keys: keyseq.MinimalKey[]) {
     const parsed = keyseq.parse(
         keys,
-        keyseq.mapstrMapToKeyMap(
-            new Map(
-                (Object.entries(config.get("hintmaps")) as any).filter(
-                    ([_key, value]) => value != "",
-                ),
-            ),
-        ),
+        keyseq.keyTrie("hintmaps"),
     )
+
     if (parsed.isMatch === true) {
         return parsed
     }
-    // Ignore modifiers since they can't match text
-    const simplekeys = keys.filter(key => !keyseq.hasModifiers(key))
+    // Ignore keyups & modifiers since they can't match text
+    const simplekeys = keys.filter(key => !key.keyup && !keyseq.hasModifiers(key))
     let exstr
     if (simplekeys.length > 1) {
         exstr = simplekeys.reduce(

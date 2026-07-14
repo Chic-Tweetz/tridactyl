@@ -8,7 +8,7 @@ import * as customCompletions from "@src/content/completions_content"
 import * as keyseq from "@src/lib/keyseq"
 import * as tri_editor from "@src/lib/editor"
 import { contentState } from "@src/content/state_content"
-import { canceller } from "@src/content/controller_content"
+// import { canceller } from "@src/content/controller_content"
 
 const logger = new Logger("messaging")
 const cmdline_logger = new Logger("cmdline")
@@ -81,7 +81,7 @@ export function makeIframe() {
             win.addEventListener("focus", () => {
                 contentState.pseudo_mode = "ex"
                 // The key canceller was keeping KeyUp events from binds like ":" which focus the commandline
-                canceller.clearQueue()
+                // canceller.clearQueue()
             })
             win.addEventListener("blur", () => {
                 if (contentState.pseudo_mode === "ex")

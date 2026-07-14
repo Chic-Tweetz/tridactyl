@@ -8,7 +8,7 @@ import {
     minimalKeyFromKeyboardEvent,
     MinimalKey,
     PrintableKey,
-    formatKeysForModeIndicator,
+    // formatKeysForModeIndicator,
 } from "@src/lib/keyseq"
 
 import * as hinting from "@src/content/hinting"
@@ -31,78 +31,17 @@ function mapstrsForMode(mode: string) {
     return Object.keys(maps || {})
 }
 
-/**
- * KeyCanceller: keep track of keys that have been cancelled in the keydown
- * handler (which takes care of dispatching ex commands) and also cancel them
- * in keypress/keyup event handlers. This fixes
- * https://github.com/tridactyl/tridactyl/issues/234.
- *
- * If you make modifications to this class, keep in mind that keyup events
- * might not arrive in the same order as the keydown events (e.g. user presses
- * A, then B, releases B and then A).
- */
-class KeyCanceller {
-    private keyPress: KeyboardEvent[] = []
-    private keyUp: KeyboardEvent[] = []
-
-    constructor() {
-        this.cancelKeyUp = this.cancelKeyUp.bind(this)
-        this.cancelKeyPress = this.cancelKeyPress.bind(this)
-        this.clearQueue = this.clearQueue.bind(this)
+let commandlineFrameReadyToReceiveMessages = false
+config.getAsync("noiframe").then(noiframe => {
+    if(noiframe === "true") {
+        commandlineFrameReadyToReceiveMessages = true
+    } else {
+        Messaging.addListener("commandline_frame_ready_to_receive_messages", () => {
+            logger.debug("Received commandline_frame_ready_to_receive_messages")
+            commandlineFrameReadyToReceiveMessages = true
+        })
     }
-
-    push(ke: KeyboardEvent) {
-        ke.preventDefault() // this cancels the keypress event
-        ke.stopImmediatePropagation()
-
-        if (ke.type === "keydown") {
-            this.keyPress.push(ke)
-            this.keyUp.push(ke)
-        } else if (ke.type === "keyup") {
-            // only need to bookkeep, the keyup will be cancelled by the keydown
-            this.removeKey(ke, this.keyUp)
-        }
-    }
-
-    public clearQueue() {
-        this.keyPress = []
-        this.keyUp = []
-    }
-
-    public cancelKeyPress = (ke: KeyboardEvent) => {
-        if (!ke.isTrusted) return
-        this.cancelKey(ke, this.keyPress)
-    }
-
-    public cancelKeyUp = (ke: KeyboardEvent) => {
-        if (!ke.isTrusted) return
-        this.cancelKey(ke, this.keyUp)
-    }
-
-    private removeKey(ke: KeyboardEvent, kes: KeyboardEvent[]) {
-        const index = kes.findIndex(
-            ke2 =>
-                ke.altKey === ke2.altKey &&
-                ke.code === ke2.code &&
-                ke.composed === ke2.composed &&
-                ke.ctrlKey === ke2.ctrlKey &&
-                ke.metaKey === ke2.metaKey &&
-                ke.shiftKey === ke2.shiftKey,
-        )
-        if (index < 0) return false
-        kes.splice(index, 1)
-        return true
-    }
-
-    private cancelKey(ke: KeyboardEvent, kes: KeyboardEvent[]) {
-        if (this.removeKey(ke, kes) && ke instanceof KeyboardEvent) {
-            ke.preventDefault()
-            ke.stopImmediatePropagation()
-        }
-    }
-}
-
-export const canceller = new KeyCanceller()
+})
 
 let mustBufferPageKeysForClInput = false
 let bufferedPageKeys: string[] = []
@@ -126,6 +65,9 @@ Messaging.addListener(
     },
 )
 
+// Was in ParserController, but buffered keys need to be cancelled too
+const cancelKeyups = new Set()
+
 let keysToFeed: KeyEventLike[] = []
 let generatorIsWaiting = true
 
@@ -144,38 +86,121 @@ function* ParserController() {
         nmode: nmode.parser,
     }
 
-    // These won't be cancelled
-    const whitelistBindsParser = keys => generic.parser("whitelistpagebinds", keys)
+    const ignoreKeyupsExplicit = new Set()
+    const ignoreKeyupsContextual = new Set()
+    const ignoreRepeats = new Set()
+    let keyEvents: MinimalKey[] = []
+    let previousSuffix = ""
+
+    // If we lose focus we have no idea whether keys are held
+    window.addEventListener("blur", e => {
+        if (!e.isTrusted) return
+        cancelKeyups.clear()
+        ignoreKeyupsExplicit.clear()
+        ignoreKeyupsContextual.clear()
+        ignoreRepeats.clear()
+    })
+
+    // Trie node properties map to functions that update key sets
+    // node properties are set according to bind modifiers (not modifier keys mind you)
+    // - honestly I should decide on some names to separate modifier keys and node properties
+    // - also keys as in keypresses and keys as in key/value pairs in the tries!
+    //   which are encoded from keys as in keypresses! Ahh!
+    // :bind <D-x>, <P-x>, <R-x>, <N-x> are what set these properties
+    const parserActions = {
+        "ignoreKeyupExplicit": (keyevent: KeyEventLike) => {
+            if (keyevent instanceof KeyboardEvent)
+                ignoreKeyupsExplicit.add(keyevent.code)
+        },
+        "ignoreKeyupContextual": (keyevent: KeyEventLike) => {
+            if (keyevent instanceof KeyboardEvent)
+                ignoreKeyupsContextual.add(keyevent.code)
+        },
+        "ignoreRepeats": (keyevent: KeyEventLike) => {
+            if (keyevent instanceof KeyboardEvent)
+                ignoreRepeats.add(keyevent.code)
+        },
+        "noReset": (_keyevent: KeyEventLike, response: ParserResponse) => {
+            keyEvents = response.keys || []
+        },
+    }
+
+    function preParseUpdateStateAndShouldSkip(keyevent: KeyEventLike) {
+        if (!(keyevent instanceof KeyboardEvent)) return false
+        if (keyevent.type === "keyup") {
+            if (cancelKeyups.has(keyevent.code)) {
+                keyevent.preventDefault()
+                keyevent.stopImmediatePropagation()
+                cancelKeyups.delete(keyevent.code)
+            }
+
+            ignoreRepeats.delete(keyevent.code)
+
+            // Contextual ignoring depends on parser response later
+            if (
+                ignoreKeyupsExplicit.has(keyevent.code) &&
+                !ignoreKeyupsContextual.has(keyevent.code)
+            ) {
+                ignoreKeyupsExplicit.delete(keyevent.code)
+                return true
+            }
+        } else if (keyevent.repeat && ignoreRepeats.has(keyevent.code)) {
+            keyevent.preventDefault()
+            keyevent.stopImmediatePropagation()
+            return true
+        }
+        return false
+    }
+
+    function postParseUpdateStateAndShouldSkip(keyevent: KeyEventLike, response: ParserResponse) {
+        if (!(keyevent instanceof KeyboardEvent)) return false
+        // Added a "noCancel" property which lets keys through to the page
+        // Suggest only careful use with :bindurl, for instance,
+        // allow gmail gi shortcut to work:
+        // :bind https://mail.google.com <!N-g> noop
+        // :unbindurl https://mail.goog.com gi
+        // (noop doesn't exist btw, I might add it now!)
+        if ((response.isMatch && !response.actions?.includes?.("noCancel")) || contentState.blocking_keypresses) {
+            keyevent.preventDefault()
+            keyevent.stopImmediatePropagation()
+
+            if (keyevent.type === "keydown") {
+                cancelKeyups.add(keyevent.code)
+            }
+        }
+
+        // Here's where "contextual" cancellation/ignoring happens
+        if (
+            keyevent.type === "keyup" &&
+            ignoreKeyupsContextual.has(keyevent.code)
+        ) {
+            ignoreKeyupsContextual.delete(keyevent.code)
+            ignoreKeyupsExplicit.delete(keyevent.code)
+
+            if (response.didReset) {
+                keyEvents.pop()
+                return true
+            }
+        }
+        return false
+    }
 
     while (true) {
         let exstr = ""
-        let previousSuffix = null
-        let keyEvents: MinimalKey[] = []
         try {
             while (true) {
                 generatorIsWaiting = true
                 const keyevent: KeyEventLike = keysToFeed.length ? keysToFeed.shift() : yield
                 generatorIsWaiting = false
 
-                // Don't break old modes with keyup events
-                // TODO: fix this in these parsers directly
-                if (
-                    ["hint", "gobble"].includes(contentState.mode) &&
-                    (keyevent instanceof KeyboardEvent ? keyevent.type === "keyup" : keyevent.keyup)
-                )
-                    continue
-
+                let shadowRoot = null
                 let textEditable = false
+
+                if (preParseUpdateStateAndShouldSkip(keyevent)) continue
 
                 if (keyevent instanceof KeyboardEvent) {
                     const deepTarget = activeElement(keyevent.target as HTMLElement) || keyevent.target as HTMLElement
                     textEditable = isTextEditable(deepTarget)
-
-                    // Accumulate key events. The parser will cut this
-                    // down whenever it's not a valid prefix of a known
-                    // binding, so it can't grow indefinitely unless you
-                    // have a combination of maps that permits bindings of
-                    // unbounded length.
                     keyEvents.push(minimalKeyFromKeyboardEvent(keyevent))
                 } else {
                     keyEvents.push(keyevent)
@@ -197,7 +222,7 @@ function* ParserController() {
                 const newMode = contentState.mode
                 if (newMode !== currentMode) {
                     keyEvents = keyEvents.slice(-1)
-                    previousSuffix = null
+                    previousSuffix = ""
                 }
 
                 const response = (
@@ -211,24 +236,25 @@ function* ParserController() {
                     response,
                 )
 
-                if (isKeyboardEvent(keyevent)) {
-                    if (contentState.blocking_keypresses) {
-                        canceller.push(keyevent)
-                    } else if (response.isMatch) {
-                        const whitelistResponse = response.keys ? whitelistBindsParser(response.keys) : null
-                        if (
-                            !whitelistResponse ||
-                            !(
-                                whitelistResponse.exstr &&
-                                whitelistResponse.keys?.length === response.keys.length
-                            )
-                        ) {
-                            canceller.push(keyevent)
-                        }
-                    }
-                }
+                if (postParseUpdateStateAndShouldSkip(keyevent, response)) continue
 
-                if (response.exstr) {
+                keyEvents = []
+
+                response.actions?.forEach?.(
+                    action => parserActions[action]?.(keyevent, response)
+                )
+
+                if (!response.exstr || !response.isMatch)
+                    keyEvents = response.keys || []
+
+                const suffix = keyEvents.map(x => PrintableKey(x)).join("")
+                if (previousSuffix !== suffix) {
+                    contentState.suffix = suffix
+                    previousSuffix = suffix
+                }
+                logger.debug("suffix: ", suffix)
+
+                if (response.exstr && response.isMatch) {
                     exstr = response.exstr
                     if (
                         (exstr.startsWith("fillcmdline") || exstr.startsWith("current_url")) &&
@@ -242,23 +268,9 @@ function* ParserController() {
                         bufferedPageKeys = []
                     }
                     break
-                } else {
-                    keyEvents = response.keys
-                    // show current keyEvents as a suffix of the contentState
-                    const suffix = formatKeysForModeIndicator(
-                        keyEvents,
-                        mapstrsForMode(contentState.mode),
-                    )
-
-                    if (previousSuffix !== suffix) {
-                        contentState.suffix = suffix
-                        previousSuffix = suffix
-                    }
-                    logger.debug("suffix: ", suffix)
                 }
             }
-            contentState.suffix = ""
-            controller.acceptExCmd(exstr, "content")
+            controller.acceptExCmd(exstr)
         } catch (e) {
             // Rumsfeldian errors are caught here
             logger.error("An error occurred in the content controller: ", e)
@@ -302,7 +314,17 @@ export function acceptKey(keyevent: KeyboardEvent) {
             bufferedPageKeys.push(keyevent.key)
             logger.debug("Buffering page keys", bufferedPageKeys)
         }
-        canceller.push(keyevent)
+
+        // KeyCanceller.push effectively becomes this now:
+        if (keyevent instanceof KeyboardEvent) {
+            keyevent.preventDefault()
+            keyevent.stopImmediatePropagation()
+            if (keyevent.type === "keydown") {
+                cancelKeyups.add(keyevent.code)
+            } else {
+                cancelKeyups.delete(keyevent.code)
+            }
+        }
         return true
     }
     if (!tryBufferingPageKeyForClInput(keyevent))
@@ -354,7 +376,8 @@ function inheritsImaps(confkey) {
 
 Messaging.addListener("tab_changes", msg => {
     if (msg.command === "tab_left") {
-        canceller.clearQueue()
+        // TODO: make a new exportable key canceller - I guess just empty the sets
+        // canceller.clearQueue()
     }
 })
 

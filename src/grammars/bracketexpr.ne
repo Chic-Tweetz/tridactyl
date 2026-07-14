@@ -2,7 +2,7 @@
 
 BracketExpr -> "<" Modifier ModKey ">" {% bexpr=>bexpr.slice(1,-1) %}
              | "<" Key ">" {% bexpr=>[{}].concat(bexpr.slice(1,-1)) %}
-Modifier -> [acmsudrACMSUDR\?]:? [acmsudrACMSUDR\?]:? [acmsudrACMSUDR\?]:? [acmsudrACMSUDR\?]:? "-" {%
+Modifier -> [acmsrudpnACMSRUDPN!\?]:? [acmsrudpnACMSRUDPN!\?]:? [acmsrudpnACMSRUDPN!\?]:? [acmsrudpnACMSRUDPN!]:? "-" {%
     /** For each modifier present,
         add its long name as an attribute set to true to an object */
     (mods, _, reject) => {
@@ -11,10 +11,13 @@ Modifier -> [acmsudrACMSUDR\?]:? [acmsudrACMSUDR\?]:? [acmsudrACMSUDR\?]:? [acms
             ["C", "ctrlKey"],
             ["M", "metaKey"],
             ["S", "shiftKey"],
+            ["R", "repeat"],
+            ["D", "keydown"],
             ["U", "keyup"],
-            ["D", "keydown"], // Explicit keydown means not-a-repeat-firing - see lib/keyseq.ts
-            ["?", "optional"], // Bind is not required (i.e. always return true)
-            ["R", "mayrepeat"], // Doesn't matter if the bind is repeated or not - placebo
+            ["P", "press"],
+            ["N", "noReset"],
+            ["!", "noCancel"],
+            ["?", "optional"],
         ])
 
         let modifiersObj = {}
