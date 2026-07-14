@@ -165,9 +165,19 @@ export class default_config {
      * exfindmaps will be used when using the finding searchbar.
      */
     exfindmaps = {
-        "🕷🕷INHERITS🕷🕷": "exmaps",
+        "<Enter>": "ex.accept_line",
+        "<C-j>": "ex.accept_line",
         "<C-g>": "findnext",
         "<C-t>": "findnext -?",
+        "<A-b>": "text.backward_word",
+        "<A-f>": "text.forward_word",
+        "<C-e>": "text.end_of_line",
+        "<A-d>": "text.kill_word",
+        "<S-Backspace>": "text.backward_kill_word",
+        "<C-u>": "text.backward_kill_line",
+        "<C-k>": "text.kill_line",
+        "<Escape>": "ex.hide_and_clear",
+        "<C-[>": "ex.hide_and_clear",
     }
 
     /**

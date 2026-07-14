@@ -200,13 +200,15 @@ export function ensureIframeExists() {
  *
  *  should probably at least ensure only one "alternate input" can exist
  */
-export function showAlternateInput(
+export async function showAlternateInput(
     oninput: (arg0: string) => void,
     onaccept?: (arg0: string) => void,
     oncancel?: (arg0: string) => void,
     name = "find",
 ) {
     ensureIframeExists()
+    await show(true)
+
     let normalInput: any
     try {
         normalInput =
@@ -250,32 +252,39 @@ export function showAlternateInput(
     }
 
     // This does seem a bit silly
-    let keymap
-    try {
-        keymap = keyseq.keyMap("ex" + name + "maps")
-    } catch (e) {
-        keymap = keyseq.keyMap("exmaps")
-    }
+    // let keymap
+    // try {
+    //     keymap = keyseq.keyMap("ex" + name + "maps")
+    // } catch (e) {
+    //     keymap = keyseq.keyMap("exmaps")
+    // }
 
     // Don't think we'd want any other ex. binds
     // but what if you truly wanted to call an ex. command...?
-    const iter = keymap
-        .entries()
-        .filter(
-            ([_keys, cmd]) =>
-                !cmd.startsWith("ex.") ||
-                cmd === "ex.accept_line" ||
-                cmd === "ex.hide_and_clear",
-        )
+    // const iter = keymap
+    //     .entries()
+    //     .filter(
+    //         ([_keys, cmd]) =>
+    //             !cmd.startsWith("ex.") ||
+    //             cmd === "ex.accept_line" ||
+    //             cmd === "ex.hide_and_clear",
+    //     )
 
-    const filteredMap = new Map()
+    // const filteredMap = new Map()
 
-    let next = iter.next()
-    while (!next.done) {
-        filteredMap.set(next.value[0], next.value[1])
-        next = iter.next()
+    // let next = iter.next()
+    // while (!next.done) {
+    //     filteredMap.set(next.value[0], next.value[1])
+    //     next = iter.next()
+    // }
+    // keymap = filteredMap
+
+    let keytrie
+    try {
+        keytrie = keyseq.keyTrie("ex" + name + "maps")
+    } catch (e) {
+        keytrie = keyseq.keyTrie("exmaps")
     }
-    keymap = filteredMap
 
     let keys = []
     inp.addEventListener(
@@ -283,7 +292,7 @@ export function showAlternateInput(
         e => {
             e.stopImmediatePropagation()
             keys.push(keyseq.minimalKeyFromKeyboardEvent(e))
-            const parsed = keyseq.parse(keys, keymap)
+            const parsed = keyseq.parse(keys, keytrie)
             if (parsed.isMatch) {
                 e.preventDefault()
                 if (parsed.value) {
@@ -317,7 +326,6 @@ export function showAlternateInput(
     )
 
     normalInput.parentElement.appendChild(inp)
-    show(true)
     // Doesn't seem to work straight away?
     setTimeout(() => inp.focus())
 }
