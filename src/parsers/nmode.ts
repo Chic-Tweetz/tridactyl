@@ -58,6 +58,7 @@ export function parser(keys: keyseq.MinimalKey[]) {
                 ? ""
                 : "composite " + response.exstr + "; "
         response.exstr = prefix + modeState.endCommand // NB: this probably breaks any `js` binds
+        response.isMatch = true
         modeState = undefined
     }
     return response
