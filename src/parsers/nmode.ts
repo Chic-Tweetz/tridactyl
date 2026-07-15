@@ -58,6 +58,14 @@ export function parser(keys: keyseq.MinimalKey[]) {
                 ? ""
                 : "composite " + response.exstr + "; "
         response.exstr = prefix + modeState.endCommand // NB: this probably breaks any `js` binds
+
+        // KeyTrie change: response.exstr only executed if response.match === true
+        // But if response.match === true, we cancel the key (which makes no sense for :nmode ignore ...)
+        // Luckily we already have the "noCancel" action we can reuse here
+        if (!response.isMatch) {
+            response.actions = response.actions || []
+            response.actions.push("noCancel")
+        }
         response.isMatch = true
         modeState = undefined
     }
