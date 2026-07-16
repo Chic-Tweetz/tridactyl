@@ -37,7 +37,6 @@
 
 /** */
 import * as R from "ramda"
-import { filter, find } from "@src/lib/itertools"
 import { Parser } from "@src/lib/nearley_utils"
 import * as config from "@src/lib/config"
 import grammar from "@src/grammars/.bracketexpr.generated"
@@ -176,107 +175,6 @@ const modifiers = new Map([
     ["!", "noCancel"],
     ["?", "optional"],
 ])
-
-// MacOS alted chars to base. Letter, number & punctuation keys and their shifted versions.
-const altChars = {
-    å: "a",
-    "∫": "b",
-    ç: "c",
-    "∂": "d",
-    ƒ: "f",
-    "©": "g",
-    "˙": "h",
-    "∆": "j",
-    "˚": "k",
-    "¬": "l",
-    µ: "m",
-    ø: "o",
-    π: "p",
-    œ: "q",
-    "®": "r",
-    ß: "s",
-    "†": "t",
-    "√": "v",
-    "∑": "w",
-    "≈": "x",
-    "¥": "y",
-    Ω: "z",
-    º: "0",
-    "¡": "1",
-    "€": "2",
-    "#": "3",
-    "¢": "4",
-    "∞": "5",
-    "§": "6",
-    "¶": "7",
-    "•": "8",
-    ª: "9",
-    Å: "A",
-    ı: "B",
-    Ç: "C",
-    Î: "D",
-    "‰": "E",
-    Ï: "F",
-    Ì: "G",
-    Ó: "H",
-    È: "I",
-    Ô: "J",
-    "": "K",
-    Ò: "L",
-    "˜": "M",
-    ˆ: "N",
-    Ø: "O",
-    "∏": "P",
-    Œ: "Q",
-    Â: "R",
-    Í: "S",
-    Ê: "T",
-    Ë: "U",
-    "◊": "V",
-    "„": "W",
-    Ù: "X",
-    Á: "Y",
-    Û: "Z",
-    "‚": ")",
-    "⁄": "!",
-    "™": "@",
-    "‹": "£",
-    "›": "$",
-    ﬁ: "%",
-    ﬂ: "^",
-    "‡": "&",
-    "°": "*",
-    "·": "(",
-    "–": "-",
-    "≠": "=",
-    "“": "[",
-    "‘": "]",
-    "…": ";",
-    æ: "'",
-    "«": "\\",
-    "≤": ",",
-    "≥": ".",
-    "÷": "/",
-    "—": "_",
-    "±": "+",
-    "”": '"',
-    "»": "|",
-    "¯": "<",
-    "˘": ">",
-    "¿": "?",
-    Ÿ: "~",
-}
-
-// <A-e|i|n|o|u> all produce KeyEvents with key: "Dead" so the keyCode is needed.
-const altDeadKeyCodes = { 69: "e", 73: "i", 78: "n", 79: "o", 95: "u" }
-
-function normaliseAltChar(keyEvent) {
-    if (!keyEvent.altKey) return keyEvent.key
-    if (keyEvent.key === "Dead") {
-        return altDeadKeyCodes[keyEvent.keyCode] || keyEvent.key
-    }
-    return altChars[keyEvent.key] || keyEvent.key
-}
 
 const mapstrModifiers = new Map([...modifiers, ["D", "keydown"], ["U", "keyup"], ["?", "optional"]])
 
@@ -590,14 +488,14 @@ export function parse(keyseq: MinimalKey[], trie: Map<string, any>, useNumericPr
 //     )
 // }
 
-function printableKey(k: MinimalKey, showDirection: boolean) {
-    if (["Control", "Meta", "Alt", "Shift", "OS"].includes(k.key)) return ""
+// function printableKey(k: MinimalKey, showDirection: boolean) {
+//     if (["Control", "Meta", "Alt", "Shift", "OS"].includes(k.key)) return ""
 
-    let modstr = Array.from(modifiers, ([letter, attr]) => k[attr] ? letter : "").join("")
-    if (showDirection) modstr += k.keyup ? "U" : "D"
-    const result = modstr ? modstr + "-" + k.key : k.key
-    return result.length > 1 ? "<" + result + ">" : result
-}
+//     let modstr = Array.from(modifiers, ([letter, attr]) => k[attr] ? letter : "").join("")
+//     if (showDirection) modstr += k.keyup ? "U" : "D"
+//     const result = modstr ? modstr + "-" + k.key : k.key
+//     return result.length > 1 ? "<" + result + ">" : result
+// }
 
 // export function formatKeysForModeIndicator(
 //     keys: MinimalKey[],
@@ -843,7 +741,7 @@ export function checkForShadowedBinds(mapstr: string, conf = "nmaps") {
             match => !match.properties.includes("noShadow") ||
                 match.properties.includes("stickyRepeat")
         )?.mapstr || null
-    
+
     // Overwriting is not the same as being shadowed
     return clash !== mapstr ? clash : null
 }
@@ -1145,15 +1043,6 @@ export function minimalKeyFromKeyboardEvent(
         return new MinimalKey(newkey, modifiers)
     }
 
-    // TODO: now that i've realised :set keyboardlayoutforce true works
-    // I think we can scrap the alt key stuff :)
-    // let key
-    // if (keyEvent.altKey && config.get("macaltcompat") === "true") {
-    //     key = normaliseAltChar(keyEvent)
-    // } else {
-    //     key = keyEvent.key
-    // }
-    // const result = new MinimalKey(key, modifiers)
     const result = new MinimalKey(keyEvent.key, modifiers)
 
     if (config.get("usekeytranslatemap") === "true") {
@@ -1177,30 +1066,28 @@ export function PrintableKey(k) {
     ) {
         return ""
     }
-    if (k.key === " ") result = "Space"
 
-    let mod = ""
+    let prefix = ""
+    if (k.keyup) {
+        prefix += "U"
+    }
     if (k.altKey) {
-        mod += "A"
+        prefix += "A"
     }
     if (k.ctrlKey) {
-        mod += "C"
-    }
-    if (k.metaKey) {
-        mod += "M"
+        prefix += "C"
     }
     if (k.shiftKey) {
-        mod += "S"
+        prefix += "S"
     }
-    if (mod.length) {
-        result = mod + "-" + result
+    if (prefix.length > 0) {
+        result = prefix + "-" + result
     }
     if (result.length > 1) {
         result = "<" + result + ">"
     }
     return result
 }
-
 // }}}
 
 browser.storage.onChanged.addListener(changes => {

@@ -1656,12 +1656,6 @@ export class default_config {
     }
 
     /**
-     * Interpret MacOS alt key presses as the base letter instead of the alt character.
-     * For instance, <A-∆> will be seen as <A-j>.
-     */
-    macaltcompat: "true" | "false" = "false"
-
-    /**
      * Prevent entering insert mode when typing in a textEditable element when in these modes.
      * Usage: :set noinsertmodes.mode-name true
      *
@@ -1765,9 +1759,6 @@ Remove-Item '%TEMP%/tridactyl_installnative.ps1'"`,
             ";:": 'hint -F e => { const pos = tri.dom.getAbsoluteCentre(e); tri.excmds.exclaim_quiet("xdotool mousemove --sync " + window.devicePixelRatio * pos.x + " " + window.devicePixelRatio * pos.y)}',
             ";X": 'hint -F e => { const pos = tri.dom.getAbsoluteCentre(e); tri.excmds.exclaim_quiet("xdotool mousemove --sync " + window.devicePixelRatio * pos.x + " " + window.devicePixelRatio * pos.y + "; xdotool keydown ctrl+shift; xdotool click 1; xdotool keyup ctrl+shift")}',
         } as unknown,
-    },
-    mac: {
-        macaltcompat: "true",
     },
 } as Record<browser.runtime.PlatformOs, default_config>
 
