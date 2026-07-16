@@ -21,27 +21,27 @@ import { mode2maps } from "@src/lib/binding"
 
 const logger = new Logger("controller")
 
-function isKeyboardEvent(ke: any): ke is KeyboardEvent {
+function _isKeyboardEvent(ke: any): ke is KeyboardEvent {
     const win = ke.view
     return win && ke instanceof win.KeyboardEvent
 }
 
-function mapstrsForMode(mode: string) {
+function _mapstrsForMode(mode: string) {
     const maps = config.getDynamic(mode2maps.get(mode) || mode + "maps")
     return Object.keys(maps || {})
 }
 
-let commandlineFrameReadyToReceiveMessages = false
-config.getAsync("noiframe").then(noiframe => {
-    if(noiframe === "true") {
-        commandlineFrameReadyToReceiveMessages = true
-    } else {
-        Messaging.addListener("commandline_frame_ready_to_receive_messages", () => {
-            logger.debug("Received commandline_frame_ready_to_receive_messages")
-            commandlineFrameReadyToReceiveMessages = true
-        })
-    }
-})
+// let commandlineFrameReadyToReceiveMessages = false
+// config.getAsync("noiframe").then(noiframe => {
+//     if(noiframe === "true") {
+//         commandlineFrameReadyToReceiveMessages = true
+//     } else {
+//         Messaging.addListener("commandline_frame_ready_to_receive_messages", () => {
+//             logger.debug("Received commandline_frame_ready_to_receive_messages")
+//             commandlineFrameReadyToReceiveMessages = true
+//         })
+//     }
+// })
 
 let mustBufferPageKeysForClInput = false
 let bufferedPageKeys: string[] = []
@@ -193,7 +193,6 @@ function* ParserController() {
                 const keyevent: KeyEventLike = keysToFeed.length ? keysToFeed.shift() : yield
                 generatorIsWaiting = false
 
-                let shadowRoot = null
                 let textEditable = false
 
                 if (preParseUpdateStateAndShouldSkip(keyevent)) continue

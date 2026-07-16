@@ -60,7 +60,7 @@ import * as R from "ramda"
 import { MinimalKey, minimalKeyFromKeyboardEvent } from "@src/lib/keyseq"
 import { TabGroupCompletionSource } from "@src/completions/TabGroup"
 import { ProfileCompletionSource } from "@src/completions/Profile"
-import { ownTab, ownTabId, browserBg, pretendToBeTab } from "@src/lib/webext"
+import { ownTab, browserBg, pretendToBeTab } from "@src/lib/webext"
 
 /** @hidden **/
 const logger = new Logger("cmdline")
@@ -147,7 +147,7 @@ export function asPopup(forTab=-1, trailspace=true, str="") {
     */
     commandline_state.fns["popup_hide_and_clear"] = () => window.close()
 
-    commandline_state.fns["popup_accept_line"] = (...args) => {
+    commandline_state.fns["popup_accept_line"] = () => {
         const commandPromise = commandline_state.fns["accept_line"]()
         // window.close()
         ownTab().then(tab => {
@@ -160,11 +160,11 @@ export function asPopup(forTab=-1, trailspace=true, str="") {
     // commandline_state.fns["accept_line"] = async () => {
     //     commandline_state.fns["accept_line"]().then(() => window.close())
     // }
-    messageTab = (type, command, args) => {
-        return Messaging.messageTab(popupTabTarget, type, command, args)
-    }
+    messageTab = (type, command, args) =>
+        Messaging.messageTab(popupTabTarget, type, command, args)
 
-    Messaging.addListener("controller_content", (message, sender, sendResponse) => {
+
+    Messaging.addListener("controller_content", (message, _sender, _sendResponse) => {
         if (message.command === "acceptExCmd") {
             browserBg.tabs.get(popupTabTarget).then(tab => {
                 browserBg.windows.update(tab.windowId, { focused: true })
@@ -187,8 +187,6 @@ export function asPopup(forTab=-1, trailspace=true, str="") {
     // focus()
     return true
 }
-
-
 
 /** @hidden **/
 function resizeArea() {
