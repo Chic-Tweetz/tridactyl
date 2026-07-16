@@ -256,17 +256,6 @@ function* ParserController() {
 
                 if (response.exstr && response.isMatch) {
                     exstr = response.exstr
-                    if (
-                        (exstr.startsWith("fillcmdline") || exstr.startsWith("current_url")) &&
-                        !exstr.startsWith("fillcmdline_tmp") &&
-                        !exstr.startsWith("fillcmdline_nofocus") &&
-                        config.get("noiframe") !== "true"
-                    ) {
-                        logger.debug("Starting buffering of page keys")
-                        bufferingPageKeysBeginTime = performance.now()
-                        mustBufferPageKeysForClInput = true
-                        bufferedPageKeys = []
-                    }
                     break
                 }
             }
@@ -276,6 +265,13 @@ function* ParserController() {
             logger.error("An error occurred in the content controller: ", e)
         }
     }
+}
+
+export function startBufferingPageKeys() {
+    logger.debug("Starting buffering of page keys")
+    bufferingPageKeysBeginTime = performance.now()
+    mustBufferPageKeysForClInput = true
+    bufferedPageKeys = []
 }
 
 export const generator = ParserController() // var rather than let stops weirdness in repl.
