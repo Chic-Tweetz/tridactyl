@@ -26,7 +26,7 @@ const cmdline_logger = new Logger("cmdline")
 // inject the commandline iframe into a content page
 
 // let iframe_blocked = false
-let noiframe = false
+let noiframe = "false"
 
 let cmdline_iframe: HTMLIFrameElement
 let iframeReady: Promise<void>
@@ -48,17 +48,24 @@ export function makeIframe() {
     cmdline_iframe.setAttribute("loading", "lazy")
 
     cmdline_iframe.addEventListener("load", () => {
+        resolveIframeReady()
         if (!cmdline_iframe.contentDocument) {
-            console.log("csp blocking iframe functionality")
-            noiframe = true
+
+            // Lazy iframes cause 5-second wait before popup shows
+            // setting ready = true only helps after the first time it opens
+            // Something like this and or iframeReady/resolveIframeReady might help
+            (cmdline_iframe as any).ready = true
+
+            console.warn("CSP restricting access to iframe document.")
+
+            noiframe = "true"
             Messaging.addListener(
                 "commandline_frame",
                 (msg, _sender, _sendResponse) => {
                     Messaging.messageOwnTab("stop_buffering_page_keys")
 
                     if (msg.command === "fillcmdline") {
-                        console.log("auto popup-ing")
-                        console.log(msg.args)
+                        console.log("Auto cmdline popup:", msg.args)
                         // seems trailing spaces are trimmed when messaged so can't handle that here
                         Messaging.messageOwnTab(
                             "controller_content",
@@ -101,7 +108,7 @@ let enabled = false
 
 /** Initialise the cmdline_iframe eagerly or on demand according to config/noiframe. */
 async function init(onDemand = false) {
-    const noiframe = await config.getAsync("noiframe")
+    noiframe = await config.getAsync("noiframe")
     const notridactyl = await config.getAsync("superignore")
 
     if (

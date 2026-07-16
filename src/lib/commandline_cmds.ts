@@ -315,7 +315,6 @@ export function getCommandlineFns(cmdline_state: {
                 "acceptExCmd",
                 ["editor_excmd fillcmdline_notrail " + cmdline_state.clInput.value],
             ).then(() => {
-                console.log("does this print before or after we finish?")
                 cmdline_state.clInput.focus()
             })
         },

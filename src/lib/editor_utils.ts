@@ -160,25 +160,23 @@ export function wrap_input(
 export function wrap_selection(
     fn: editor_selection_function,
 ): (e: HTMLElement, arg?: any) => boolean {
-    return (e: HTMLElement, arg?: any) => {
-        let getValues = getSelectionValues
-        let setValues = setSelectionValues
+    return (e: HTMLElement) => {
+        const getValues = getSelectionValues
+        const setValues = setSelectionValues
         // isContentEditable probably wouldn't work judging by wrap_input
         const [origText, origStart, origEnd, origDirection] = getValues(e)
-        console.log(origText, origStart, origEnd, origDirection)
         if (origDirection === "none") return false // Or not, I don't know
         setValues(e, ...fn(origText, origStart, origEnd, origDirection))
-        console.log(getValues(e))
         return true
     }
-    
+
 }
 
 /**
  * Take an editor function as parameter and wrap it in a function that will handle error conditions
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars-experimental
-export function needs_text(fn: editor_function, arg?: any): editor_function {
+export function needs_text(fn: editor_function): editor_function {
     return (
         text: string,
         selectionStart: number,
@@ -200,22 +198,20 @@ export function needs_text(fn: editor_function, arg?: any): editor_function {
     }
 }
 
-export function needs_direction(fn: editor_selection_function, arg?: any): editor_selection_function {
+export function needs_direction(fn: editor_selection_function): editor_selection_function {
     return (
         text: string,
         selectionStart: number,
         selectionEnd: number,
         selectionDirection: string,
         arg?: any,
-    ) => {
-        return fn(
-            text,
-            selectionStart,
-            selectionEnd,
-            selectionDirection,
-            arg,
-        )
-    }
+    ) => fn(
+        text,
+        selectionStart,
+        selectionEnd,
+        selectionDirection,
+        arg,
+    )
 }
 
 /**

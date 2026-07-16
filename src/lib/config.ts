@@ -1030,6 +1030,7 @@ export class default_config {
         styling: "warning",
         autocmds: "warning",
         profiles: "warning",
+        whichkey: "error",
     }
 
     /**

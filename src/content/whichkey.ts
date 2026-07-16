@@ -17,8 +17,11 @@ import { ownTabId } from "@src/lib/webext"
 import { getAsync, removeChangeListener } from "@src/lib/config"
 import * as config from "@src/lib/config"
 import { theme } from "./styling"
+import Logger from "@src/lib/logging"
 
+const logger = new Logger("whichkey")
 let whichkeyIframe: HTMLIFrameElement
+let iframeReady = false
 let level = "none" // none | multi | all
 let toggleLevel = "multi" // level to be set when :whichkey toggles it on
 let completions
@@ -31,82 +34,88 @@ getAsync("whichkey").then(show => {
     if (show !== "none") {
         level = show
         toggleLevel = show
-        init().then(() => {
-            if (level === "all") {
-                onStateChanged("mode", "normal", "normal", "normal")
-            }
-        })
+        init()
+        if (level === "all") {
+            attachIframe()
+            .then(() => onStateChanged("mode", "normal", "normal", "normal"))
+            .catch(() => logger.error("Could not create a whichkey iframe."))
+        }
     }
 })
 
 function init() {
-    return createIframe()
-        .then(() => listen())
-        .catch(() => {
-            console.error("couldn't create whichkey iframe")
-        })
+    createIframe()
+    listen()
 }
 
 // Currently hard-coding position/size which we'd certainly want to be customisable
-async function createIframe() {
-    return new Promise((resolve, reject) => {
-        const iframe = document.createElement("iframe")
-        iframe.style.position = "fixed"
-        iframe.style.opacity = "0.9"
-        iframe.style.left = "10%"
-        iframe.style.bottom = "40px"
-        iframe.style.width = "80%"
-        iframe.style.height = "460px"
-        iframe.style.border = "1px solid rgb(13 185 215)"
-        iframe.style.borderRadius = "5px"
-        iframe.style.zIndex = "2147483647"
-        ;(iframe.style as any).colorScheme = "light dark" // Allow transparency
-        iframe.style.display = level === "all" ? "" : "none"
+function createIframe() {
+    const iframe = document.createElement("iframe")
+    iframe.style.position = "fixed"
+    iframe.style.opacity = "0.9"
+    iframe.style.left = "10%"
+    iframe.style.bottom = "40px"
+    iframe.style.width = "80%"
+    iframe.style.height = "460px"
+    iframe.style.border = "1px solid rgb(13 185 215)"
+    iframe.style.borderRadius = "5px"
+    iframe.style.zIndex = "2147483647"
+    ;(iframe.style as any).colorScheme = "light dark" // Allow transparency
+    iframe.style.display = level === "all" ? "" : "none"
 
-        // Made blank.html with the idea that it could be used for anything
-        iframe.src = browser.runtime.getURL("static/blank.html")
-        iframe.onload = () => {
-            if (iframe.contentDocument) {
+    // Made blank.html with the idea that it could be used for anything
+    iframe.src = browser.runtime.getURL("static/blank.html")
+    whichkeyIframe = iframe
+    return iframe
+}
+
+async function attachIframe() {
+    if (!whichkeyIframe) return false
+    if (iframeReady) return true
+    return new Promise((resolve, reject) => {
+        whichkeyIframe.onload = () => {
+            if (whichkeyIframe.contentDocument) {
+                iframeReady = true
                 // We can inject our .css files without having to
                 // include <link>s (or <script>s) in the blank.html src
                 // so that's a nice way of styling a general purpose blank.html iframe
                 const csslink = document.createElement("link")
                 csslink.rel = "stylesheet"
                 csslink.href = browser.runtime.getURL("static/css/whichkey.css")
-                iframe.contentDocument.head.appendChild(csslink)
+                whichkeyIframe.contentDocument.head.appendChild(csslink)
 
                 // Along with theme() for applying colour schemes
-                theme(iframe.contentDocument.documentElement)
-                iframe.contentDocument.documentElement.classList.add(
+                theme(whichkeyIframe.contentDocument.documentElement)
+                whichkeyIframe.contentDocument.documentElement.classList.add(
                     "WhichKeyRoot",
                 )
 
                 // Displaying binds in a table seems good to me
                 const table = document.createElement("table")
                 table.className = "WhichKey"
-                iframe.contentDocument.body.appendChild(table)
+                whichkeyIframe.contentDocument.body.appendChild(table)
                 completions = table
-                whichkeyIframe = iframe
+                whichkeyIframe = whichkeyIframe
 
                 // It would be nice to be able to scroll / filter the iframe with key presses
                 // but for now, if you click a link (excmd binds will link to the help page) or something,
                 // return focus to the main window
-                iframe.contentWindow.addEventListener("focus", () =>
+                whichkeyIframe.contentWindow.addEventListener("focus", () =>
                     window.focus(),
                 )
-                resolve(iframe)
+                resolve(true)
             } else {
-                reject(iframe)
+                reject(false)
             }
         }
         // Inserting before the cmdline so the cmdline should appear on top
-        const cmdlineIframe: HTMLIFrameElement = document.querySelector(
+        const cmdlineIframe: HTMLIFrameElement | null = document.querySelector(
             `[src="${browser.runtime.getURL("static/commandline.html")}"]`,
         )
         if (cmdlineIframe) {
-            document.documentElement.insertBefore(iframe, cmdlineIframe)
+            document.documentElement.insertBefore(whichkeyIframe, cmdlineIframe)
         } else {
-            document.documentElement.appendChild(iframe)
+            document.documentElement.appendChild(whichkeyIframe)
         }
     })
 }
@@ -617,7 +626,7 @@ function keystrMapsToElems(
 // The main one being displaying keybinds for the current mode
 // The other two being markjump/markadd and quickmark, where existing marks are shown
 async function onStateChanged(property?, _oldMode?, _oldValue?, _newValue?) {
-    if (level === "none") return
+    if (level === "none" || !(await attachIframe())) return
 
     // Just grabbing straight from the contentState object rather than using the callback's args
     // Is that alright? I'm certainly finding it easier
@@ -858,7 +867,10 @@ function setLevel(newLevel, overrideConfig = false) {
     }
     if (whichkeyIframe) {
         if (level === "none") whichkeyIframe.style.display = "none"
-        if (level === "all") whichkeyIframe.style.display = ""
+        if (level === "all") {
+            attachIframe()
+            whichkeyIframe.style.display = ""
+        }
     } else if (level !== "none") {
         init()
     }
