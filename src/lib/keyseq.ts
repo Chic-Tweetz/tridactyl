@@ -1077,6 +1077,9 @@ export function PrintableKey(k) {
     if (k.ctrlKey) {
         prefix += "C"
     }
+    if (k.metaKey) {
+        prefix += "M"
+    }
     if (k.shiftKey) {
         prefix += "S"
     }
