@@ -1335,6 +1335,7 @@ function cleanup() {
     const state = modeState
     contentState.mode = DOM.isTextEditable(document.activeElement) ? "insert" : "normal"
     if (state) state.cleanUpHints()
+    contentState.suffix = ""
     window.removeEventListener("scroll", updateHudOffset)
     modeState = undefined
     return state
@@ -1366,10 +1367,12 @@ function popKey() {
 
         filterByText(modeState.textfilter)
 
-        fillcmdline_nofocus("hint/" + modeState.textfilter.join("/"))
+        // fillcmdline_nofocus("hint/" + modeState.textfilter.join("/"))
+        contentState.suffix = modeState.textfilter.join("/")
     } else {
         modeState.filter = modeState.filter.slice(0, -1)
         modeState.filterFunc(modeState.filter)
+        contentState.suffix = modeState?.filter || ""
     }
 }
 
@@ -1397,7 +1400,8 @@ function pushKey(key) {
             filterByText(originalFilter)
         }
 
-        fillcmdline_nofocus("hint/" + modeState.textfilter.join("/"))
+        // fillcmdline_nofocus("hint/" + modeState.textfilter.join("/"))
+        contentState.suffix = modeState.textfilter.join("/")
     } else {
         // The new key can be used to filter the hints
         const originalFilter = modeState.filter
@@ -1409,18 +1413,19 @@ function pushKey(key) {
             modeState.filter = originalFilter
             modeState.filterFunc(modeState.filter)
         }
+        contentState.suffix = modeState?.filter || ""
     }
 }
 
 /** I like to display the search string(s) for filterByText with this
  */
-function fillcmdline_nofocus(text: string) {
-    browser.runtime.sendMessage({
-        type: "controller_background",
-        command: "acceptExCmd",
-        args: ["fillcmdline_nofocus " + text],
-    })
-}
+// function fillcmdline_nofocus(text: string) {
+//     browser.runtime.sendMessage({
+//         type: "controller_background",
+//         command: "acceptExCmd",
+//         args: ["fillcmdline_nofocus " + text],
+//     })
+// }
 
 function hidecmdline() {
     browser.runtime.sendMessage({
@@ -1602,6 +1607,8 @@ function filterByTag() {
  *    search for an exact match
  *  I've used the same function to switch to the mode as to pass the string array
  *  (maybe not the best choice)
+ *
+ *  TODO: reuse vimperator filtering
  */
 function filterByText(match?: string[]) {
     if (modeState.filterMode !== "text") {
@@ -1630,7 +1637,8 @@ function filterByText(match?: string[]) {
         }
         hideFlags()
 
-        fillcmdline_nofocus("hint/" + modeState.textfilter.join("/"))
+        // fillcmdline_nofocus("hint/" + modeState.textfilter.join("/"))
+        contentState.suffix = modeState.textfilter.join("/")
     }
 
     if (!match) return
@@ -1718,6 +1726,7 @@ function selectFocusedHint(delay = false) {
     const focused = modeState.focusedHint
     const selectFocusedHintInternal = () => {
         modeState.filter = ""
+        contentState.suffix = ""
         modeState.hints.forEach(h => {
             h.restoreName()
             h.hidden = false
