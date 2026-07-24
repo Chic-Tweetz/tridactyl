@@ -31,7 +31,14 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
         super(
             ["set", "setnull", "get", "unset", "seturl", "unseturl", "viewconfig"],
             "SettingsCompletionSource",
-            "Settings",
+            html`<table>
+                <tr>
+                    <td class="title">Settings</td>
+                    <td class="content">Current value</td>
+                    <td class="type">Possible values</td>
+                    <td class="doc">Documentation</td>
+                </tr>
+            </table>`,
         )
 
         this._parent.appendChild(this.node)
@@ -107,8 +114,14 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
 
         const deepKeys = deepQuery.length ? deepQuery.join(".") + "." : ""
 
-        this.options = Object.keys(target)
+        let matches = Object.keys(target)
             .filter(x => x.startsWith(query))
+
+        if (matches.length === 0) {
+            matches = Object.keys(settings).filter(x => x.includes(query))
+        }
+
+        this.options = matches
             .sort()
             .map(setting => {
                 const md = defaultConfigMembers[setting]

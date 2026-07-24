@@ -1,4 +1,9 @@
-import { getSelector, isTextEditable } from "@src/lib/dom"
+import {
+    afterPageLoad,
+    getSelector,
+    isTextEditable,
+    setupFocusHandler,
+} from "@src/lib/dom"
 
 test("getSelector handles numeric ancestor IDs", () => {
     document.body.innerHTML = '<div id="40796595"><textarea></textarea></div>'
@@ -21,4 +26,51 @@ test.each([
 ])("isTextEditable handles keyboard-select controls: %s", (html, expected) => {
     document.body.innerHTML = html
     expect(isTextEditable(document.querySelector("#x"))).toBe(expected)
+})
+
+test("setupFocusHandler reports focus leaving and returning to an editable element", async () => {
+    jest.mocked(browser.tabs.query).mockResolvedValue([
+        { id: 1 } as browser.tabs.Tab,
+    ])
+    jest.mocked(browser.runtime.sendMessage).mockResolvedValue([])
+    document.body.innerHTML = "<textarea></textarea><button></button>"
+    const listener = jest.fn()
+    setupFocusHandler(document, listener)
+    listener.mockClear()
+
+    const textarea = document.querySelector("textarea")
+    textarea.focus()
+    textarea.blur()
+    await new Promise(resolve => setTimeout(resolve))
+    expect(listener).toHaveBeenCalledTimes(2)
+
+    listener.mockClear()
+    textarea.focus()
+    document.querySelector("button").focus()
+    await new Promise(resolve => setTimeout(resolve))
+    expect(listener).toHaveBeenCalledTimes(2)
+})
+
+test("afterPageLoad leaves page initialization untouched", () => {
+    jest.useFakeTimers()
+    const readyState = jest
+        .spyOn(document, "readyState", "get")
+        .mockReturnValue("loading")
+    const indicator = document.createElement("span")
+    const pageSawIndicator = jest.fn()
+    afterPageLoad(() => document.documentElement.appendChild(indicator))
+    window.addEventListener(
+        "load",
+        () => pageSawIndicator(indicator.isConnected),
+        { once: true },
+    )
+
+    window.dispatchEvent(new Event("load"))
+    expect(pageSawIndicator).toHaveBeenCalledWith(false)
+    jest.runOnlyPendingTimers()
+    expect(indicator.parentElement).toBe(document.documentElement)
+
+    indicator.remove()
+    readyState.mockRestore()
+    jest.useRealTimers()
 })

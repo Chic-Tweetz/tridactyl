@@ -187,13 +187,17 @@ export abstract class CompletionSourceFuse extends CompletionSource {
     constructor(
         prefixes,
         className: string,
-        title?: string,
+        title?: string | HTMLElement,
         options = { trailingSpace: true },
     ) {
         super(prefixes, options)
-        this.node = html`<div class="${className} hidden">
-            <div class="sectionHeader">${title || className}</div>
-        </div>`
+        this.node = html`<div class="${className} hidden"></div>`
+        const header =
+            typeof title === "string" || title === undefined
+                ? html`<div>${title || className}</div>`
+                : title
+        header.classList.add("sectionHeader")
+        this.node.appendChild(header)
         this.node.appendChild(this.optionContainer)
         this.state = "hidden"
     }
@@ -344,7 +348,7 @@ export abstract class CompletionSourceFuse extends CompletionSource {
                 this.deselect()
                 // visopts.length + 1 because we want an empty completion at the end
                 const max = visopts.length + 1
-                const opt = visopts[(currind + inc + max) % max]
+                const opt = visopts[((currind + inc) % max + max) % max]
                 if (opt) this.select(opt)
                 return true
             })

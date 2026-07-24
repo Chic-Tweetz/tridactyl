@@ -76,7 +76,7 @@
 
 // Shared
 import * as Messaging from "@src/lib/messaging"
-import { ownWinTriIndex, getTriVersion, browserBg, activeTab, activeTabOnWindow, activeTabId, activeTabContainerId, openInNewTab, openInNewWindow, openInTab, queryAndURLwrangler, goToTab, getSortedTabs, prevActiveTab } from "@src/lib/webext"
+import { ownWinTriIndex, getTriVersion, getTriVersionName, browserBg, activeTab, activeTabOnWindow, activeTabId, activeTabContainerId, openInNewTab, openInNewWindow, openInTab, queryAndURLwrangler, goToTab, getSortedTabs, prevActiveTab } from "@src/lib/webext"
 import * as Container from "@src/lib/containers"
 import state from "@src/state"
 import * as State from "@src/state"
@@ -101,6 +101,7 @@ import * as arg from "@src/lib/arg_util"
 import * as R from "ramda"
 import * as treestyletab from "@src/interop/tst"
 import { uuidv4 } from "@src/lib/math"
+import { ABOUT_PAGES } from "@src/lib/about_pages"
 
 /**
  * This is used to drive some excmd handling in `composite`.
@@ -129,6 +130,8 @@ const logger = new Logging.Logger("excmd")
 
 /** @hidden **/
 const TRI_VERSION = getTriVersion()
+const TRI_VERSION_NAME = getTriVersionName()
+const IS_BETA = browser.runtime.getManifest().applications?.gecko?.id?.includes(".betas") || false
 
 //#content_helper
 // {
@@ -546,6 +549,8 @@ export async function guiset_quiet(rule: string, option: string) {
  *
  * Example usage: `guiset gui none`, `guiset gui full`, `guiset tabs autohide`.
  *
+ * If your Firefox profile cannot be found automatically on Windows, go to `about:support`, copy the `Profile Directory` path, then run `:set profiledir PROFILEDIRECTORY`, replacing `PROFILEDIRECTORY` with the copied path.
+ *
  * Some of the available options:
  *
  * - gui
@@ -632,6 +637,7 @@ export async function unloadtheme(themename: string) {
  *
  * Example: `:colourscheme mysupertheme`
  * On linux, this will load ~/.config/tridactyl/themes/mysupertheme.css
+ * See our [guide to creating custom themes](https://tridactyl.xyz/newsletters/tips-and-tricks/2-custom-themes/).
  *
  * __NB__: due to Tridactyl's architecture, the theme will take a small amount of time to apply as each page is loaded. If this annoys you, you may use [userContent.css](http://kb.mozillazine.org/index.php?title=UserContent.css&printable=yes) to make changes to Tridactyl earlier. For example, users using the dark theme may like to put
  *
@@ -642,7 +648,7 @@ export async function unloadtheme(themename: string) {
  * }
  * ```
  *
- * in their `userContent.css`. Follow [issue #2510](https://github.com/tridactyl/tridactyl/issues/2510) if you would like to find out when we have made a more user-friendly solution.
+ * in their `userContent.css`. Tridactyl's initial theme follows the system colour scheme - if you get flashes while the configured theme loads, try changing your system-wide theme to dark mode wherever you normally change your system settings.
  */
 //#background
 export async function colourscheme(...args: string[]) {
@@ -775,8 +781,9 @@ export async function nativeopen(...args: string[]) {
                 if ((await browser.windows.getCurrent()).incognito) {
                     throw new Error("nativeopen isn't supported in private mode on OSX. Consider installing Linux or Windows :).")
                 }
-                const osascriptArgs = ["-e 'on run argv'", "-e 'tell application \"Firefox\" to open location item 1 of argv'", "-e 'end run'"]
-                await Native.run("osascript " + osascriptArgs.join(" ") + " " + url)
+                const appName = /(?:^|\/)([^/]+)\.app\/Contents\/MacOS\//.exec((await Native.ff_cmdline().catch(() => [])).join(" "))?.[1] ?? "Firefox"
+                const osascriptArgs = ["on run argv", `tell application "${appName.replace(/["\\]/g, "\\$&")}" to open location item 1 of argv`, "end run"].map(script => `-e ${escape.sh(script)}`)
+                await Native.run(`osascript ${osascriptArgs.join(" ")} ${escape.sh(url)}`)
             } else {
                 const os = (await browser.runtime.getPlatformInfo()).os
                 if (firefoxArgs.length === 0) {
@@ -819,6 +826,18 @@ export async function nativeopen(...args: string[]) {
             throw e
         }
     }
+}
+
+/** Opens a supported Firefox internal page. */
+//#background
+export async function dialog(...nameArgs: string[]) {
+    let name = nameArgs.join(" ")
+    if (name === "preference") name = "preferences"
+    if (!Object.prototype.hasOwnProperty.call(ABOUT_PAGES, name))
+        throw new Error(`Unknown dialog: ${name}`)
+    if (!(await Native.nativegate("0", false)))
+        throw new Error("The native messenger is required to open Firefox dialogs")
+    return nativeopen(`about:${name}`)
 }
 
 /**
@@ -881,21 +900,23 @@ export async function native() {
  */
 //#background
 export async function nativeinstall() {
-    const tag = TRI_VERSION.includes("pre") ? "master" : TRI_VERSION
+    const tag = IS_BETA ? "master" : TRI_VERSION
     let done
     const installstr = (await config.get("nativeinstallcmd")).replace("%TAG", tag)
     await yank(installstr)
     if ((await browser.runtime.getPlatformInfo()).os === "win") {
-        done = fillcmdline("# Installation command copied to clipboard. Please paste and run it in cmd.exe (other shells won't work) to install the native messenger.")
+        done = fillcmdline("# Installation command copied to clipboard. Please paste and run it in cmd.exe (other shells won't work) to install the native messenger. If that fails, try opening cmd.exe as Administrator and running the command again.")
     } else {
         done = fillcmdline("# Installation command copied to clipboard. Please paste and run it in your shell to install the native messenger.")
     }
     return done
 }
 
-/** Writes current config to a file. By default, the config file is "~/.tridactylrc".
+/** Exports the current user config as an RC file. With no path, it targets the file selected by the automatic RC search, falling back to "~/.tridactylrc".
 
     NB: an RC file is not required for your settings to persist: all settings are stored in a local Firefox storage database by default as soon as you set them.
+
+    This is a one-time export: Tridactyl does not update the RC file when settings change. Use [[source]] to run one.
 
     With no arguments supplied the excmd will try to find an appropriate
     config path and write the rc file to there. Any argument given to the
@@ -918,7 +939,7 @@ export async function nativeinstall() {
 
     Available flags:
     - `-f` will overwrite the config file if it exists.
-    - `--clipboard` write config to clipboard - no [[native]] required
+    - `--clipboard` writes config to the clipboard - with the default `yankto` setting, no [[native]] is required
 
     @param args an optional string of arguments to be parsed.
     @returns the parsed config.
@@ -954,9 +975,9 @@ export async function mktridactylrc(...args: string[]) {
  *
  * This function accepts flags: `--url`, `--clipboard` or `--strings`.
  *
- * If no argument given, it will try to open ~/.tridactylrc, ~/.config/tridactyl/tridactylrc or $XDG_CONFIG_HOME/tridactyl/tridactylrc in reverse order. You may use a `_` in place of a leading `.` if you wish, e.g, if you use Windows.
+ * With no argument, it loads only the first file selected by the native messenger. The platform config directory (usually `$XDG_CONFIG_HOME/tridactyl/tridactylrc` or `~/.config/tridactyl/tridactylrc`) takes precedence over `~/.tridactylrc`. Windows also accepts `~/_config/tridactyl/tridactylrc` and `~/_tridactylrc`.
  *
- * Run `:findrc` to display the path selected by this automatic search.
+ * Local files require the [[native]] messenger. With the default configuration, this no-argument form runs once at browser startup. Run `:findrc` to display the path it would currently select or `:source` after editing it.
  *
  * On Windows, the `~` expands to `%USERPROFILE%`.
  *
@@ -964,11 +985,11 @@ export async function mktridactylrc(...args: string[]) {
  *
  * Tridactyl won't run on many raw pages due to a Firefox bug with Content Security Policy, so you may need to use the `source --url [URL]` form.
  *
- * The `--clipboard` flag will load the RC from the clipboard, which is useful for people cannot install the native messenger or do not wish to store their RC online. You can use this with `mktridactylrc --clipboard`.
+ * The `--clipboard` flag will load the RC from the clipboard, which is useful for people who cannot install the native messenger or do not wish to store their RC online. With the default `putfrom` setting, it does not require [[native]]. You can use this with `mktridactylrc --clipboard`.
  *
  * The `--strings` flag will load the RC from rest arguments. It could be useful if you want to execute a batch of commands in js context. Eg: `js tri.excmds.source("--strings", [cmd1, cmd2].join("\n"))`.
  *
- * The RC file is just a bunch of Tridactyl excmds (i.e, the stuff on this help page). Settings persist in local storage. There's an [example file](https://raw.githubusercontent.com/tridactyl/tridactyl/master/.tridactylrc) if you want it.
+ * The RC file uses command-mode syntax, with commands separated by newlines; a trailing `\` continues a command on the next line, while `\\` ends a command with a literal `\`. Lines whose first non-whitespace character is `"` or `#` are comments; inline comments are not supported. Settings persist in local storage, and the RC file is not kept in sync with later changes. Use `:viewconfig --user` to inspect the resulting settings. There's an [example file](https://raw.githubusercontent.com/tridactyl/tridactyl/master/.tridactylrc) if you want it.
  *
  * @param args the file/URL to open. For files: must be an absolute path, but can contain environment variables and things like ~.
  */
@@ -1018,7 +1039,7 @@ export async function updatenative(interactive = true) {
         return
     }
 
-    const tag = TRI_VERSION.includes("pre") ? "master" : TRI_VERSION
+    const tag = IS_BETA ? "master" : TRI_VERSION
     const update_command = (await config.get("nativeinstallcmd")).replace("%TAG", tag)
     const native_version = await Native.getNativeMessengerVersion()
 
@@ -1031,9 +1052,8 @@ export async function updatenative(interactive = true) {
         return
     } else {
         await Native.runAsync(update_command)
+        if (interactive) await fillcmdline("# Native messenger update started. Please wait a few seconds, then run `:native` to check whether it succeeded.")
     }
-
-    if (interactive) native()
 }
 
 /**
@@ -1602,7 +1622,7 @@ export function scrollpage(n = 1, count = 1) {
  */
 //#content
 export function find(...args: string[]) {
-    const argOpt = arg.lib(
+    const parsed = arg.lib(
         {
             "--jump-to": Number,
             "-:": "--jump-to",
@@ -1622,13 +1642,14 @@ export function find(...args: string[]) {
             splitUnknownArguments: false,
         },
     )
+    const argOpt = arg.withDefaults(parsed, { "--reverse": false, "--case-sensitive": false, "--case-insensitive": false })
     if (argOpt["--case-sensitive"] && argOpt["--case-insensitive"])
         throw new Error("find case flags cannot be combined")
     const option = {}
-    option["reverse"] = Boolean(argOpt["--reverse"])
+    option["reverse"] = argOpt["--reverse"]
     if ("--jump-to" in argOpt) option["jumpTo"] = argOpt["--jump-to"]
     if (argOpt["--case-sensitive"] || argOpt["--case-insensitive"])
-        option["caseSensitive"] = Boolean(argOpt["--case-sensitive"])
+        option["caseSensitive"] = argOpt["--case-sensitive"]
     const searchQuery = argOpt._.join(" ")
     return finding.jumpToMatch(searchQuery, option)
 }
@@ -1645,7 +1666,7 @@ export function find(...args: string[]) {
 //#content
 export function findnext(...args: string[]) {
     let n = 1
-    const option = arg.lib(
+    const parsed = arg.lib(
         {
             "--search-from-view": Boolean,
             "-f": "--search-from-view",
@@ -1658,9 +1679,10 @@ export function findnext(...args: string[]) {
             allowNegativePositional: true,
         },
     )
+    const option = arg.withDefaults(parsed, { "--search-from-view": false, "--reverse": false })
     if (option._.length > 0) n = Number(option._[0])
     if (option["--reverse"]) n = -n
-    return finding.jumpToNextMatch(n, Boolean(option["--search-from-view"]))
+    return finding.jumpToNextMatch(n, option["--search-from-view"])
 }
 
 //#content
@@ -2133,21 +2155,28 @@ export function mouse_mode() {
 }
 
 /** @hidden */
-// Find clickable next-page/previous-page links whose text matches the supplied pattern,
-// and return the last such link.
+// Find clickable next-page/previous-page links whose text matches the supplied patterns.
+// String patterns return the last match; array patterns are tried in order and respect direction.
 //
-// If no matching link is found, return undefined.
+// If no matching link is found, return null.
 //
-// We return the last link that matches because next/prev buttons tend to be at the end of the page
-// whereas lots of blogs have "VIEW MORE" etc. plastered all over their pages.
 //#content_helper
-function findRelLink(pattern: RegExp): HTMLAnchorElement | null {
+function findRelLink(patterns: string | string[], rel: "next" | "prev"): HTMLAnchorElement | null {
     // querySelectorAll returns a "non-live NodeList" which is just a shit array without working reverse() or find() calls, so convert it.
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
     const links = Array.from(document.querySelectorAll("a") as NodeListOf<HTMLAnchorElement>)
 
-    // Find the last link that matches the test
-    return links.reverse().find(link => pattern.test(link.innerText))
+    if (typeof patterns === "string") {
+        const pattern = new RegExp(patterns, "i")
+        return links.reverse().find(link => pattern.test(link.innerText)) || null
+    }
+
+    if (rel === "prev") links.reverse()
+    for (const pattern of patterns) {
+        const link = links.find(link => new RegExp(pattern, "i").test(link.innerText))
+        if (link) return link
+    }
+    return null
 
     // Note:
     // `innerText` gives better (i.e. less surprising) results than `textContent`
@@ -2168,14 +2197,14 @@ function selectLast(selector: string): HTMLElement | null {
 
     If a link or anchor element with rel=rel exists, use that, otherwise fall back to:
 
-        1) find the last anchor on the page with innerText matching the appropriate `followpagepattern`.
+        1) for string settings, find the last matching anchor; for arrays, try each pattern in order and choose the first matching anchor for "next", or the last for "prev".
         2) call [[urlincrement]] with 1 or -1
 
     If you want to support e.g. French:
 
     ```
-    set followpagepatterns.next ^(next|newer|prochain)\b|»|>>
-    set followpagepatterns.prev ^(prev(ious)?|older|précédent)\b|«|<<
+    set followpagepatterns.next ["^(next|newer|prochain)\\b","›|>","»","more"]
+    set followpagepatterns.prev ["^(prev(ious)?|older|précédent)\\b","‹|<","«"]
     ```
 
     @param rel   the relation of the target page to the current page: "next" or "prev"
@@ -2189,7 +2218,7 @@ export function followpage(rel: "next" | "prev" = "next") {
         return
     }
 
-    const anchor = (selectLast(`a[rel~=${rel}][href]`) || findRelLink(new RegExp(config.get("followpagepatterns", rel), "i"))) as HTMLAnchorElement
+    const anchor = (selectLast(`a[rel~=${rel}][href]`) || findRelLink(config.get("followpagepatterns", rel), rel)) as HTMLAnchorElement
 
     if (anchor) {
         DOM.mouseEvent(anchor, "click")
@@ -2849,17 +2878,18 @@ export async function tabprev(...args: string[]) {
             splitUnknownArguments: false,
         },
     )
-    const option = {}
-    option["nowrap"] = Boolean(argOpt["--nowrap"])
-    option["noisy"] = Boolean(argOpt["--noisy"])
-    option["reverse"] = Boolean(argOpt["--reverse"])
-    option["skip-discarded"] = Boolean(argOpt["--skip-discarded"])
-    const increment = (parseInt(argOpt._.join(" "), 10) || 1) * (option["reverse"] ? -1 : 1)
+    const option = arg.withDefaults(argOpt, {
+        "--nowrap": false,
+        "--noisy": false,
+        "--reverse": false,
+        "--skip-discarded": false,
+    })
+    const increment = (parseInt(argOpt._.join(" "), 10) || 1) * (option["--reverse"] ? -1 : 1)
     return browser.tabs.query({ currentWindow: true, hidden: false }).then(tabs => {
-        if (option["skip-discarded"]) tabs = tabs.filter(tab => !tab.discarded)
+        if (option["--skip-discarded"]) tabs = tabs.filter(tab => !tab.discarded)
         tabs.sort((t1, t2) => t1.index - t2.index)
         const curTab = tabs.findIndex(t => t.active)
-        const prevTab = !option["nowrap"] ? (curTab - increment + tabs.length) % tabs.length : Math.min(Math.max(curTab - increment, 0), tabs.length - 1)
+        const prevTab = !option["--nowrap"] ? (curTab - increment + tabs.length) % tabs.length : Math.min(Math.max(curTab - increment, 0), tabs.length - 1)
         // TODO: add fillcmdline_tmp with details here for --noisy (expect it to show on the wrong tab unless you await it correctly)
         return browser.tabs.update(tabs[prevTab].id, { active: true })
     })
@@ -3319,10 +3349,10 @@ export async function tabcloseallto(side: string) {
 }
 
 /**
- * Discard a tab without closing it to free up memory.
+ * Discard a tab without closing it to free up memory. Active tabs cannot be discarded.
  *
  * @param index
- *        The 1-based index of the tab to target. index < 1 wraps. If omitted, this tab. Magic argument `--all` will discard all tabs
+ *        The 1-based index of the tab to target. index < 1 wraps. An argument is required. `%` targets the active tab and will not be discarded. Magic argument `--all` discards all discardable tabs.
  */
 //#background
 export async function tabdiscard(index: string) {
@@ -3330,7 +3360,7 @@ export async function tabdiscard(index: string) {
     if (index === "--all") {
         return browser.tabs.query({}).then(ts => browser.tabs.discard(ts.map(t => t.id)))
     } else if (index === undefined) {
-        id = (await activeTab()).id
+        throw new Error("tabdiscard requires a tab index or --all")
     } else {
         id = await idFromIndex(index)
     }
@@ -3607,7 +3637,7 @@ export async function winopen(...args: string[]) {
         return nativeopen(firefoxArgs, address)
     }
 
-    createData.url = "https://fix-a-firefox-bug.invalid"
+    createData.url = "about:blank"
 
     return browser.windows.create(createData).then(win => openInTab(win.tabs[0], { loadReplace: true }, address.split(" ")))
 }
@@ -4038,7 +4068,7 @@ export async function tgroupabort() {
 
 //#background
 export function version() {
-    return fillcmdline_notrail(TRI_VERSION)
+    return fillcmdline_notrail(TRI_VERSION_NAME)
 }
 
 /**
@@ -4875,9 +4905,18 @@ function validateSetArgs(key: string, values: string[]) {
     const target: any[] = key.split(".")
 
     let value
+    const strval = values.join(" ")
     const md = defaultConfigMembers[target[0]]
-    if (md !== undefined) {
-        const strval = values.join(" ")
+    if (/^followpagepatterns\.(next|prev)$/.test(key)) {
+        try {
+            const parsed = JSON.parse(strval)
+            value = Array.isArray(parsed) ? parsed : strval
+        } catch {
+            value = strval
+        }
+        if (Array.isArray(value) && value.some(pattern => typeof pattern !== "string"))
+            throw new Error("Followpage patterns must be strings!")
+    } else if (md !== undefined) {
         const t = memberType(md)
         // Note: the conversion will throw if strval can't be converted to the right type
         if (typeKind(t) === "object" && target.length > 1) {
@@ -4890,9 +4929,10 @@ function validateSetArgs(key: string, values: string[]) {
         logger.warning("Could not fetch setting metadata. Falling back to type of current value.")
         const currentValue = config.get(...target)
         if (Array.isArray(currentValue)) {
-            // Do nothing
+            value = JSON.parse(strval)
+            if (!Array.isArray(value)) throw new Error("Value must be an array!")
         } else if (currentValue === undefined || typeof currentValue === "string") {
-            value = values.join(" ")
+            value = strval
         } else {
             throw new Error("Unsupported setting type!")
         }
@@ -5329,9 +5369,9 @@ export async function reseturl(pattern: string, mode: string, key: string) {
     https://developer.mozilla.org/en-US/Add-ons/WebExtensions/API/browsingData/DataTypeSet
 
     Additional Tridactyl-specific arguments are:
-    - `commandline`: Removes the in-memory commandline history.
-    - `tridactyllocal`: Removes all tridactyl storage local to this machine. Use it with
-        commandline if you want to delete your commandline history.
+    - `commandline`: Removes the in-memory and stored commandline history.
+    - `tridactylconfig`: Removes locally stored user configuration without removing other local Tridactyl data, such as commandline history.
+    - `tridactyllocal`: Removes all tridactyl storage local to this machine.
     - `tridactylsync`: Removes all tridactyl storage associated with your Firefox Account (i.e, all user configuration, by default).
     These arguments aren't affected by the timespan parameter.
 
@@ -5388,6 +5428,7 @@ export async function sanitise(...args: string[]) {
         serviceWorkers: false,
         // These are Tridactyl-specific
         commandline: false,
+        tridactylconfig: false,
         tridactyllocal: false,
         tridactylsync: false,
         /* When this one is activated, a lot of errors seem to pop up in
@@ -5413,6 +5454,9 @@ export async function sanitise(...args: string[]) {
     // Tridactyl-specific items
     if (dts.commandline === true) state.cmdHistory = []
     delete dts.commandline
+    if (dts.tridactylconfig === true && dts.tridactyllocal === false)
+        await config.clear("config")
+    delete dts.tridactylconfig
     if (dts.tridactyllocal === true) await config.clear()
     delete dts.tridactyllocal
     if (dts.tridactylsync === true) await browser.storage.sync.clear()
@@ -5425,6 +5469,8 @@ export async function sanitise(...args: string[]) {
 
     Afterwards use go[key], gn[key], gw[ley], or gp[key] to [[open]], [[tabopen]], [[winopen]],
     or [[winopen]] privately the URL respectively.
+
+    Remove a quickmark with [[quickmarkremove]].
 
     Example:
     - `quickmark m https://mail.google.com/mail/u/0/#inbox`
@@ -5459,6 +5505,17 @@ export async function quickmark(key: string, ...addressarr: string[]) {
         await sleep(50)
         await bind("gp" + key, "composite winopen -private", compstringwinp)
     }
+}
+
+/** Remove a quickmark from a single-character key, unbinding its `gn`, `go`, `gw`, and `gp` mappings.
+
+    Example: `quickmarkremove m`
+    See also [[quickmark]].
+*/
+//#background
+export async function quickmarkremove(key: string) {
+    if (key?.length !== 1) throw new Error("quickmarkremove syntax: `quickmarkremove key`")
+    for (const prefix of ["gn", "go", "gw", "gp"]) await unbind(prefix + key)
 }
 
 /** Puts the contents of config value with keys `keys` into the commandline and the background page console
@@ -5822,6 +5879,8 @@ export async function hint(...args: string[]): Promise<any> {
                       elem.focus()
                       switch (config.openMode) {
                           case OpenMode.Default:
+                              const href = typeof elem.href === "string" ? elem.href : elem.href.animVal
+                              if (href.startsWith("file:")) return open(href)
                               DOM.simulateClick(elem)
                               break
                           case OpenMode.Tab:
@@ -6069,16 +6128,17 @@ export async function ttsvoices() {
 }
 
 /**
- * Cancel current reading and clear pending queue
+ * Control the current reading
  *
  * Arguments:
- *   - stop:    cancel current and pending utterances
+ *   - play: resume the current utterance
+ *   - pause: pause the current utterance
+ *   - playpause: toggle between playing and paused
+ *   - stop: cancel current and pending utterances
  */
 //#content
-export async function ttscontrol(action: string) {
-    // only pause seems to be working, so only provide access to that
-    // to avoid exposing users to things that won't work
-    if (action !== "stop") {
+export async function ttscontrol(action: "stop" | "play" | "pause" | "playpause") {
+    if (!["stop", "play", "pause", "playpause"].includes(action)) {
         throw new Error("Unknown text-to-speech action: " + action)
     }
 
@@ -6452,7 +6512,7 @@ export async function issue() {
     template = `Firefox version: ${info.vendor} ${info.name} ${info.version}\n` + template
 
     template = template.replace("-   Tridactyl version (`:version`):\n\n", "")
-    template = `Tridactyl version: ${TRI_VERSION}\n` + template
+    template = `Tridactyl version: ${TRI_VERSION_NAME}\n` + template
 
     textarea.value = template
 }
@@ -6589,9 +6649,10 @@ export async function updatecheck(source: "manual" | "auto_polite" | "auto_impol
  */
 //#content
 export async function keyfeed(...args: string[]) {
-    const option = arg.lib({ "--page": Boolean, "--type": String }, { argv: args })
+    const parsed = arg.lib({ "--page": Boolean, "--type": String }, { argv: args })
+    const option = arg.withDefaults(parsed, { "--page": false, "--type": "keydown" })
     const usePage = option["--page"]
-    const eventType = option["--type"] || "keydown"
+    const eventType = option["--type"]
     const mapstr = option._.join(" ")
     const keyseq = mapstrToKeyseq(mapstr)
 

@@ -34,6 +34,13 @@
 " " get it in the browser, or just restart.
 " 
 " " If you're bovine3dom run sed 's|^" ||' .tridactylrc > ~/.config/tridactyl/tridactylrc
+"
+" "
+" " Cleanup (requires Tridactyl 1.25.0+)
+" "
+" santisise tridactylconfig
+" set configversion 2.0
+"
 " 
 " 
 " "
@@ -156,6 +163,9 @@
 
 " " Quickmark for PRs by humans
 " quickmark p https://github.com/tridactyl/tridactyl/pulls?q=is%3Apr+is%3Aopen+-label%3Adependencies+-author%3Abovine3dom+sort%3Aupdated-desc
+
+" " Quick issue navigation
+" bind --mode=normal ,i js tri.excmds.gobble("<CR>", 'js -d£ window.location.href = "https://github.com/tridactyl/tridactyl/issues/" + JS_ARGS[1]£')
 " 
 " " Inject Google Translate
 " " This (clearly) is remotely hosted code. Google will be sent the whole

@@ -164,6 +164,8 @@ function listen(elem: Window | HTMLElement | HTMLFrameElement) {
         keyseq.guarded(ContentController.acceptKey),
         true,
     )
+    elem.removeEventListener("keydown", keyseq.guarded(protectSlash), true)
+
     elem.addEventListener(
         "keydown",
         keyseq.guarded(ContentController.acceptKey),
@@ -174,6 +176,7 @@ function listen(elem: Window | HTMLElement | HTMLFrameElement) {
         keyseq.guarded(ContentController.acceptKey),
         true,
     )
+    elem.addEventListener("keydown", keyseq.guarded(protectSlash), true)
     scrolling.addScrollElemListeners(elem)
 }
 
@@ -181,6 +184,7 @@ listen(window)
 
 type FrameElement = HTMLIFrameElement | HTMLFrameElement
 type IframeRoot = Document | ShadowRoot
+let refreshStatusIndicator: (() => void) | undefined
 const observedIframeRoots = new WeakSet<IframeRoot>()
 const iframeObserver = new MutationObserver(mutations => {
     for (const mutation of mutations) {
@@ -201,7 +205,7 @@ function listenInIframe(frame: FrameElement) {
         doc.addEventListener("selectionchange", selectionChanged)
         observeIframeRoot(doc)
         dom.hijackPageAttachShadow(observeIframeRoot, doc.defaultView)
-        dom.setupFocusHandler(doc)
+        dom.setupFocusHandler(doc, () => refreshStatusIndicator?.())
     } catch (e) {
         logger.warning("Could not hijack iframe due to CSP:", e)
     }
@@ -398,7 +402,7 @@ const hijackDocumentDestroyingFunctions = () => {
 
 try {
     dom.hijackPageAttachShadow(observeIframeRoot)
-    dom.setupFocusHandler()
+    dom.setupFocusHandler(document, () => refreshStatusIndicator?.())
     dom.hijackPageListenerFunctions()
     hijackDocumentDestroyingFunctions()
 } catch (e) {
@@ -424,13 +428,19 @@ if (
 
 // Really bad status indicator
 let statusIndicator
+function mountStatusIndicator() {
+    if (statusIndicator.parentNode === document.documentElement) return
+    if (config.get("modeindicator") === "true")
+        document.documentElement.appendChild(statusIndicator)
+}
+
 function addStatusIndicator() {
     if (statusIndicator) {
         statusIndicator.classList.toggle(
             "TridactylInvisible",
             config.get("modeindicatormodes", contentState.mode) === "false",
         )
-        document.documentElement.appendChild(statusIndicator)
+        dom.afterPageLoad(mountStatusIndicator)
         return
     }
 
@@ -456,14 +466,14 @@ function addStatusIndicator() {
     statusIndicator.className =
         "cleanslate TridactylStatusIndicator " +
         privateMode +
-        " TridactylModenormal "
+        ` TridactylMode${contentState.mode || "normal"} `
     // Firefox excludes text displayed by a collapsed select from find.
     const statusIndicatorText = document.createElement("option")
     const statusIndicatorSelect = document.createElement("select")
     statusIndicatorSelect.disabled = true
     statusIndicatorSelect.appendChild(statusIndicatorText)
     statusIndicator.appendChild(statusIndicatorSelect)
-    if (config.get("modeindicatormodes", "normal") === "false") {
+    if (config.get("modeindicatormodes", contentState.mode) === "false") {
         statusIndicator.classList.add("TridactylInvisible")
     }
 
@@ -514,21 +524,10 @@ function addStatusIndicator() {
     })
 
     statusIndicatorText.textContent = contentState.mode || "normal"
-    statusIndicator.classList.add(
-        "TridactylMode" + statusIndicator.textContent,
-    )
-    try {
-        // On quick loading pages, the document is already loaded
-        document.documentElement.appendChild(statusIndicator)
-        document.head.appendChild(style)
-    } catch (e) {
-        // But on slower pages we wait for the document to load
-        window.addEventListener("DOMContentLoaded", () => {
-            if (config.get("modeindicator") === "true")
-                addStatusIndicator()
-            document.head.appendChild(style)
-        })
-    }
+    dom.afterPageLoad(() => {
+        document.head?.appendChild(style)
+        mountStatusIndicator()
+    })
 
     let tabGroup: string | null = null
     let tabGroupText = ""
@@ -618,8 +617,7 @@ function addStatusIndicator() {
     config.addChangeListener("modeindicatorshowlastex", () =>
         void refreshStatusIndicator(),
     )
-    if (config.get("modeindicatorshowlastex") === "true")
-        void refreshStatusIndicator()
+    void refreshStatusIndicator()
 }
 
 config.getAsync("modeindicator").then(mode => {
@@ -634,10 +632,6 @@ let leaveGithubAlone = false // don't wait for the config before adding the list
 config.getAsync("leavegithubalone").then(v => {
     leaveGithubAlone = v === "true"
 });
-// attach to window instead of document as it's available earlier
-// capture: true prevents bubbling before we have had a chance to cancel it
-window.addEventListener("keydown", protectSlash, {capture: true})
-
 function protectSlash(e) {
     if (!e.isTrusted || leaveGithubAlone ) return
     const protectedKeys = (config.get("blacklistkeys") || []).concat(

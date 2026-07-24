@@ -39,7 +39,9 @@ export function getCommandlineFns(cmdline_state: {
         /**
          * Selects the next completion.
          */
-        next_completion: async () => {
+        next_completion: async (_increment = "1") => {
+            // TODO: restore "count" functionality
+            // const count = Number(increment)
             await awaitProxyEq(
                 contentState,
                 "current_cmdline",
@@ -95,7 +97,8 @@ export function getCommandlineFns(cmdline_state: {
         /**
          * Selects the previous completion.
          */
-        prev_completion: async () => {
+        prev_completion: async (_increment = "1") => {
+            // const count = Number(increment)
             await awaitProxyEq(
                 contentState,
                 "current_cmdline",

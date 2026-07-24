@@ -112,8 +112,8 @@ export class default_config {
     subconfigs: { [key: string]: DeepPartial<default_config> } = {
         "www.google.com": {
             followpagepatterns: {
-                next: "Next",
-                prev: "Previous",
+                next: ["Next"],
+                prev: ["Previous"],
             },
             nmaps: {
                 gi: "composite focusinput -l ; text.end_of_line", // Fix #4706
@@ -170,6 +170,8 @@ export class default_config {
         "<C-[>": "ex.hide_and_clear",
         "<ArrowUp>": "ex.prev_history_or_completion",
         "<ArrowDown>": "ex.next_history_or_completion",
+        "<PageUp>": "ex.prev_completion 15",
+        "<PageDown>": "ex.next_completion 15",
         "<S-Delete>": "ex.execute_ex_on_completion_args tabclose",
 
         "<A-b>": "text.backward_word",
@@ -724,7 +726,9 @@ export class default_config {
         audelete: "autocmddelete",
         blacklistremove: "autocmddelete DocStart",
         b: "tab",
+        d: "dialog",
         clsh: "clearsearchhighlight",
+        downloads: "tabopen about:downloads",
         nohlsearch: "clearsearchhighlight",
         noh: "clearsearchhighlight",
         o: "open",
@@ -809,13 +813,26 @@ export class default_config {
     abbreviations: { [abbreviation: string]: string } = {}
 
     /**
-     * Used by `]]` and `[[` to look for links containing these words.
+     * Used by `]]` and `[[` to look for links containing these patterns.
+     * Arrays are tried in order; strings retain the legacy single-regex behaviour.
      *
      * Edit these if you want to add, e.g. other language support.
      */
-    followpagepatterns = {
-        next: "^(next|newer|neuer(e[mnrs]?)?|nächst(e[mnrs]?)?|weiter(e[mnrs]?)?|suivante?s?|prochaine?s?|successiv[oaie]|seguent[ei]|avanti|siguientes?|próxim[oa]s?)\\b|»|>>|more",
-        prev: "^(prev(ious)?|older|vorherig(e[mnrs]?)?|älter(e[mnrs]?)?|zurück|précédente?s?|precedent[ei]|indietro|anterior(es)?|atrás)\\b|«|<<",
+    followpagepatterns: {
+        next: string | string[]
+        prev: string | string[]
+    } = {
+        next: [
+            "^(next|newer|neuer(e[mnrs]?)?|nächst(e[mnrs]?)?|weiter(e[mnrs]?)?|suivante?s?|prochaine?s?|successiv[oaie]|seguent[ei]|avanti|siguientes?|próxim[oa]s?)\\b",
+            "›|>",
+            "»",
+            "more",
+        ],
+        prev: [
+            "^(prev(ious)?|older|vorherig(e[mnrs]?)?|älter(e[mnrs]?)?|zurück|précédente?s?|precedent[ei]|indietro|anterior(es)?|atrás)\\b",
+            "‹|<",
+            "«",
+        ],
     }
 
     /**
@@ -1105,7 +1122,7 @@ export class default_config {
      *
      * Example values:
      * - linux: `xterm -e vim`
-     * - windows: `start cmd.exe /c \"vim\"`.
+     * - windows: `start /wait cmd.exe /c \"vim\"`.
      *
      * Also see [:editor](/static/docs/modules/_src_excmds_.html#editor).
      */
@@ -1334,11 +1351,19 @@ export class default_config {
              */
             autoselect: "true",
             /**
+             * Initially position and navigate from the active tab for physical
+             * ordering, or first tab for MRU. "active" and "top" force either.
+             */
+            initialposition: "auto" as "auto" | "active" | "top",
+            /**
              * Whether to use unicode symbols to display tab statuses
              */
             statusstylepretty: "false",
         },
         TabAll: {
+            autoselect: "true",
+        },
+        TabGroup: {
             autoselect: "true",
         },
         Rss: {
@@ -1430,6 +1455,9 @@ export class default_config {
 
     /** Show the Ex command that `:repeat` would execute. */
     modeindicatorshowlastex: "true" | "false" = "false"
+
+    /** Names of Ex commands that do not replace the command executed by `:repeat`. */
+    repeatblacklist: string[] = []
 
     /**
      * Whether a trailing slash is appended when we get the parent of a url with
@@ -2347,6 +2375,10 @@ function setDeepProperty(obj, value, target) {
  * Merges two objects and any child objects they may have
  */
 export function mergeDeep(o1, o2) {
+    if (o2 === undefined && (o1 === null || typeof o1 !== "object")) return o1
+    if (Array.isArray(o1) && o2 === null) return []
+    if (Array.isArray(o2)) return o2.slice()
+    if (o2 !== null && o2 !== undefined && typeof o2 !== "object") return o2
     if (o1 === null) return o(o2)
     const r = Array.isArray(o1) ? o1.slice() : o({})
     Object.assign(r, o1, o2)
@@ -2569,16 +2601,20 @@ export async function unset(...target) {
     return save()
 }
 
-export async function clear() {
+export async function clear(scope: "local" | "config" = "local") {
     if (!IN_BACKGROUND) {
         USERCONFIG = o({})
-        return mutateInBackground("clear", [])
+        return mutateInBackground("clear", [scope])
     }
     if (EXCLUSIVE_PENDING) await EXCLUSIVE_QUEUE
     if (!INITIALISED) await getAsync()
     const old = USERCONFIG
     USERCONFIG = o({})
-    await store(() => browser.storage.local.clear())
+    await store(() =>
+        scope === "config"
+            ? browser.storage.local.remove([CONFIGNAME, CONFIG_WRITE])
+            : browser.storage.local.clear(),
+    )
     notifyChangeListeners(old, USERCONFIG)
 }
 
@@ -2965,16 +3001,17 @@ export function parseConfig(): string {
 
 const parseConfigHelper = (pconf, parseobj, prefix = []) => {
     for (const i of Object.keys(pconf)) {
-        if (typeof pconf[i] !== "object") {
+        if (typeof pconf[i] !== "object" || Array.isArray(pconf[i])) {
+            const value = Array.isArray(pconf[i]) ? JSON.stringify(pconf[i]) : pconf[i]
             if (prefix[0] === "subconfigs") {
                 const pattern = prefix[1]
                 const subconf = [...prefix.slice(2), i].join(".")
                 parseobj.subconfigs.push(
-                    `seturl ${pattern} ${subconf} ${pconf[i]}`,
+                    `seturl ${pattern} ${subconf} ${value}`,
                 )
             } else {
                 parseobj.conf.push(
-                    `set ${[...prefix, i].join(".")} ${pconf[i]}`,
+                    `set ${[...prefix, i].join(".")} ${value}`,
                 )
             }
         } else if (pconf[i] === null) {

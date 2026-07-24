@@ -16,6 +16,14 @@ import {
     shouldExitInsertMode,
 } from "@src/content/controller_content"
 
+export function afterPageLoad(action: () => void) {
+    const run = () =>
+        window.requestIdleCallback?.(action, { timeout: 1000 }) ??
+        setTimeout(action)
+    if (document.readyState === "complete") run()
+    else window.addEventListener("load", run, { once: true })
+}
+
 // From saka-key lib/dom.js, under Apachev2
 
 /**
@@ -898,9 +906,10 @@ function hijackPageFocusFunction(win = window): void {
 }
 
 const focusListenerDocs = new WeakSet()
-export function setupFocusHandler(doc = document): void {
+export function setupFocusHandler(doc = document, onFocus?: () => void): void {
     const win = doc?.defaultView
     if (!win || focusListenerDocs.has(doc)) return
+    let focusoutTimer = 0
 
     const blurOnce = e => {
         if (shouldExitInsertMode(contentState.mode, false)) {
@@ -911,6 +920,7 @@ export function setupFocusHandler(doc = document): void {
 
     // Handles when a user selects an input
     const setFocus = elem => {
+        win.clearTimeout(focusoutTimer)
         if (isTextEditable(elem)) {
             LAST_USED_INPUT = elem
             setInput(elem)
@@ -921,6 +931,7 @@ export function setupFocusHandler(doc = document): void {
         } else if (shouldExitInsertMode(contentState.mode, false)) {
             contentState.mode = "normal"
         }
+        onFocus?.()
     }
     const knownRoot = new WeakSet()
     const listen = root => {
@@ -953,6 +964,11 @@ export function setupFocusHandler(doc = document): void {
     }
 
     listen(doc)
+    // Wait for any replacement focus to settle before reading activeElement.
+    if (onFocus)
+        doc.addEventListener("focusout", () => {
+            focusoutTimer = win.setTimeout(onFocus)
+        })
     focusListenerDocs.add(doc)
 
     // Run handler immediately if the newly found frame has focus
