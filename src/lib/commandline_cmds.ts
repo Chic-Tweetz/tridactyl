@@ -1,6 +1,7 @@
 import { messageOwnTab } from "@src/lib/messaging"
 import * as State from "@src/state"
 import { contentState } from "@src/content/state_content"
+import * as config from "@src/lib/config"
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -85,6 +86,12 @@ export function getCommandlineFns(cmdline_state: {
             visibleCompletions[nextcomp]?.next()
         },
 
+        /** Selects the next completion, or history line if none is selected. */
+        next_history_or_completion: () =>
+            cmdline_state.getActiveCompletionSource()
+                ? cmdline_state.fns.next_completion()
+                : cmdline_state.fns.next_history(),
+
         /**
          * Selects the previous completion.
          */
@@ -133,6 +140,12 @@ export function getCommandlineFns(cmdline_state: {
             visibleCompletions[nextcomp]?.prev()
         },
 
+        /** Selects the previous completion, or history line if none is selected. */
+        prev_history_or_completion: () =>
+            cmdline_state.getActiveCompletionSource()
+                ? cmdline_state.fns.prev_completion()
+                : cmdline_state.fns.prev_history(),
+
         /**
          * Deselects the currently selected completion.
          */
@@ -168,6 +181,19 @@ export function getCommandlineFns(cmdline_state: {
             return result
         },
 
+        /** Inserts the selected completion, or its argument/keybinding character. */
+        insert_character_or_completion: (character?: string) => {
+            if (cmdline_state.getActiveCompletionSource()?.completion)
+                return cmdline_state.fns.insert_space_or_completion()
+            if (character !== undefined) {
+                expandAbbreviation(cmdline_state.clInput)
+                insertCharacter(cmdline_state, character)
+            }
+            return cmdline_state.refresh_completions(
+                cmdline_state.clInput.value,
+            )
+        },
+
         /**
          * If a completion is selected, inserts it in the command line with a space.
          * If no completion is selected, inserts a space where the caret is.
@@ -185,7 +211,7 @@ export function getCommandlineFns(cmdline_state: {
                 cmdline_state.clInput.value =
                     completion + (!ignoreSpace && completionSource?.trailingSpace ? " " : "")
             } else if (!ignoreSpace) {
-                space(cmdline_state)
+                insertCharacter(cmdline_state)
             }
             return cmdline_state.refresh_completions(
                 cmdline_state.clInput.value,
@@ -196,7 +222,7 @@ export function getCommandlineFns(cmdline_state: {
          * Insert a space
          */
         insert_space: () => {
-            space(cmdline_state)
+            insertCharacter(cmdline_state)
         },
 
         /** Hide the command line and cmdline_state.clear its content without executing it. **/
@@ -238,6 +264,7 @@ export function getCommandlineFns(cmdline_state: {
 
             // Save non-secret commandlines to the history.
             if (
+                !command.startsWith(" ") &&
                 !browser.extension.inIncognitoContext &&
                 !(func === "winopen" && args[0] === "-private")
             ) {
@@ -300,6 +327,9 @@ export function getCommandlineFns(cmdline_state: {
         execute_ex_on_completion: (excmd: string) =>
             execute_ex_on_x(false, cmdline_state, excmd),
 
+        execute_ex_on_all_completions: (excmd: string) =>
+            execute_ex_on_all(cmdline_state, excmd),
+
         copy_completion: () => {
             const command = cmdline_state.getCompletion()
             cmdline_state.fns.hide_and_clear()
@@ -329,29 +359,54 @@ export function getCommandlineFns(cmdline_state: {
     }
 }
 
-
-function execute_ex_on_x(args_only: boolean, cmdline_state, excmd: string) {
+function execute_ex_on_x(
+    args_only: boolean,
+    cmdline_state,
+    excmd: string,
+    args?: string,
+) {
     const maybeCompletion = cmdline_state.getCompletion(args_only)
-    const args = maybeCompletion || cmdline_state.clInput.value
-
-    // Might want a callback here?
+    args ??=
+        maybeCompletion || cmdline_state.clInput.value
     if (maybeCompletion) {
         cmdline_state.custom_callback("execute_ex_on_x", { excmd, args })
     }
-
     const cmdToExec = (excmd ? excmd + " " : "") + args
     cmdline_state.fns.store_ex_string(cmdToExec)
 
     return messageOwnTab("controller_content", "acceptExCmd", [cmdToExec])
 }
 
-function space(cmdline_state) {
+async function execute_ex_on_all(cmdline_state, excmd: string) {
+    await cmdline_state.refresh_completions(cmdline_state.clInput.value)
+    return Promise.all(
+        cmdline_state
+            .getCompletions()
+            .map(command =>
+                execute_ex_on_x(false, cmdline_state, excmd, command),
+            ),
+    )
+}
+
+/** @hidden */
+export function expandAbbreviation(input) {
+    const selectionStart = input.selectionStart
+    const selectionEnd = input.selectionEnd
+    const abbreviation = input.value.substring(0, selectionStart).match(/\S+$/)?.[0]
+    if (!abbreviation) return
+    const expansion = config.get("abbreviations", abbreviation)
+    if (typeof expansion !== "string") return
+    input.setRangeText(expansion, selectionStart - abbreviation.length, selectionStart, "end")
+    input.selectionEnd = selectionEnd + expansion.length - abbreviation.length
+}
+
+function insertCharacter(cmdline_state, character = " ") {
     const selectionStart = cmdline_state.clInput.selectionStart
     const selectionEnd = cmdline_state.clInput.selectionEnd
     cmdline_state.clInput.value =
         cmdline_state.clInput.value.substring(0, selectionStart) +
-        " " +
+        character +
         cmdline_state.clInput.value.substring(selectionEnd)
     cmdline_state.clInput.selectionStart = cmdline_state.clInput.selectionEnd =
-        selectionStart + 1
+        selectionStart + character.length
 }

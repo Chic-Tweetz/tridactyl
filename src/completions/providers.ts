@@ -222,8 +222,12 @@ export async function getCombinedHistoryBmarks(
 ): Promise<Array<{ title: string; url: string }>> {
     const [history, bookmarks, searchUrls] = await Promise.all([
         getHistory(query),
-        getBookmarks(query),
-        getSearchUrls(query),
+        config.get("bmarkopen") === "true"
+            ? getBookmarks(query)
+            : Promise.resolve<Bookmark[]>([]),
+        config.get("searchurlopen") === "true"
+            ? getSearchUrls(query)
+            : Promise.resolve([]),
     ])
 
     // Join records by URL, using the title from bookmarks by preference.

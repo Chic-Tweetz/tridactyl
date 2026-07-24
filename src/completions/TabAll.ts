@@ -10,6 +10,7 @@ class TabAllCompletionOption
     extends Completions.CompletionOptionHTML
     implements Completions.CompletionOptionFuse {
     public fuseKeys = []
+    public tabId: number
     constructor(
         public value: string,
         tab: browser.tabs.Tab,
@@ -21,6 +22,7 @@ class TabAllCompletionOption
         tgroupname: string,
     ) {
         super()
+        this.tabId = tab.id
         const valueStr = `${winindex}.${tab.index + 1}`
         this.value = valueStr
         this.fuseKeys.push(this.value, tab.title, tab.url)
@@ -76,7 +78,7 @@ class TabAllCompletionOption
             <td class="icon"><img src="${favIconUrl}" /></td>
             <td class="title">${valueStr}: ${tab.title}</td>
             <td class="content">
-                <a class="url" target="_blank" href=${tab.url}>${tab.url}</a>
+                <a class="url" target="_blank" href=${tab.url}>${Completions.decodeUrlForDisplay(tab.url)}</a>
             </td>
             <td class="tgroup">${tgroupname}</td>
         </tr>`
@@ -129,28 +131,26 @@ export class TabAllCompletionSource extends Completions.CompletionSourceFuse {
      * the appropriate option.
      */
     private async reactToTabChanges(): Promise<void> {
-        // const prevOptions = this.options
+        if (this.state === "hidden") return
+        const lastFocused = this.lastFocused as TabAllCompletionOption
+        const lastFocusedTabId =
+            lastFocused?.state === "focused" ? lastFocused.tabId : undefined
+        const oldIndex = (this.options || [])
+            .filter(o => o.state !== "hidden")
+            .indexOf(lastFocused)
         await this.updateOptions(this.lastExstr)
-
-        // TODO: update this from Tab.ts for TabAll.ts
-        // if (!prevOptions || !this.options || !this.lastFocused) return
-
-        // // Determine which option to focus on
-        // const diff = R.differenceWith(
-        //     (x, y) => x.tab.id === y.tab.id,
-        //     prevOptions,
-        //     this.options,
-        // )
-        // const lastFocusedTabCompletion = this
-        //     .lastFocused as TabAllCompletionOption
-
-        // // If the focused option was removed then focus on the next option
-        // if (
-        //    diff.length === 1 &&
-        //    diff[0].tab.id === lastFocusedTabCompletion.tab.id
-        // ) {
-        //    //this.select(this.getTheNextTabOption(lastFocusedTabCompletion))
-        // }
+        if (lastFocusedTabId !== undefined) {
+            const visibleOptions = this.options.filter(o => o.state !== "hidden")
+            const option =
+                visibleOptions.find(o => o.tabId === lastFocusedTabId) ||
+                visibleOptions[Math.min(oldIndex, visibleOptions.length - 1)]
+            if (option) {
+                this.deselect()
+                this.select(option)
+            }
+        }
+        if (!this.node.isConnected) return
+        await Messaging.messageOwnTab("commandline_content", "show")
     }
 
     /**
@@ -200,7 +200,7 @@ export class TabAllCompletionSource extends Completions.CompletionSourceFuse {
 
         // Check to see if this is a command that needs to exclude the current
         // window
-        const excludeCurrentWindow = ["tabgrab"].includes(prefix.trim())
+        const excludeCurrentWindow = this.canonicalisePrefix(prefix) === "tabgrab"
         const currentWindow = await browserBg.windows.getCurrent()
         // Window Ids don't make sense so we're using LASTID and WININDEX to compute a window index
         // This relies on the fact that tabs are sorted by window ids

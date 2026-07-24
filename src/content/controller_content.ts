@@ -9,6 +9,8 @@ import {
     MinimalKey,
     PrintableKey,
     // formatKeysForModeIndicator,
+    isTrustedKeyboardEvent,
+    TrustedKeyboardEvent,
 } from "@src/lib/keyseq"
 
 import * as hinting from "@src/content/hinting"
@@ -21,27 +23,10 @@ import { mode2maps } from "@src/lib/binding"
 
 const logger = new Logger("controller")
 
-function _isKeyboardEvent(ke: any): ke is KeyboardEvent {
-    const win = ke.view
-    return win && ke instanceof win.KeyboardEvent
-}
-
 function _mapstrsForMode(mode: string) {
     const maps = config.getDynamic(mode2maps.get(mode) || mode + "maps")
     return Object.keys(maps || {})
 }
-
-// let commandlineFrameReadyToReceiveMessages = false
-// config.getAsync("noiframe").then(noiframe => {
-//     if(noiframe === "true") {
-//         commandlineFrameReadyToReceiveMessages = true
-//     } else {
-//         Messaging.addListener("commandline_frame_ready_to_receive_messages", () => {
-//             logger.debug("Received commandline_frame_ready_to_receive_messages")
-//             commandlineFrameReadyToReceiveMessages = true
-//         })
-//     }
-// })
 
 let mustBufferPageKeysForClInput = false
 let bufferedPageKeys: string[] = []
@@ -190,14 +175,25 @@ function* ParserController() {
         try {
             while (true) {
                 generatorIsWaiting = true
-                const keyevent: KeyEventLike = keysToFeed.length ? keysToFeed.shift() : yield
+                const keyevent: KeyEventLike = keysToFeed.length
+                    ? keysToFeed.shift()
+                    : yield
                 generatorIsWaiting = false
+
+                if (
+                    !(keyevent instanceof MinimalKey) &&
+                    !isTrustedKeyboardEvent(keyevent)
+                ) {
+                    logger.warning("Skipped spoofed key event", keyevent)
+                    continue
+                }
 
                 let textEditable = false
 
                 if (preParseUpdateStateAndShouldSkip(keyevent)) continue
 
-                if (keyevent instanceof KeyboardEvent) {
+                if (!(keyevent instanceof MinimalKey)) {
+
                     const deepTarget = activeElement(keyevent.target as HTMLElement) || keyevent.target as HTMLElement
                     textEditable = isTextEditable(deepTarget)
                     keyEvents.push(minimalKeyFromKeyboardEvent(keyevent))
@@ -266,15 +262,15 @@ function* ParserController() {
     }
 }
 
+export const generator = ParserController() // var rather than let stops weirdness in repl.
+generator.next()
+
 export function startBufferingPageKeys() {
     logger.debug("Starting buffering of page keys")
     bufferingPageKeysBeginTime = performance.now()
     mustBufferPageKeysForClInput = true
     bufferedPageKeys = []
 }
-
-export const generator = ParserController() // var rather than let stops weirdness in repl.
-generator.next()
 
 export function keyMuncher(...keys: KeyEventLike[]) {
     if (keys.length === 0) return
@@ -287,9 +283,18 @@ export function keyMuncher(...keys: KeyEventLike[]) {
 }
 
 /** Feed keys to the ParserController, unless they should be buffered to be later fed to clInput */
-export function acceptKey(keyevent: KeyboardEvent) {
-    function tryBufferingPageKeyForClInput(keyevent: KeyboardEvent) {
+export function acceptKey(keyevent: TrustedKeyboardEvent) {
+    function tryBufferingPageKeyForClInput(keyevent: TrustedKeyboardEvent) {
         if (!mustBufferPageKeysForClInput) return false
+        const key = minimalKeyFromKeyboardEvent(keyevent)
+        if (
+            keyevent.type === "keydown" &&
+            (keyevent.key === "Escape" || key.toMapstr() === "<C-[>")
+        ) {
+            mustBufferPageKeysForClInput = false
+            bufferedPageKeys = []
+            return false
+        }
         const bufferingDuration = performance.now() - bufferingPageKeysBeginTime
         logger.debug(
             "controller_content mustBufferPageKeysForClInput = " +
@@ -377,10 +382,10 @@ Messaging.addListener("tab_changes", msg => {
 })
 
 export function acceptTrustedKey(
-    keyevent: KeyboardEvent,
-    accept: (keyevent: KeyboardEvent) => unknown = acceptKey,
+    keyevent: Event,
+    accept: (keyevent: TrustedKeyboardEvent) => unknown = acceptKey,
 ) {
-    if (!keyevent.isTrusted) return
+    if (!isTrustedKeyboardEvent(keyevent)) return
     return accept(keyevent)
 }
 

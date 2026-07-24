@@ -1,5 +1,17 @@
 /** URL handling utlity functions
+ *
+ * @packageDocumentation
  */
+
+export function decodeUrlForDisplay(url: string): string {
+    return url.replace(/(?:%[89a-f][0-9a-f])+/gi, encoded => {
+        try {
+            const decoded = decodeURIComponent(encoded)
+            if (!/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(decoded)) return decoded
+        } catch {}
+        return encoded
+    })
+}
 
 /** Increment the last number in a URL.
  *
@@ -11,17 +23,25 @@
  * @return          the incremented URL, or null if cannot be incremented
  */
 export function incrementUrl(url, count) {
-    const url_en=decodeURI(url)
-    const regex = /(.*?)(\d+)(\D*)$/
+    // Decode escaped bytes for the search while retaining the original spelling.
+    const urlParts = url.match(/%[0-9a-f]{2}|[\s\S]/gi) || []
+    const searchableUrl = urlParts
+        .map(part =>
+            part.length === 3
+                ? String.fromCharCode(parseInt(part.slice(1), 16))
+                : part,
+        )
+        .join("")
     // Find the final number in a URL
-    const matches = regex.exec(url_en)
+    const matches = searchableUrl.match(/(.*?)(\d+)(\D*)$/)
 
     // no number in URL - nothing to do here
     if (matches === null) {
         return null
     }
 
-    const [, pre, number, post] = matches
+    const [, pre, number] = matches
+    const numberIndex = matches.index + pre.length
     const newNumber = parseInt(number, 10) + count
     let newNumberStr = String(newNumber > 0 ? newNumber : 0)
 
@@ -33,7 +53,11 @@ export function incrementUrl(url, count) {
         }
     }
 
-    return encodeURI(pre + newNumberStr + post)
+    return (
+        urlParts.slice(0, numberIndex).join("") +
+        newNumberStr +
+        urlParts.slice(numberIndex + number.length).join("")
+    )
 }
 
 /** Get the root of a URL
@@ -174,7 +198,7 @@ function getExtensionForMimetype(mime: string): string {
  *  - otherwise, use the hostname of the URL
  *  - if that fails, "download"
  *
- * @param URL   the URL to make a filename for
+ * @param url   the URL to make a filename for
  * @return      the filename according to the above rules
  */
 export function getDownloadFilenameForUrl(url: URL): string {
@@ -258,7 +282,7 @@ function setUrlQueries(url: URL, qys: string[]) {
  * all instances are removed
  *
  * @param url           the URL to act on
- * @param query         the query to delete
+ * @param matchQuery    the query to delete
  *
  * @return              the modified URL
  */
@@ -382,6 +406,33 @@ export function graftUrlPath(url: URL, newTail: string, level: number) {
     return newUrl
 }
 
+/** Convert a URL matching a configured search URL back to command arguments. */
+export function searchUrlToArgs(
+    url: string,
+    searchurls: Record<string, string>,
+): string {
+    let result = url
+
+    for (const engine of Object.keys(searchurls)) {
+        const [beginning, end] = [...searchurls[engine].split("%s"), ""]
+        if (url.startsWith(beginning) && url.endsWith(end)) {
+            let encodedArgs = url.substring(beginning.length)
+            encodedArgs = encodedArgs.substring(0, encodedArgs.length - end.length)
+            // Ignore parameters appended by the engine; query ampersands are encoded.
+            const amperpos = encodedArgs.search("&")
+            if (amperpos > 0) encodedArgs = encodedArgs.substring(0, amperpos)
+
+            // Undo engine-specific query separators.
+            if (beginning.search("duckduckgo") > 0) encodedArgs = encodedArgs.replace(/\+/g, " ")
+            else if (beginning.search("wikipedia") > 0) encodedArgs = encodedArgs.replace(/_/g, " ")
+
+            const args = engine + " " + decodeURIComponent(encodedArgs)
+            if (args.length < result.length) result = args
+        }
+    }
+    return result
+}
+
 /**
  * Interpolates a query or other search item into a URL
  *
@@ -416,7 +467,7 @@ export function interpolateSearchItem(urlPattern: URL, query: string): URL {
     if (hasInterpolationPoint) {
         const resultingURL = new URL(
             urlPattern.href
-                .replace(/%s\d+/g, function (x) {
+                .replace(/%s[1-9]\d*/g, function (x) {
                     const index = parseInt(x.slice(2), 10) - 1
                     if (index >= queryWords.length) {
                         return ""

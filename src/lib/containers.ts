@@ -40,11 +40,13 @@ export const DefaultContainer = Object.freeze(
     @param name  The container name.
     @param color  The container color, must be one of: "blue", "turquoise", "green", "yellow", "orange", "red", "pink" or "purple". If nothing is supplied, it selects one at random.
     @param icon  The container icon, must be one of: "fingerprint", "briefcase", "dollar", "cart", "circle", "gift", "vacation", "food", "fruit", "pet", "tree", "chill"
+    @param orUpdate  Update an existing case-insensitive match instead of failing.
  */
 export async function create(
     name: string,
     color = "random",
     icon = "fingerprint",
+    orUpdate = false,
 ): Promise<string> {
     if (color === "random") color = chooseRandomColor()
     const container = fromString(name, color, icon)
@@ -53,6 +55,11 @@ export async function create(
     logger.debug(container)
 
     if (await exists(name)) {
+        if (orUpdate) {
+            const id = await getId(name)
+            await update(id, container)
+            return id
+        }
         logger.debug(`[Container.create] container already exists ${container}`)
         throw new Error(
             `[Container.create] container already exists, aborting.`,
@@ -100,9 +107,7 @@ export async function remove(name: string) {
     TODO: pass an object to this when tridactyl gets proper flag parsing
     NOTE: while browser.contextualIdentities.create does check for valid color/icon combos, browser.contextualIdentities.update does not.
     @param containerId Expects a cookieStringId e.g. "firefox-container-n".
-    @param name the new name of the container
-    @param color the new color of the container
-    @param icon the new icon of the container
+    @param updateObj the new name, color, and icon of the container
  */
 export function update(
     containerId: string,
@@ -121,7 +126,11 @@ export function update(
         logger.debug(updateObj)
         throw new Error("[Container.update] invalid container icon: " + icon)
     }
-    browser.contextualIdentities.update(containerId, { name, color, icon })
+    return browser.contextualIdentities.update(containerId, {
+        name,
+        color,
+        icon,
+    })
 }
 
 /** Gets a container object from a supplied container id string. If no container corresponds to containerId, returns a default empty container.
@@ -139,7 +148,7 @@ export async function getFromId(
 
 /** Fetches all containers from Firefox's contextual identities API and checks if one exists with the specified name.
     Note: This operation is entirely case-insensitive.
-    @param string cname
+    @param cname
     @returns boolean Returns true when cname matches an existing container or on query error.
  */
 export async function exists(cname: string): Promise<boolean> {

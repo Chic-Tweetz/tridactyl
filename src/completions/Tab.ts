@@ -14,7 +14,7 @@ class BufferCompletionOption
 
     constructor(
         public value: string,
-        tab: browser.tabs.Tab,
+        public tab: browser.tabs.Tab,
         public isAlternative = false,
         container: browser.contextualIdentities.ContextualIdentity,
         public tabIndex: number,
@@ -70,7 +70,7 @@ class BufferCompletionOption
                 ${this.tabIndex + 1}: ${indicator} ${tab.title}
             </td>
             <td class="content">
-                <a class="url" target="_blank" href=${tab.url}>${tab.url}</a>
+                <a class="url" target="_blank" href=${tab.url}>${Completions.decodeUrlForDisplay(tab.url)}</a>
             </td>
         </tr>`
     }
@@ -105,8 +105,6 @@ export class BufferCompletionSource extends Completions.CompletionSourceFuse {
             "Tabs",
         )
         this.sortScoredOptions = true
-        this.shouldSetStateFromScore =
-            config.get("completions", "Tab", "autoselect") === "true"
         this.updateOptions()
         this._parent.appendChild(this.node)
 
@@ -128,8 +126,6 @@ export class BufferCompletionSource extends Completions.CompletionSourceFuse {
 
     async filter(exstr) {
         this.lastExstr = exstr
-        const prefix = this.splitOnPrefix(exstr).shift()
-        if (prefix === "tabrename") this.shouldSetStateFromScore = false
         return this.onInput(exstr)
     }
 
@@ -198,7 +194,11 @@ export class BufferCompletionSource extends Completions.CompletionSourceFuse {
         // Since tabmove always uses absolute tab indices, we need
         // to override possible MRU setting to match tabmove behavior
         const forceSort = prefix === "tabmove" ? "default" : undefined
-        const tabs = await getSortedTabs(forceSort)
+        let tabs = await getSortedTabs(forceSort)
+        if (prefix === "tabmove") {
+            const activeTab = tabs.find(tab => tab.active)
+            tabs = tabs.filter(tab => tab.pinned === activeTab.pinned)
+        }
         const options = []
 
         const container_all = await browserBg.contextualIdentities.query({})
@@ -232,7 +232,19 @@ export class BufferCompletionSource extends Completions.CompletionSourceFuse {
     @Perf.measuredAsync
     private async updateOptions(exstr = "") {
         this.lastExstr = exstr
-        const [prefix, query] = this.splitOnPrefix(exstr)
+        let [prefix, query] = this.splitOnPrefix(exstr)
+        if (prefix) prefix = this.canonicalisePrefix(prefix)
+        const match =
+            prefix === "tabclose"
+                ? /^\s*--match(?:\s+(.*))?$/u.exec(query)
+                : undefined
+        if (match) query = (match[1] || "").trim().split(/\s+/u).join(" ")
+        this.shouldSetStateFromScore =
+            config.get("completions", "Tab", "autoselect") === "true" &&
+            !match &&
+            prefix !== "tabrename" &&
+            !(prefix === "tabmove" && /^[+-][0-9]+$/.test(query)) &&
+            !(prefix === "tabdiscard" && /^\s*--all(?:\s|$)/u.test(query))
 
         // Hide self and stop if prefixes don't match
         if (prefix) {
@@ -245,15 +257,22 @@ export class BufferCompletionSource extends Completions.CompletionSourceFuse {
             return
         }
 
-        // When the user is asking for tabmove completions, don't autoselect if the query looks like a relative move https://github.com/tridactyl/tridactyl/issues/825
-        if (prefix === "tabmove")
-            this.shouldSetStateFromScore = !/^[+-][0-9]+$/.exec(query)
-
         await this.fillOptions(prefix)
         this.completion = undefined
 
         /* console.log('updateOptions', this.optionContainer) */
-        if (query && query.trim().length > 0) {
+        if (match) {
+            const scored = query
+                ? this.options
+                      .filter(
+                          option =>
+                              option.tab.title.includes(query) ||
+                              option.tab.url.includes(query),
+                      )
+                      .map(option => ({ option, score: 0 }))
+                : []
+            this.setStateFromScore(scored)
+        } else if (query && query.trim().length > 0) {
             this.setStateFromScore(this.scoredOptions(query))
         } else {
             this.options.forEach(option => (option.state = "normal"))
@@ -266,16 +285,26 @@ export class BufferCompletionSource extends Completions.CompletionSourceFuse {
      * the appropriate option.
      */
     private async reactToTabChanges(): Promise<void> {
-        const lastFocusedTabId = (this.lastFocused as BufferCompletionOption)?.tabId
-        const oldIndex = (this.lastFocused as BufferCompletionOption)?.tabIndex
+        const lastFocused = this.lastFocused as BufferCompletionOption
+        const lastFocusedTabId = lastFocused?.tabId
+        const oldIndex = lastFocused?.tabIndex
+        const wasFocused = lastFocused?.state === "focused"
         await this.updateOptions(this.lastExstr)
         if (!this.options || this.options.length === 0) return
-            const stillExists = this.options.find(o => o.tabId === lastFocusedTabId)
-            if (stillExists) {
-                this.select(stillExists)
-            } else if (lastFocusedTabId !== undefined) {
-                this.select(this.getTheNextTabOption({ tabIndex: oldIndex } as any))
-            }
+        const stillExists = this.options.find(
+            o => o.tabId === lastFocusedTabId && o.state !== "hidden",
+        )
+        if (wasFocused) {
+            this.deselect()
+            const option =
+                stillExists ||
+                (this.shouldSetStateFromScore
+                    ? this.getTheNextTabOption({ tabIndex: oldIndex } as any)
+                    : undefined)
+            if (option) this.select(option)
+        }
+        if (!this.node.isConnected || this.state === "hidden") return
+        await Messaging.messageOwnTab("commandline_content", "show")
     }
 
     /**
@@ -283,7 +312,9 @@ export class BufferCompletionSource extends Completions.CompletionSourceFuse {
      * that this BufferCompletionSource length has been reduced by 1
      */
     private getTheNextTabOption(option: BufferCompletionOption) {
-        const physicallySorted = [...this.options].sort((a, b) => a.tabIndex - b.tabIndex)
+        const physicallySorted = this.options
+            .filter(o => o.state !== "hidden")
+            .sort((a, b) => a.tabIndex - b.tabIndex)
         const nextTab = physicallySorted.find(o => o.tabIndex >= option.tabIndex)
         return nextTab || physicallySorted[physicallySorted.length - 1]
     }

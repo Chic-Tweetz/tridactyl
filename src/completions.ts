@@ -14,6 +14,11 @@ import Fuse from "fuse.js"
 import * as aliases from "@src/lib/aliases"
 import { backoff } from "@src/lib/patience"
 import * as config from "@src/lib/config"
+export { decodeUrlForDisplay } from "@src/lib/url_util"
+
+export function treePrefix(level: number) {
+    return `  ${"  ".repeat(Math.max(level - 1, 0))}${level ? "┌─" : ""}· `
+}
 
 export const DEFAULT_FAVICON = browser.runtime.getURL(
     "static/defaultFavicon.svg",
@@ -31,7 +36,7 @@ export abstract class CompletionOption {
 }
 
 export abstract class CompletionSource {
-    readonly options: CompletionOption[]
+    options: CompletionOption[]
     node: HTMLElement
     public completion: string
     public args: string
@@ -56,6 +61,10 @@ export abstract class CompletionSource {
         // Not sure this is necessary but every completion source has it
         this.prefixes = this.prefixes.map(p => p + " ")
         this.trailingSpace = options.trailingSpace
+    }
+
+    protected canonicalisePrefix(prefix: string) {
+        return aliases.expandExstr(prefix).trim()
     }
 
     /** Control presentation of Source */
@@ -150,6 +159,7 @@ export interface ScoredOption {
 }
 
 export abstract class CompletionSourceFuse extends CompletionSource {
+    options: CompletionOptionFuse[]
     public node
 
     fuseOptions = {
@@ -172,15 +182,7 @@ export abstract class CompletionSourceFuse extends CompletionSource {
 
     protected optionContainer = html`<table class="optionContainer"></table>`
 
-    // invalidate cache on option change
-    private _options: CompletionOptionFuse[]
-    public get options(): CompletionOptionFuse[] {
-        return this._options
-    }
-    public set options(val: CompletionOptionFuse[]) {
-        this._options = val
-        this.fuse = undefined
-    }
+    private fusedOptions: CompletionOptionFuse[]
 
     constructor(
         prefixes,
@@ -197,7 +199,13 @@ export abstract class CompletionSourceFuse extends CompletionSource {
     }
 
     // Adding things here that I want to use for custom completions because it's easy
-    public custom_callback(callbackName: string) {}
+    public custom_callback(_callbackName: string) {
+        // Might I want this to work on all completion sources I wonder?
+        // In the end, if custom completion stuff was all finished, I think yes.
+        // Currently, I think no.
+        // But I can keep this noop function around for now.
+        return undefined
+    }
 
     // Helpful default implementations
 
@@ -240,6 +248,18 @@ export abstract class CompletionSourceFuse extends CompletionSource {
         this.updateDisplay()
     }
 
+    completionForOption(option: CompletionOption) {
+        const [prefix] = this.splitOnPrefix(this.lastExstr)
+        return prefix ? [prefix, option.value].join(" ") : option.value
+    }
+
+    visibleCompletions() {
+        if (this.state === "hidden") return []
+        return (this.options || [])
+            .filter(option => option.state !== "hidden")
+            .map(option => this.completionForOption(option))
+    }
+
     select(option: CompletionOption) {
         if (this.lastExstr !== undefined && option !== undefined) {
             const [prefix] = this.splitOnPrefix(this.lastExstr)
@@ -264,8 +284,9 @@ export abstract class CompletionSourceFuse extends CompletionSource {
 
     /** Rtn sorted array of {option, score} */
     scoredOptions(query: string): ScoredOption[] {
-        if (this.fuse === undefined) {
+        if (this.fuse === undefined || this.fusedOptions !== this.options) {
             this.fuse = new Fuse(this.options, this.fuseOptions)
+            this.fusedOptions = this.options
         }
 
         return this.fuse.search(query).map(result => ({
@@ -300,7 +321,8 @@ export abstract class CompletionSourceFuse extends CompletionSource {
 
         if (this.sortScoredOptions) {
             const sorted_options = scoredOpts.map(res => res.option)
-            this._options = sorted_options.concat(hidden_options)
+            this.options = sorted_options.concat(hidden_options)
+            this.fusedOptions = this.options
         }
     }
 
@@ -336,7 +358,7 @@ export abstract class CompletionSourceFuse extends CompletionSource {
 
     // returns a pair of indices with -1 instead of wrapping
     // used to decide which completion source to use when going next/prev if multiple are visible
-    public async currentAndNextIndex(inc = 1) {
+    public currentAndNextIndex(inc = 1) {
         // I had it in my head that "active" completions weren't hidden, but they are included
         if (this.state === "hidden") return [-1, -1]
         const visopts = this.options.filter(o => o.state !== "hidden")
@@ -351,7 +373,7 @@ export abstract class CompletionSourceFuse extends CompletionSource {
     /* abstract onUpdate(query: string, prefix: string, options: CompletionOptionFuse[]) */
 
     // Lots of methods don't need this but some do
-    // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars-experimental
+    // eslint-disable-next-line @typescript-eslint/no-empty-function, @typescript-eslint/no-unused-vars
     async onInput(exstr: string) {}
 }
 

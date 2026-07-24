@@ -20,7 +20,13 @@
     font-family: var(--tridactyl-status-font-family) !important;
     background: var(--tridactyl-status-bg) !important;
     color: var(--tridactyl-status-fg) !important;
-    border: var(--tridactyl-status-border) !important;
+    --tridactyl-container-border: var(--tridactyl-container-color)
+        var(--tridactyl-indicator-border-style, solid)
+        var(--tridactyl-indicator-border-width, 1.5px);
+    border: var(
+        --tridactyl-container-border,
+        var(--tridactyl-status-border)
+    ) !important;
     border-radius: var(--tridactyl-status-border-radius) !important;
     font-size: var(--tridactyl-status-font-size) !important;
     padding: 0.25ex !important;
@@ -34,8 +40,15 @@
     user-select: none !important;
 }
 
-.TridactylStatusColorful {
-    border-color: var(--tridactyl-container-color) !important;
+.TridactylStatusIndicator > select {
+    appearance: none !important;
+    background: transparent !important;
+    border: 0 !important;
+    color: inherit !important;
+    font: inherit !important;
+    padding: 0 !important;
+    pointer-events: none !important;
+    vertical-align: baseline !important;
 }
 
 .TridactylPrivate {
@@ -68,6 +81,7 @@
     z-index: 2147483647 !important;
 }
 
+/* TODO: use new Tridactyl var/highlight reg names in finding.ts highlights */
 ::highlight(tridactyl-find) {
   color: var(--tridactyl-search-highlight-fg);
   background-color: var(--tridactyl-search-highlight-bg);
@@ -78,3 +92,27 @@
   background-color: var(--tridactyl-search-highlight-active-bg);
 }
 
+/* TODO: use these over the previous highlight rules! */
+::highlight(tridactyl-find-highlight) {
+    color: var(--tridactyl-search-highlight-text-color, black) !important;
+    -webkit-text-fill-color: currentColor !important;
+    background-color: var(--tridactyl-search-highlight-color) !important;
+}
+
+::highlight(tridactyl-find-highlight-active) {
+    color: black !important;
+    -webkit-text-fill-color: currentColor !important;
+    background-color: var(--tridactyl-search-highlight-active-color) !important;
+}
+
+@media (forced-colors: active) {
+    ::highlight(tridactyl-find-highlight) {
+        color: MarkText !important;
+        background-color: Mark !important;
+    }
+
+    ::highlight(tridactyl-find-highlight-active) {
+        color: HighlightText !important;
+        background-color: Highlight !important;
+    }
+}

@@ -6,6 +6,20 @@ function mk(k, mod?: ks.KeyModifiers) {
     return new ks.MinimalKey(k, mod)
 }
 
+test("isTrustedKeyboardEvent rejects spoofed objects", () => {
+    expect(
+        ks.isTrustedKeyboardEvent({
+            isTrusted: true,
+            view: { KeyboardEvent: { [Symbol.hasInstance]: () => true } },
+        }),
+    ).toBe(false)
+    expect(
+        ks.isTrustedKeyboardEvent(
+            new Proxy({}, { get: () => { throw new Error() } }),
+        ),
+    ).toBe(false)
+})
+
 {
     // {{{ parse and completions
 
@@ -146,6 +160,16 @@ function mk(k, mod?: ks.KeyModifiers) {
             [[mk(" ")], new Map([[mks("<Space>"), "spacetest"]])],
             { value: "spacetest", isMatch: true },
         ],
+        [
+            [
+                [mk(" ", { shiftKey: true })],
+                new Map([
+                    [mks("<Space>"), "plain"],
+                    [mks("<S-Space>"), "shift"],
+                ]),
+            ],
+            { value: "shift", isMatch: true },
+        ],
 
         // A bare key binding must not match events with extra modifiers.
         [
@@ -170,6 +194,63 @@ function mk(k, mod?: ks.KeyModifiers) {
             new Map([[mks("<Space>"), "spacetest"]]),
         ],
     ])
+
+    test("numeric prefixes can be disabled", () => {
+        const map = new Map([[mks("qa"), "command"]])
+        const response = ks.parse([mk("2")], map, false)
+        expect(response).toMatchObject({ keys: [], isMatch: false })
+        expect(ks.parse(mks("2qa"), map, false).exstr).toBe("command")
+        const numericMap = new Map([[mks("2qa"), "numeric"]])
+        expect(ks.parse(mks("2qa"), numericMap, false).exstr).toBe("numeric")
+    })
+
+    test("late keyups preserve compatible mappings", () => {
+        const rollover = [mk("g"), mk("o"), mk("g", { keyup: true })]
+        const ordinary = new Map([[mks("got"), "open"]])
+        const pending = ks.parse(rollover, ordinary)
+        expect(pending.keys).toEqual([rollover[0], rollover[2], rollover[1]])
+        expect(ks.parse([...pending.keys, mk("t")], ordinary).value).toBe(
+            "open",
+        )
+        expect(
+            ks.parse(rollover, new Map([[mks("<D-g>ot"), "down"]])).isMatch,
+        ).toBe(false)
+
+        const withKeyup = new Map([
+            [mks("got"), "open"],
+            [mks("<U-g>"), "up"],
+        ] as [ks.MinimalKey[], string][])
+        expect(ks.parse(rollover, withKeyup).value).toBe("up")
+        const counted = ks.parse([mk("2"), ...rollover], ordinary)
+        expect(ks.parse([...counted.keys, mk("t")], ordinary).exstr).toBe(
+            "open 2",
+        )
+        const repeated = [mk("g", { repeat: true }), rollover[1], rollover[2]]
+        expect(ks.parse(repeated, ordinary).isMatch).toBe(false)
+    })
+
+    test("repeats do not abandon a compatible prefix", () => {
+        const prefix = [mk("g"), mk("o")]
+        const repeated = [...prefix, mk("o", { repeat: true })]
+        const maps = new Map([
+            [mks("got"), "quickmark"],
+            [mks("o"), "open"],
+            [mks("<C-o>"), "modified"],
+        ])
+        const parse = (keys: ks.MinimalKey[]) => ks.parse(keys, maps)
+        const pending = parse(repeated)
+        expect(pending.keys).toEqual(prefix)
+        expect(parse([...pending.keys, mk("t")]).value).toBe("quickmark")
+        expect(parse([mk("o", { repeat: true })]).value).toBe("open")
+        expect(ks.parse(repeated, new Map([[mks("goo"), "goo"]])).value).toBe(
+            "goo",
+        )
+        expect(
+            parse([...prefix, mk("o", { ctrlKey: true, repeat: true })]).value,
+        ).toBe("modified")
+        const counted = parse([mk("2"), ...prefix, mk("2", { repeat: true })])
+        expect(parse([...counted.keys, mk("t")]).exstr).toBe("quickmark 2")
+    })
 } // }}}
 
 // {{{ mapstr ->  keysequence
@@ -819,6 +900,13 @@ testAllObject(ks.mapstrToKeyseq, [
 testAllObject(mks, [
     ["<SAC-cr>", mks("<ASC-return>")],
     ["<ACM-lt>", mks("<CAM-<>")],
+])
+
+testAll(ks.mapstrMatchesKey, [
+    [["/", mk("/")], true],
+    [["<C-,>", mk(",", { ctrlKey: true })], true],
+    [["<C-,>", mk(",")], false],
+    [["gg", mk("g")], false],
 ])
 
 // {{{ canonicaliseMapstr

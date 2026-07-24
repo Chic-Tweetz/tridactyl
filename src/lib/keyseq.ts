@@ -18,6 +18,7 @@
     If a key is represented by a single character then the shift modifier state
     is ignored unless other modifiers are also present.
 
+    @packageDocumentation
 */
 
 /** Tries
@@ -40,8 +41,34 @@ import * as R from "ramda"
 import { Parser } from "@src/lib/nearley_utils"
 import * as config from "@src/lib/config"
 import grammar from "@src/grammars/.bracketexpr.generated"
+import { memoise } from "@src/lib/memoise"
 const bracketexpr_grammar = grammar
 const bracketexpr_parser = new Parser(bracketexpr_grammar)
+
+// unspoofable keyboard events
+// this should be ~the only place in the code that accepts KeyboardEvent
+// eslint-disable-next-line @typescript-eslint/no-restricted-types
+export type TrustedKeyboardEvent = KeyboardEvent & { readonly isTrusted: true }
+
+export const guarded = memoise(
+    (accept: (keyevent: TrustedKeyboardEvent) => unknown) =>
+        (keyevent: Event) => {
+            if (!isTrustedKeyboardEvent(keyevent)) return
+            return accept(keyevent)
+        },
+)
+
+export function isTrustedKeyboardEvent(ke: unknown): ke is TrustedKeyboardEvent {
+    if (!ke || typeof ke !== "object") return false
+    try {
+        const event = ke as Event
+        if (event.isTrusted !== true) return false
+        KeyboardEvent.prototype.getModifierState.call(event, "")
+        return true
+    } catch {
+        return false
+    }
+}
 
 let KEYCODETRANSLATEMAP = {}
 
@@ -52,7 +79,7 @@ let KEYCODETRANSLATEMAP = {}
 // Separated into two consts because typescript casting got out of hand
 const rawFlagFns = [
   ["keyup", (ev: KeyEventLike | MinimalKey) =>
-    (ev as KeyboardEvent).type === "keyup" || (ev as MinimalKey).keyup
+    (ev as TrustedKeyboardEvent).type === "keyup" || (ev as MinimalKey).keyup
   ],
   ["shiftKey", (ev: KeyEventLike | MinimalKey) =>
     ev.shiftKey && (ev.key.length > 1 || ev.key === " ")
@@ -217,23 +244,10 @@ export class MinimalKey {
         }
     }
 
-    /** Does this key match another MinimalKey */
-    // NB: not symmetric!
-    // public match(keyevent: MinimalKey): true | false | "skip" {
-    //     const fail = () => (this.optional ? "skip" as const : false)
-    //     if (this.key !== keyevent.key) return fail()
-    //     for (const [_, attr] of modifiers.entries()) {
-    //         if (attr === "shiftKey" && this.key.length === 1) continue
-    //         if (this[attr] !== keyevent[attr]) return fail()
-    //     }
-    //     if (this.keyup !== keyevent.keyup) return fail()
-    //     return !(this.keydown && keyevent.repeat)
-    // }
-
     public translate(keytranslatemap: { [inkey: string]: string }): MinimalKey {
         let newkey = keytranslatemap[this.key]
         if (newkey === undefined || this.translated) newkey = this.key
-        const result = new MinimalKey(newkey, this as KeyModifiers)
+        const result = new MinimalKey(newkey, this)
         result.translated = true
         return result
     }
@@ -291,9 +305,27 @@ export class TrieKey extends MinimalKey {
             }
         }
     }
+
+    /** Does this key match another MinimalKey */
+    // NB: not symmetric!
+    public match(keyevent: MinimalKey): true | false | "skip" {
+        const fail = () => (this.optional ? "skip" as const : false)
+        if (this.key !== keyevent.key) return fail()
+        for (const [_, attr] of modifiers.entries()) {
+            if (
+                attr === "shiftKey" &&
+                this.key.length === 1 &&
+                this.key !== " "
+            )
+                continue
+            if (this[attr] !== keyevent[attr]) return fail()
+        }
+        if (this.keyup !== keyevent.keyup) return fail()
+        return !(this.keydown && keyevent.repeat)
+    }
 }
 
-export type KeyEventLike = MinimalKey | KeyboardEvent
+export type KeyEventLike = MinimalKey | TrustedKeyboardEvent
 
 // }}}
 
@@ -395,12 +427,16 @@ export function stripOnlyModifiers(keyseq) {
  * - holding "g" would not trigger <P-g>g
  *
  */
-export function parse(keyseq: MinimalKey[], trie: Map<string, any>, useNumericPrefixes = true): ParserResponse {
+export function parse(
+    keyseq: MinimalKey[],
+    trie: Map<string, any>,
+    allowNumericPrefixes = true
+): ParserResponse {
     keyseq = stripOnlyModifiers(keyseq)
     if (keyseq.length === 0) return { keys: [], isMatch: false, actions: [] }
 
     let numericPrefix: MinimalKey[]
-    if (useNumericPrefixes) {
+    if (allowNumericPrefixes) {
         ;[numericPrefix, keyseq] = splitNumericPrefix(keyseq)
     } else {
         numericPrefix = []
@@ -672,6 +708,11 @@ export function mapstrToKeyseq(mapstr: string): TrieKey[] {
 // export function mapstrToKeyseq(mapstr: string): MinimalKey[] {
 //     return parseMapstr(mapstr).keyseq
 // }
+
+export function mapstrMatchesKey(mapstr: string, key: MinimalKey): boolean {
+    const keyseq = mapstrToKeyseq(mapstr)
+    return keyseq.length === 1 && keyseq[0].match(key) === true
+}
 
 export function canonicaliseMapstr(mapstr: string): string {
     const keyseq = mapstrToKeyseq(mapstr)
@@ -1023,7 +1064,7 @@ function numericPrefixToExstrSuffix(numericPrefix: MinimalKey[]) {
  * code if config says so.
  */
 export function minimalKeyFromKeyboardEvent(
-    keyEvent: KeyboardEvent,
+    keyEvent: TrustedKeyboardEvent,
 ): MinimalKey {
     const modifiers = {
         altKey: keyEvent.altKey,

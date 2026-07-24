@@ -45,7 +45,6 @@ export function makeIframe() {
         browser.runtime.getURL("static/commandline.html"),
     )
     cmdline_iframe.setAttribute("id", "cmdline_iframe")
-    cmdline_iframe.setAttribute("loading", "lazy")
 
     cmdline_iframe.addEventListener("load", () => {
         resolveIframeReady()
@@ -298,7 +297,7 @@ export async function showAlternateInput(
         "keydown",
         e => {
             e.stopImmediatePropagation()
-            keys.push(keyseq.minimalKeyFromKeyboardEvent(e))
+            keys.push(keyseq.minimalKeyFromKeyboardEvent(e as keyseq.TrustedKeyboardEvent))
             const parsed = keyseq.parse(keys, keytrie)
             if (parsed.isMatch) {
                 e.preventDefault()

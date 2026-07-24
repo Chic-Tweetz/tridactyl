@@ -422,12 +422,19 @@ export class HintConfig implements HintOptions {
                     hinting.saveableElements(this.includeInvisible),
                 )
 
-            default:
-                return hinting.hintables(
+            default: {
+                const hintables = await hinting.hintables(
                     DOM.hintSelectors(),
                     this.jshints,
                     this.includeInvisible,
                 )
+                for (const hintable of hintables) {
+                    hintable.elements = hintable.elements.filter(
+                        element => !DOM.isWithinDisabledFormControl(element),
+                    )
+                }
+                return hintables
+            }
         }
     }
 

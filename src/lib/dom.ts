@@ -29,7 +29,18 @@ import {
  */
 export function isTextEditable(element: Element) {
     if (element) {
-        if ((element as any).readOnly === true || (element as any).ariaReadOnly === "true") return false
+        // Disabled options can remain focusable, so prefer their listbox owner.
+        const keyboardWidget =
+            element.closest('[role="listbox"]') ||
+            element.closest(
+                '[role="combobox"], [role="option"], [aria-haspopup="listbox"], .ui.selection.dropdown[tabindex]:not(.disabled)',
+            )
+        if (
+            (element as any).readOnly === true ||
+            (element as any).ariaReadOnly === "true" ||
+            (keyboardWidget || element).closest('[aria-disabled="true"]')
+        )
+            return false
         // HTML is always upper case, but XHTML is not necessarily upper case
         if (element.nodeName.toUpperCase() === "INPUT") {
             return isEditableHTMLInput(element as HTMLInputElement)
@@ -43,8 +54,14 @@ export function isTextEditable(element: Element) {
             return true
         }
 
+        // Keyboard widgets own their input; Semantic UI does not expose a role.
+        if (keyboardWidget) {
+            return true
+        }
+
         // These properties are only defined on HTMLElements
-        if (element instanceof element.ownerDocument.defaultView.HTMLElement) {
+        const win = element.ownerDocument?.defaultView
+        if (win && element instanceof win.HTMLElement) {
             if (element.contentEditable === undefined) {
                 // This happens on e.g. svgs.
                 return false
@@ -90,6 +107,10 @@ function isEditableHTMLInput(element: HTMLInputElement) {
     return false
 }
 
+export function isWithinDisabledFormControl(element: Element): boolean {
+    return element.closest(":disabled:not(fieldset)") !== null
+}
+
 /**
  * Dispatch a mouse event to the target element
  * based on cVim's implementation
@@ -125,39 +146,33 @@ export function mouseEvent(
     })
 }
 
-/** Ignore elements whose textContent is contained in a single child element.
-*   Also ignores whitespace-only textContent.
-*/
-function hasUniqueText(element: Element, includeInvisibleChildren = false) {
-    if (element.textContent.trim() === "") return false
-    let childTextElems = 0
-
-    // Check for multiple child elements with text, or non-empty text nodes
-    for (const node of element.childNodes.values()) {
-        if ((node.nodeType === Node.TEXT_NODE) && ((node as Text).data.trim() !== "")) {
+/** Exclude whitespace and wrappers with one substantial text-bearing child. */
+function hasDistinctText(element: Element, includeInvisibleChildren: boolean) {
+    let childWithText: Element | undefined
+    for (const node of element.childNodes) {
+        if (
+            (node.nodeType === Node.TEXT_NODE ||
+                node.nodeType === Node.CDATA_SECTION_NODE) &&
+            (node as CharacterData).data.trim() !== ""
+        ) {
             return true
-        } else if ((node.nodeType === Node.ELEMENT_NODE) && node.textContent.trim() !== "") {
-            if (includeInvisibleChildren || isSubstantial(node as Element)) {
-                ++childTextElems
-                if (childTextElems > 1) return true
-            }
         }
+        if (node.nodeType !== Node.ELEMENT_NODE) continue
+        if (node.textContent.trim() === "") continue
+        if (childWithText) return true
+        childWithText = node as Element
     }
-    return false
-}
-
-// hasUniqueText checks elements' child nodes which may be invisible
-// we want isSubstantial over isVisible for children,
-// to allow for eg a <div> container whose 1st <p> is on screen, but 2nd <p> is off screen
-// currently this does mean redoing a lot of clientRect and getComputedStyle which isn't ideal
-function hasUniqueVisibleTextFilter(includeInvisibleChildren = false) {
-    return elem => hasUniqueText(elem, includeInvisibleChildren)
+    return (
+        childWithText !== undefined &&
+        !includeInvisibleChildren &&
+        !isSubstantial(childWithText)
+    )
 }
 
 export function elementsWithText(includeInvisible = false) {
     return getElemsBySelector("*", [
         isVisibleFilter(includeInvisible),
-        hasUniqueVisibleTextFilter(includeInvisible),
+        hint => hasDistinctText(hint, includeInvisible),
     ])
 }
 
@@ -187,10 +202,10 @@ type ElementFilter = (element: Element) => boolean
  */
 export function isSubstantial(element: Element) {
     const clientRect = element.getClientRects()[0]
+    if (!clientRect) return false
     const computedStyle = getComputedStyle(element)
     // remove elements that are barely within the viewport, tiny, or invisible
     switch (true) {
-        case !clientRect:
         case clientRect.width < 3:
         case clientRect.height < 3:
         case computedStyle.visibility !== "visible":
@@ -422,7 +437,8 @@ export function isPainted(elem: HTMLElement) {
  * @param doc   The document the frames should be fetched from
  */
 export function getAllDocumentFrames(doc = document) {
-    if (!(doc instanceof ((doc.defaultView as any).HTMLDocument))) return []
+    const win = doc?.defaultView as any
+    if (!win || !(doc instanceof win.HTMLDocument)) return []
     const frames = (
         Array.from(doc.getElementsByTagName("iframe")) as HTMLIFrameElement[] &
             HTMLFrameElement[]
@@ -442,11 +458,24 @@ export function getAllDocumentFrames(doc = document) {
     )
 }
 
+/** Return the first non-collapsed selection in this document or an accessible frame. */
+export function getSelection(doc = document) {
+    const selection = doc.getSelection()
+    if (selection && !selection.isCollapsed) return selection
+    for (const frame of getAllDocumentFrames(doc)) {
+        try {
+            const frameSelection = frame.contentDocument?.getSelection()
+            if (frameSelection && !frameSelection.isCollapsed) return frameSelection
+        } catch {}
+    }
+    return selection
+}
+
 /** Computes the unique CSS selector of a specific HTMLElement */
 export function getSelector(e: HTMLElement) {
     function uniqueSelector(e: HTMLElement) {
         // Only matching alphanumeric selectors because others chars might have special meaning in CSS
-        if (e.id && /^[a-zA-Z0-9]+$/.exec(e.id)) return "#" + e.id
+        if (e.id && /^[a-zA-Z0-9]+$/.exec(e.id)) return `[id="${e.id}"]`
         // If we reached the top of the document
         if (!e.parentElement) return "HTML"
         // Compute the position of the element
@@ -512,8 +541,8 @@ export function getAllShadowRoots(filters: ElementFilter[] = []) {
                 // Skip restricted shadows - can happen in extension pages eg :reader
                 try {
                     // This is forbidden if the shadow is restricted
-                    (elem as any).openOrClosedShadowRoot.querySelectorAll
-                    shadows.push((elem as any).openOrClosedShadowRoot)
+                    if (typeof (elem as any).openOrClosedShadowRoot.querySelectorAll === "function")
+                        shadows.push((elem as any).openOrClosedShadowRoot)
                 } catch (e) {}
             }
         })
@@ -752,6 +781,45 @@ export function hijackPageListenerFunctions(): void {
     window.eval(eval_str + `;delete ${exportedName}`)
 }
 
+const hijackedAttachShadows = new WeakSet()
+export function hijackPageAttachShadow(
+    onShadowRoot: (root: ShadowRoot) => void,
+    win = window,
+): void {
+    if (!inContentScript()) return
+    try {
+        const prototype = win.Element.prototype
+        const attachShadow = win.eval("p => p.attachShadow")(prototype)
+        if (typeof attachShadow !== "function" || hijackedAttachShadows.has(attachShadow)) return
+
+        const observeShadowRoot = (host: HTMLElement) => {
+            try {
+                // Xray input plus a native brand check rejects fake Elements.
+                Element.prototype.hasAttributes.apply(host)
+                const root = host.openOrClosedShadowRoot
+                if (root) onShadowRoot(root)
+            } catch {}
+        }
+        const wrapped = win.eval(`(prototype, realFunction, observe, apply) => {
+            const wrapped = function (...args) {
+                const result = apply(realFunction, this, args)
+                try { observe(this) } catch {}
+                return result
+            }
+            prototype.attachShadow = wrapped
+            return wrapped
+        }`)(
+            prototype,
+            attachShadow,
+            exportFunction(observeShadowRoot, win),
+            exportFunction(Reflect.apply, win),
+        )
+        hijackedAttachShadows.add(wrapped)
+    } catch (e) {
+        logger.warning("Could not hijack attachShadow:", e)
+    }
+}
+
 /** Focuses an input element and makes sure the cursor is put at the end of the input */
 export function focus(e: HTMLElement): void {
     e.focus()
@@ -830,13 +898,17 @@ function hijackPageFocusFunction(win = window): void {
 }
 
 const focusListenerDocs = new WeakSet()
-export function setupFocusHandler(doc = document, onNewIframeFound = null): void {
+export function setupFocusHandler(doc = document): void {
+    const win = doc?.defaultView
+    if (!win || focusListenerDocs.has(doc)) return
+
     const blurOnce = e => {
         if (shouldExitInsertMode(contentState.mode, false)) {
             contentState.mode = "normal"
         }
         e.target.removeEventListener("blur", blurOnce)
     }
+
     // Handles when a user selects an input
     const setFocus = elem => {
         if (isTextEditable(elem)) {
@@ -880,33 +952,17 @@ export function setupFocusHandler(doc = document, onNewIframeFound = null): void
         setFocus(elem)
     }
 
-    if (!focusListenerDocs.has(doc)) {
-        listen(doc)
+    listen(doc)
+    focusListenerDocs.add(doc)
 
-        // Use focusout to check if we've shifted focus to a new iframe we're yet to add listeners to
-        const winBlur = _ => {
-            getAllDocumentFrames(doc).forEach(f => {
-                try {
-                    if (f.contentDocument && !focusListenerDocs.has(f.contentDocument)) {
-                        if (onNewIframeFound) {
-                            onNewIframeFound(f.contentWindow)
-                        }
-                        setupFocusHandler(f.contentDocument, onNewIframeFound)
-                    }
-                } catch(_) {}
-            })
-        }
-
-        focusListenerDocs.add(doc)
-        doc.defaultView.addEventListener("focusout", winBlur)
-
-        // Run handler immediately if the newly found frame has focus
-        if (doc.hasFocus()) handler({ target: doc.activeElement })
+    // Run handler immediately if the newly found frame has focus
+    if (doc.hasFocus() && doc.activeElement) {
+        handler({ target: doc.activeElement })
     }
 
     // Handles when the page tries to select an input
     if (inContentScript()) {
-        hijackPageFocusFunction(doc.defaultView)
+        hijackPageFocusFunction(win)
     }
 }
 
@@ -991,7 +1047,7 @@ export const HINTTAGS_saveable = `
 export type HintSelectorCategory =
     | "clickable"
     | "filterbytext"
-    | "img" 
+    | "img"
     | "anchor"
     | "killable"
     | "saveable"
@@ -1004,7 +1060,7 @@ const hintCategoriesToDefaultSelectors = {
     killable: HINTTAGS_killable_selectors,
     saveable: HINTTAGS_saveable,
 }
-    
+
 /** Get user-configurable hint selectors if they exist.
  *  Combine or extend defaults depending on "hintselectorsbehavior" setting.
  */
@@ -1134,6 +1190,13 @@ export function getElementCentre(el) {
 
 export function getAbsoluteCentre(el) {
     const pos = getElementCentre(el)
+    let frame = el.ownerDocument.defaultView.frameElement
+    while (frame) {
+        const framePos = frame.getBoundingClientRect()
+        pos.x += framePos.left
+        pos.y += framePos.top
+        frame = frame.ownerDocument.defaultView.frameElement
+    }
     return {
         x: pos.x + (window as any).mozInnerScreenX,
         y: pos.y + (window as any).mozInnerScreenY,

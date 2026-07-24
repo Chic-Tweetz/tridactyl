@@ -232,8 +232,8 @@ export async function getBestEditor(): Promise<string> {
  * helpful error message in the command line if the native messenger is not
  * installed, or is the wrong version.
  *
- * @arg version: A string representing the minimal required version.
- * @arg interactive: True if a message should be displayed on version mismatch.
+ * @param version A string representing the minimal required version.
+ * @param interactive True if a message should be displayed on version mismatch.
  * @return false if the required version is higher than the currently available
  * native messenger version.
  */
@@ -670,11 +670,13 @@ export async function getProfileUncached() {
     }
 
     // Still nothing, try to find a profile in use
-    let hacky_profile_finder = `find "${ffDir}" -maxdepth 2 -name lock`
-    if ((await browserBg.runtime.getPlatformInfo()).os === "mac")
-        hacky_profile_finder = `find "${ffDir}" -maxdepth 2 -name .parentlock`
-    const profilecmd = await run(hacky_profile_finder)
-    if (profilecmd.code === 0 && profilecmd.content.length !== 0) {
+    const os = (await browserBg.runtime.getPlatformInfo()).os
+    let profilecmd
+    if (os !== "win") {
+        const lockfile = os === "mac" ? ".parentlock" : "lock"
+        profilecmd = await run(`find "${ffDir}" -maxdepth 2 -name ${lockfile}`)
+    }
+    if (profilecmd?.code === 0 && profilecmd.content.length !== 0) {
         // Remove trailing newline
         profilecmd.content = profilecmd.content.trim()
         // If there's only one profile in use, use that to find the right profile
@@ -769,8 +771,8 @@ export function parsePrefs(prefFileContent: string) {
  *  return a promise for an empty object.
  */
 export async function loadPrefs(filename): Promise<{ [key: string]: string }> {
-    const result = await read(filename)
-    if (result.code !== 0) return {}
+    const result = await read(filename).catch(() => undefined)
+    if (result === undefined || result.code !== 0) return {}
     return parsePrefs(result.content)
 }
 

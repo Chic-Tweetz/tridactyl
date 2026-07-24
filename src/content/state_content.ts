@@ -40,9 +40,9 @@ export type ContentStateProperty =
 
 export type ContentStateChangedCallback = (
     property: ContentStateProperty,
+    oldMode: any,
     oldValue: any,
     newValue: any,
-    suffix: any,
 ) => void
 
 const onChangedListeners: ContentStateChangedCallback[] = []
@@ -68,6 +68,7 @@ export const contentState = new Proxy(
 
             target[property] = newValue
 
+            if (oldValue === newValue) return true
             for (const listener of onChangedListeners) {
                 listener(property, mode, oldValue, newValue)
             }

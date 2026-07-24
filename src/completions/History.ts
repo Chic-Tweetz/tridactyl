@@ -34,7 +34,7 @@ class HistoryCompletionOption
             <td class="title">${page.title}</td>
             <td class="content">
                 ${page.search ? "Search " : ""}
-                <a class="url" target="_blank" href=${page.url}>${page.url}</a>
+                <a class="url" target="_blank" href=${page.url}>${Completions.decodeUrlForDisplay(page.url)}</a>
             </td>
         </tr>`
     }
@@ -72,6 +72,7 @@ export class HistoryCompletionSource extends Completions.CompletionSourceFuse {
         }
 
         const headerPostfix = []
+        prefix = this.canonicalisePrefix(prefix)
 
         // Ignoring command-specific arguments
         // It's terrible but it's ok because it's just a stopgap until an actual commandline-parsing API is implemented
@@ -138,6 +139,13 @@ export class HistoryCompletionSource extends Completions.CompletionSourceFuse {
                 this.select(option)
                 break
             }
+        }
+        if (
+            this.completion === undefined &&
+            this.options.length > 0 &&
+            config.get("completions", "History", "autoselect") === "true"
+        ) {
+            this.select(this.options[0])
         }
 
         return this.updateDisplay()

@@ -16,6 +16,7 @@
  *
  * Contrary to the main tridactyl help page, this one doesn't tell you whether a specific function is bound to something. For now, you'll have to make do with with `:bind` and `:viewconfig`.
  *
+ * @packageDocumentation
  */
 /** ignore this line */
 
@@ -246,7 +247,7 @@ export const backward_kill_line = wrap_input(
             return [
                 text.substring(0, selectionStart - 1) +
                     text.substring(selectionStart),
-                selectionStart,
+                selectionStart - 1,
                 null,
             ]
         }
@@ -343,7 +344,7 @@ export const extend_char = wrap_selection(
         // If backward, we want to move selectionStart, if forward we move selectionEnd
         // haven't actually done that mind you
         // just wanna see if this does anything at all first
-        let backward = selectionDirection === "backward"
+        const backward = selectionDirection === "backward"
         const caret = backward ? selectionStart : selectionEnd
         if (caret === text.length) return [null, null, null]
         if (backward) {
@@ -362,7 +363,7 @@ export const extend_backward_char = wrap_selection(
         // If backward, we want to move selectionStart, if forward we move selectionEnd
         // haven't actually done that mind you
         // just wanna see if this does anything at all first
-        let backward = selectionDirection === "backward"
+        const backward = selectionDirection === "backward"
         const caret = backward ? selectionStart : selectionEnd
         if (caret === 0) return [null, null, null]
         if (!backward) {
@@ -381,7 +382,7 @@ export const extend_word = wrap_selection(
         // If backward, we want to move selectionStart, if forward we move selectionEnd
         // haven't actually done that mind you
         // just wanna see if this does anything at all first
-        let backward = selectionDirection === "backward"
+        const backward = selectionDirection === "backward"
         const caret = backward ? selectionStart : selectionEnd
         if (caret === text.length) return [null, null, null]
 
@@ -402,7 +403,7 @@ export const extend_backward_word = wrap_selection(
         // If backward, we want to move selectionStart, if forward we move selectionEnd
         // haven't actually done that mind you
         // just wanna see if this does anything at all first
-        let backward = selectionDirection === "backward"
+        const backward = selectionDirection === "backward"
         const caret = backward ? selectionStart : selectionEnd
         if (caret === 0) return [null, null, null]
 
@@ -476,8 +477,8 @@ export const extend_beginning_of_line = wrap_selection(
         const backward = selectionDirection === "backward"
         let caret = backward ? selectionStart : selectionEnd
         while (text[caret - 1] !== undefined && text[caret - 1] !== "\n") {
-            caret -= 1            
-        } 
+            caret -= 1
+        }
 
         if (!backward) {
             if (selectionStart > caret) {
@@ -592,7 +593,6 @@ export const extend_previous_line = wrap_selection(
     (text, selectionStart, selectionEnd, selectionDirection) => {
         const backward = selectionDirection === "backward"
         let caret = backward ? selectionStart : selectionEnd
-        
         const leftNewLinePos = text.slice(0, caret).lastIndexOf("\n")
         let width = 0
         if (leftNewLinePos !== -1) {

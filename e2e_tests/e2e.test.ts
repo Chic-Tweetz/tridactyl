@@ -8,6 +8,7 @@ import {
     getDriver,
     getDriverAndProfileDirs,
     iframeLoaded,
+    quitDrivers,
     sendKeys,
 } from "./utils"
 
@@ -22,9 +23,7 @@ describe("webdriver", () => {
         driver = await getDriver()
     })
 
-    afterEach(async () => {
-        await driver.quit()
-    })
+    afterEach(quitDrivers)
 
     interface Tab {
         active: boolean
@@ -215,7 +214,7 @@ describe("webdriver", () => {
                     `return document.getElementById("tridactyl-input").value`,
                 ),
             ).toEqual(
-                "userChrome.css written. Please restart Firefox to see the changes.",
+                `userChrome.css written to ${newProfiles[0]}/chrome/userChrome.css. Please restart Firefox to see the changes.`,
             )
             const profile = newProfiles.find(async p =>
                 (await fs.readdir(path.join(p, "chrome"))).find(files =>
@@ -225,8 +224,6 @@ describe("webdriver", () => {
             expect(profile).toBeDefined()
         } catch (e) {
             fail(e)
-        } finally {
-            await driver.quit()
         }
     })
 

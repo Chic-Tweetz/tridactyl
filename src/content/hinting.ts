@@ -10,6 +10,7 @@
  *
  * Contrary to the main tridactyl help page, this one doesn't tell you whether a specific function is bound to something. For now, you'll have to make do with `:bind` and `:viewconfig`.
  *
+ * @packageDocumentation
  */
 /** ignore this line */
 
@@ -33,7 +34,7 @@ import {
     izip,
     map,
 } from "@src/lib/itertools"
-import { contentState } from "@src/content/state_content"
+import { contentState, addContentStateChangedListener } from "@src/content/state_content"
 import * as config from "@src/lib/config"
 import Logger from "@src/lib/logging"
 import * as R from "ramda"
@@ -41,7 +42,6 @@ import * as R from "ramda"
 /** @hidden */
 const logger = new Logger("hinting")
 import * as keyseq from "@src/lib/keyseq"
-import { shouldEnterInsertMode } from "./controller_content"
 
 /** Calclate the distance between two segments.
  * @hidden
@@ -71,8 +71,6 @@ class HintState {
     public textfilter = [""]
     public hintchars = ""
     public filterMode = "flags"
-    public useHintClass: boolean
-    public useActiveHintClass: boolean
     private filteredHints: Hint[] = []
 
     constructor(
@@ -95,15 +93,16 @@ class HintState {
             this.outlineHost.classList.add("TridactylHintOutlineHost")
         }
         // we can completely avoid adding classes to the hint elems
-        this.useHintClass =
+        renderState.useHintClass =
             hintstyles.bg === "all" ||
             hintstyles.outline === "all" ||
             hintstyles.fg === "all"
-        this.useActiveHintClass =
-            this.useHintClass ||
+        renderState.useActiveHintClass =
+            renderState.useHintClass ||
             hintstyles.bg === "active" ||
             hintstyles.outline === "active" ||
             hintstyles.fg === "active"
+        renderState.withCmdline = this.filterMode !== "text"
 
         this.hudTranslate.style.translate = `${-window.scrollX}px ${-window.scrollY}px`
     }
@@ -140,7 +139,7 @@ class HintState {
         // Remove all hints from the DOM.
         this.hud.remove()
 
-        if (modeState.filterMode === "text") hidecmdline()
+        if (renderState.withCmdline) hidecmdline()
     }
 
     resolveHinting() {
@@ -452,6 +451,7 @@ class HintState {
                 )
             }
         }
+        this.changeFocusedHintIndex(distance)
 
         // All done!
     }
@@ -468,6 +468,9 @@ interface Hintables {
 // Creating/removing elements tends to be in DocumentFragments or the entire HUD element
 // but perhaps we can batch class changes in an animation frame request
 const renderState = {
+    useHintClass: false,
+    useActiveHintClass: false,
+    withCmdline: false,
     isRenderQueued: false,
     hintsVisibility: [],
     renderHintsVisibility: false,
@@ -487,7 +490,7 @@ function render() {
                 hint.highlight?.setAttribute("hidden", "")
                 hint.outline?.setAttribute("hidden", "")
             } else {
-                if (modeState.useHintClass)
+                if (renderState.useHintClass)
                     hint.target.classList.add("TridactylHintElem")
                 hint.highlight?.removeAttribute("hidden")
                 hint.outline?.removeAttribute("hidden")
@@ -586,25 +589,28 @@ export function hintPage(
 
     if (!rapid) {
         buildHints(hintableElements, hint => {
-            modeState.cleanUpHints()
+            const state = modeState
+            state.cleanUpHints()
             hint.result = onSelect(hint.target)
-            modeState.selectedHints.push(hint)
-            reset()
+            state.selectedHints.push(hint)
+            if (modeState === state) reset()
         })
     } else {
         buildHints(hintableElements, hint => {
+            const state = modeState
             hint.result = onSelect(hint.target)
-            modeState.selectedHints.push(hint)
-            modeState.textfilter = [""]
-            modeState.filterMode = "flags"
-            modeState.showFlags()
+            state.selectedHints.push(hint)
+            state.textfilter = [""]
+            state.filterMode = "flags"
+            renderState.withCmdline = false
+            state.showFlags()
             if (
-                modeState.selectedHints.length > 1 &&
+                state.selectedHints.length > 1 &&
                 config.get("hintshift") === "true"
             ) {
-                modeState.shiftHints()
+                state.shiftHints()
             }
-            removeFilteredCharClass()
+            removeFilteredCharClass(state)
         })
     }
     // weird shadow dom related issue on youtube made clientRects accessible
@@ -650,9 +656,10 @@ export function hintPage(
     ) {
         // There is just a single link or all the links point to the same
         // place. Select it unless `hintautoselect` is set to `false`.
-        modeState.cleanUpHints()
-        modeState.hints[0].select()
-        reset()
+        const state = modeState
+        state.cleanUpHints()
+        state.hints[0].select()
+        if (modeState === state) reset()
         return
     }
 
@@ -667,8 +674,11 @@ export function hintPage(
     modeState.hudTranslate.appendChild(modeState.hintHost)
     modeState.hud.appendChild(modeState.hudTranslate)
     document.documentElement.appendChild(modeState.hud)
-    modeState.hud.setAttribute("popover", "manual")
-    ;(modeState.hud as any).showPopover()
+    const hud = modeState.hud as any
+    if (typeof hud.showPopover === "function") {
+        hud.setAttribute("popover", "manual")
+        hud.showPopover()
+    }
     modeState.deOverlap()
     window.removeEventListener("scroll", updateHudOffset)
     window.addEventListener("scroll", updateHudOffset)
@@ -811,8 +821,9 @@ class Hint {
     public readonly flag = document.createElement("span")
     public readonly highlight: HTMLElement | null = null
     public readonly outline: HTMLElement | null = null
-    public readonly rect: ClientRect = null
+    public readonly rect: Omit<ClientRect, "x" | "y" | "toJSON"> = null
     public result: any = null
+    private unfilteredName: string
 
     public width = 0
     public height = 0
@@ -827,6 +838,7 @@ class Hint {
         classes?: string[],
         clientRects?: DOMRectList,
     ) {
+        this.unfilteredName = name
         // We need to compute the offset for elements that are in an iframe
         let offsetTop = 0
         let offsetLeft = 0
@@ -925,6 +937,7 @@ class Hint {
     }
 
     setName(n: string) {
+        this.unfilteredName = n
         this.name = n
         this.flag.textContent = ""
         for (const ch of n) {
@@ -932,6 +945,10 @@ class Hint {
             charspan.textContent = ch
             this.flag.appendChild(charspan)
         }
+    }
+
+    restoreName() {
+        if (this.name !== this.unfilteredName) this.setName(this.unfilteredName)
     }
 
     // These styles would be better with pseudo selectors. Can we do custom ones?
@@ -957,7 +974,7 @@ class Hint {
 
     set focused(focus: boolean) {
         if (focus) {
-            if (modeState.useActiveHintClass)
+            if (renderState.useActiveHintClass)
                 this.target.classList.add("TridactylHintActive")
 
             this.target.classList.remove("TridactylHintElem")
@@ -970,7 +987,7 @@ class Hint {
 
             this.flag.classList.add("TridactylHintSpanActive")
         } else {
-            if (modeState.useHintClass)
+            if (renderState.useHintClass)
                 this.target.classList.add("TridactylHintElem")
 
             this.target.classList.remove("TridactylHintActive")
@@ -1109,8 +1126,7 @@ export const vimpHelper = {
 
     matchHint: function matchHint(str, key) {
         // Match a hint key to hint text
-        // match every part of key splited by space.
-        return key.split(/\s+/).every(keyi => str.includes(keyi))
+        return str.includes(key)
     },
 }
 
@@ -1175,8 +1191,8 @@ function addFilteredCharClass(hint: Hint, fstr: string) {
 
 /** Remove the filtered char class from all hints - for resetting the style when rapid hinting
 @hidden */
-function removeFilteredCharClass() {
-    const pressed = modeState.hintHost.querySelectorAll(".TridactylHintCharPressed");
+function removeFilteredCharClass(state = modeState) {
+    const pressed = state.hintHost.querySelectorAll(".TridactylHintCharPressed");
     for (const el of pressed) {
         el.classList.remove("TridactylHintCharPressed");
     }
@@ -1266,6 +1282,7 @@ function filterHintsVimperator(query: string, reflow = false) {
 
     // Start with all hints
     let active = modeState.hints
+    if (reflow) active.forEach(hint => hint.restoreName())
 
     // Filter down (renaming as required)
     for (const run of partitionquery(query)) {
@@ -1314,15 +1331,24 @@ function filterHintsVimperator(query: string, reflow = false) {
 /**
  * Remove all hints, reset STATE.
  **/
-function reset() {
-    if (modeState) {
-        modeState.cleanUpHints()
-        modeState.resolveHinting()
-    }
-    modeState = undefined
+function cleanup() {
+    const state = modeState
     contentState.mode = DOM.isTextEditable(document.activeElement) ? "insert" : "normal"
+    if (state) state.cleanUpHints()
     window.removeEventListener("scroll", updateHudOffset)
+    modeState = undefined
+    return state
 }
+
+function reset() {
+    cleanup()?.resolveHinting()
+    contentState.mode = "normal"
+}
+
+addContentStateChangedListener((property, oldMode) => {
+    const state = property === "mode" && oldMode === "hint" ? cleanup() : undefined
+    if (state) queueMicrotask(() => state.resolveHinting())
+})
 
 function popKey() {
     if (modeState.filterMode === "text") {
@@ -1434,7 +1460,16 @@ export async function hintables(
     includeInvisible = false,
 ) {
     if (withjs) DOM.pruneHintworthyJSElems()
-    const jsElems = withjs ? Array.from(DOM.hintworthy_js_elems) : []
+    const jsElems = withjs
+        ? Array.from(
+              new Set([
+                  ...DOM.hintworthy_js_elems,
+                  ...DOM.getElemsBySelector("*", [
+                      el => Boolean((el as HTMLElement).onclick),
+                  ]),
+              ]),
+          )
+        : []
     const visibleJSElems = withjs && !includeInvisible
         ? DOM.getVisibleElemsBySelector(null, [], jsElems)
         : jsElems
@@ -1554,6 +1589,7 @@ function addTypedCharClass(hint: Hint, charCount: number) {
  */
 function filterByTag() {
     modeState.filterMode = "flags"
+    renderState.withCmdline = false
     modeState.filter = ""
     modeState.removeHiddenHints()
     modeState.showFlags()
@@ -1567,9 +1603,10 @@ function filterByTag() {
  *  I've used the same function to switch to the mode as to pass the string array
  *  (maybe not the best choice)
  */
-function filterByText(match?: string[] | undefined) {
+function filterByText(match?: string[]) {
     if (modeState.filterMode !== "text") {
         modeState.filterMode = "text"
+        renderState.withCmdline = true
         modeState.textfilter = match || [""]
 
         modeState.activeHints.forEach(h => {
@@ -1681,7 +1718,10 @@ function selectFocusedHint(delay = false) {
     const focused = modeState.focusedHint
     const selectFocusedHintInternal = () => {
         modeState.filter = ""
-        modeState.hints.forEach(h => (h.hidden = false))
+        modeState.hints.forEach(h => {
+            h.restoreName()
+            h.hidden = false
+        })
         focused.select()
     }
     if (delay) setTimeout(selectFocusedHintInternal, config.get("hintdelay"))
@@ -1733,6 +1773,7 @@ export function parser(keys: keyseq.MinimalKey[]) {
     const parsed = keyseq.parse(
         keys,
         keyseq.keyTrie("hintmaps"),
+        false,
     )
 
     if (parsed.isMatch === true) {

@@ -11,6 +11,38 @@ const config = new default_config()
 // todo: test subconfigs and platform_defaults
 const nmaps = Object.keys(config.nmaps)
 
+test("findrc displays the automatically selected RC path", () => {
+    expect(config.exaliases).toHaveProperty(
+        "findrc",
+        "js tri.native.getrcpath().then(tri.excmds.fillcmdline_notrail)",
+    )
+})
+
+test.each([
+    ["next", "Nächste Seite"],
+    ["next", "Neuere Beiträge"],
+    ["next", "Weiter"],
+    ["next", "Suivantes"],
+    ["next", "Successivi"],
+    ["next", "Seguente"],
+    ["next", "Siguientes"],
+    ["next", "Próxima"],
+    ["prev", "Vorherige Seite"],
+    ["prev", "Ältere Beiträge"],
+    ["prev", "Zurück"],
+    ["prev", "Précédentes"],
+    ["prev", "Precedenti"],
+    ["prev", "Indietro"],
+    ["prev", "Anteriores"],
+    ["prev", "Atrás"],
+] as const)("default %s-page pattern matches %s", (direction, text) => {
+    const opposite = direction === "next" ? "prev" : "next"
+    expect(text).toMatch(new RegExp(config.followpagepatterns[direction], "i"))
+    expect(text).not.toMatch(
+        new RegExp(config.followpagepatterns[opposite], "i"),
+    )
+})
+
 // Test that all of the default maps use the canonical representation (otherwise they won't work correctly, because Tridactyl expects the maps in the config to be canonical; which now that I write it, that does seem like an obvious foot-gun for if we ever change the canonicalisation algorithm).
 //
 // But, hey, at least with this test we are more likely to notice if that happens and either not change the canonicalisation algorithm or introduce a migration.
@@ -64,6 +96,18 @@ test("keymap unbind default", () => {
 
     const exmaps = get("exmaps")
     expect(exmaps["<Space>"]).toBeUndefined()
+})
+
+test("null removes and exports a default autocmd", async () => {
+    const event = "DocLoad"
+    const url = "^https://github.com/tridactyl/tridactyl/issues/new$"
+
+    expect(get("autocmds", event)[url]).toBe("issue")
+    await tri.config.set("autocmds", event, url, null)
+
+    expect(tri.config.USERCONFIG.autocmds[event][url]).toBeNull()
+    expect(get("autocmds", event)[url]).toBeUndefined()
+    expect(tri.config.parseConfig()).toContain(`autocmddelete ${event} ${url}`)
 })
 
 test("get in modified inherit keymap", () => {

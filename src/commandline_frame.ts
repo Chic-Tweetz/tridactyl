@@ -12,6 +12,7 @@
  *
  * Contrary to the main tridactyl help page, this one doesn't tell you whether a specific function is bound to something. For now, you'll have to make do with `:bind` and `:viewconfig`.
  *
+ * @packageDocumentation
  */
 /** ignore this line */
 
@@ -27,6 +28,7 @@ import {
     BookmarkFolderCompletionSource,
 } from "@src/completions/Bmark"
 import { CompositeCompletionSource } from "@src/completions/Composite"
+import { ContainerCompletionSource } from "@src/completions/Container"
 import { ExcmdCompletionSource } from "@src/completions/Excmd"
 import { ExtensionsCompletionSource } from "@src/completions/Extensions"
 import { FileSystemCompletionSource } from "@src/completions/FileSystem"
@@ -47,7 +49,7 @@ import { ProxyCompletionSource } from "@src/completions/Proxy"
 import { CustomCompletionSource } from "@src/completions/Custom"
 import { contentState } from "@src/content/state_content"
 import { theme } from "@src/content/styling"
-import { getCommandlineFns } from "@src/lib/commandline_cmds"
+import { expandAbbreviation, getCommandlineFns } from "@src/lib/commandline_cmds"
 import * as tri_editor from "@src/lib/editor"
 import "@src/lib/DANGEROUS-html-tagged-template"
 import Logger from "@src/lib/logging"
@@ -57,7 +59,11 @@ import * as genericParser from "@src/parsers/genericmode"
 import * as perf from "@src/perf"
 import state, * as State from "@src/state"
 import * as R from "ramda"
-import { MinimalKey, minimalKeyFromKeyboardEvent } from "@src/lib/keyseq"
+import {
+    MinimalKey,
+    minimalKeyFromKeyboardEvent,
+    isTrustedKeyboardEvent,
+} from "@src/lib/keyseq"
 import { TabGroupCompletionSource } from "@src/completions/TabGroup"
 import { ProfileCompletionSource } from "@src/completions/Profile"
 import { ownTab, browserBg, pretendToBeTab } from "@src/lib/webext"
@@ -76,6 +82,10 @@ const commandline_state = {
     completionsDiv: window.document.getElementById("completions"),
     fns: undefined as ReturnType<typeof getCommandlineFns>,
     getCompletion,
+    getCompletions: () =>
+        (commandline_state.activeCompletions || []).flatMap(source =>
+            source.visibleCompletions(),
+        ),
     getActiveCompletionSource,
     history,
     /** @hidden
@@ -238,6 +248,7 @@ export function enableCompletions() {
             ThemeCompletionSource,
             TabHistoryCompletionSource,
             CompositeCompletionSource,
+            ContainerCompletionSource,
             FileSystemCompletionSource,
             GotoCompletionSource,
             GuisetCompletionSource,
@@ -335,7 +346,7 @@ let HISTORY_SEARCH_STRING: string
 /** @hidden
  * Command line keybindings
  **/
-const keyParser = keys => genericParser.parser("exmaps", keys)
+const keyParser = keys => genericParser.parser("exmaps", keys, false)
 /** @hidden **/
 let history_called = false
 /** @hidden **/
@@ -343,20 +354,40 @@ let prev_cmd_called_history = false
 
 // Save programmer time by generating an immediately resolved promise
 // eslint-disable-next-line @typescript-eslint/no-empty-function
-const QUEUE: Promise<any>[] = [(async () => {})()]
+const QUEUE: Promise<void>[] = [(async () => {})()]
+let commandSession = { pending: 0 }
+const nativeInsertFallbacks = new Map<object, () => boolean>()
 
 /** @hidden **/
 commandline_state.clInput.addEventListener(
     "keydown",
-    function (keyevent: KeyboardEvent) {
-        if (!keyevent.isTrusted) return
+    function (keyevent: Event) {
+        if (!isTrustedKeyboardEvent(keyevent)) return
         logger.debug(
             "commandline_frame clInput keydown event listener",
             keyevent,
         )
+        const session = commandSession
         commandline_state.keyEvents.push(minimalKeyFromKeyboardEvent(keyevent))
         const response = keyParser(commandline_state.keyEvents)
-        if (response.isMatch) {
+        const [funcname, ...args] = response.value?.startsWith("ex.")
+            ? response.value.slice(3).split(/\s+/)
+            : []
+        const command =
+            commandline_state.fns[funcname as keyof typeof commandline_state.fns]
+        const nativeInsertFallback = nativeInsertFallbacks.get(command)
+        const commandArgument = args.length
+            ? args.join(" ")
+            : nativeInsertFallback && keyevent.key.length === 1
+              ? keyevent.key
+              : undefined
+        const insertCharacterNatively =
+            args.length === 0 &&
+            keyevent.key.length === 1 &&
+            !(keyevent.altKey || keyevent.ctrlKey || keyevent.metaKey) &&
+            session.pending === 0 &&
+            nativeInsertFallback?.()
+        if (response.isMatch && !insertCharacterNatively) {
             keyevent.preventDefault()
             keyevent.stopImmediatePropagation()
         } else {
@@ -370,27 +401,24 @@ commandline_state.clInput.addEventListener(
         if (response.value) {
             commandline_state.keyEvents = []
             history_called = false
+            if (insertCharacterNatively) return
 
             // If excmds start with 'ex.' they're coming back to us anyway, so skip that.
             // This is definitely a hack. Should expand aliases with exmode, etc.
             // but this whole thing should be scrapped soon, so whatever.
-            if (response.value.startsWith("ex.")) {
-                let [funcname, ...args] = response.value.slice(3).split(/\s+/)
-                if (popupTabTarget && funcname === "hide_and_clear") funcname = "popup_hide_and_clear"
-                if (popupTabTarget && funcname === "accept_line") funcname = "popup_accept_line"
+            if (funcname) {
+                session.pending++
 
                 QUEUE[QUEUE.length - 1].then(() => {
                     QUEUE.push(
                         // Abuse async to wrap non-promises in a promise
                         // eslint-disable-next-line @typescript-eslint/require-await
-                        (async () =>
-                            commandline_state.fns[
-                                funcname as keyof typeof commandline_state.fns
-                            ](
-                                args.length === 0 ? undefined : args.join(" "),
-                            ))(),
+                        (async () => session === commandSession && command(commandArgument))()
+                            .catch(error => void logger.error(error))
+                            .finally(() => session.pending--),
                     )
-                    prev_cmd_called_history = history_called
+                    if (session === commandSession)
+                        prev_cmd_called_history = history_called
                 })
             } else {
                 // Send excmds directly to our own tab, which fixes the
@@ -430,7 +458,7 @@ export function refresh_completions(exstr) {
 }
 
 /** @hidden **/
-let onInputPromise: Promise<any> = Promise.resolve()
+let onInputPromise: Promise<void | void[]> = Promise.resolve()
 /** @hidden **/
 commandline_state.clInput.addEventListener("input", () => {
     logger.debug("commandline_frame clInput input event listener")
@@ -468,6 +496,8 @@ let cmdline_history_current = ""
  *  Otherwise, no need to pass an argument.
  */
 export function clear(evlistener = false) {
+    if (evlistener) commandSession = { pending: 0 }
+    if (evlistener) prev_cmd_called_history = false
     if (evlistener)
         commandline_state.clInput.removeEventListener("blur", noblur)
     commandline_state.clInput.value = ""
@@ -498,6 +528,7 @@ async function history(n) {
     const pot_history = matches[clamped_ind]
     commandline_state.clInput.value =
         pot_history === undefined ? cmdline_history_current : pot_history
+    clInputValueChanged()
 
     // if there was no clampage, update history position
     // there's a more sensible way of doing this but that would require more programmer time
@@ -563,6 +594,14 @@ Messaging.addListener("commandline_frame", Messaging.attributeCaller(SELF))
 logger.debug("Added commandline_frame message listener")
 
 commandline_state.fns = getCommandlineFns(commandline_state)
+nativeInsertFallbacks.set(
+    commandline_state.fns.insert_character_or_completion,
+    () => {
+        if (getCompletion()) return false
+        expandAbbreviation(commandline_state.clInput)
+        return true
+    },
+)
 Messaging.addListener(
     "commandline_cmd",
     Messaging.attributeCaller(commandline_state.fns),
@@ -573,7 +612,7 @@ Messaging.addListener(
 // object since there's apparently a bug that causes performance
 // observers to be GC'd even if they're still the target of a
 // callback.
-;(window as any).tri = Object.assign(window.tri || {}, {
+window["tri"] = Object.assign(window.tri || {}, {
     perfObserver: perf.listenForCounters(),
 })
 

@@ -18,6 +18,11 @@
     --tridactyl-status-border-radius: 2px;
 
     /* Search highlight */
+    /*
+    TODO: use the "color" vars for background
+    that are now in tridactyl proper...
+    or stick with the current stuff...
+    */
     --tridactyl-search-highlight-fg: inherit;
     --tridactyl-search-highlight-bg: rgba(127, 255, 255, 0.5);
     --tridactyl-search-highlight-active-fg: inherit;
@@ -27,6 +32,16 @@
     --tridactyl-search-highlight-fg: rgb(200, 211, 245);
     --tridactyl-search-active-highlight-bg: rgb(255, 150, 108);
     --tridactyl-search-active-highlight-fg: rgb(27, 29, 43);
+
+    /* TODO:
+    These are from Tridactyl master,
+    referring to background color
+    either suggest using "fg" / "bg" because highlight API allows it
+    or use the "color" vars for my backgrounds
+    or carry on using my vars and ignore these entirely
+    */
+    --tridactyl-search-highlight-color: yellow;
+    --tridactyl-search-highlight-active-color: rgb(255 127 255);
 
     /* Hinting */
 

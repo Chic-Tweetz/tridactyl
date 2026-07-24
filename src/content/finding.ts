@@ -4,9 +4,9 @@
 // import state from "@src/state"
 // import * as State from "@src/state"
 // import { compute as scrollCompute } from "compute-scroll-into-view"
-import { clear } from "@src/commandline_frame"
+// import { clear } from "@src/commandline_frame"
 import { showAlternateInput } from "@src/content/commandline_content"
-import { getThemedCssText, getThemedStylesheet } from "@src/content/styling"
+import { getThemedCssText } from "@src/content/styling"
 
 /**
  * what a monster this has become!
@@ -21,7 +21,7 @@ import { getThemedCssText, getThemedStylesheet } from "@src/content/styling"
  *      - TODO: <pre> code snippets - we should be respecting newlines here but we aren't
  *                                    try searching for ^. and see the whole <pre> is one block
  *                                    confusing... i split by newlines when matching and it didn't fix it
- *                                    well, "fix" it... this is possibly a non-issue... maybe... 
+ *                                    well, "fix" it... this is possibly a non-issue... maybe...
  *
  * find text in the page, using regex (not browser.find.find)
  *
@@ -112,7 +112,7 @@ let sliceEnd = performance.now() + SLICE_MS
 const frames = new Set()
 
 // These appears to be unused
-const normalHighlightObjects = []
+// const normalHighlightObjects = []
 
 // Add an input to the cmdilne iframe to call our search oninput
 // this isn't the only option for incsearch, but I thought I'd try it
@@ -144,7 +144,7 @@ export function jumpToNextMatch(
     focus = false,
 ) {
     if (searchFromView) return jumpToNextFromView(n, focus)
-    //return gotoMatch(searchState.activeMatchIdx + n)
+    // return gotoMatch(searchState.activeMatchIdx + n)
     let idx = searchState.activeMatchIdx + n
     if (idx < 0) {
         idx = searchState.matches.length + n
@@ -165,7 +165,7 @@ export function focusHighlight(idx: number, focus = false) {
 // TODO: figure out: do we need to search backwards from the bottom-right
 // or the top-left as with forward search?
 // this searches from the bottom-right so on-screen matches will count
-export function jumpToNextFromView(n: number = 1, focus = true) {
+export function jumpToNextFromView(n = 1, focus = true) {
     const curr = searchState.matches[searchState.activeMatchIdx]
     if (isRangeInView(curr)) {
         jumpToNextMatch(n, false, true)
@@ -174,7 +174,7 @@ export function jumpToNextFromView(n: number = 1, focus = true) {
 
     let idx
     if (n > 0) {
-        let firstInView = searchState.matches.findIndex(
+        const firstInView = searchState.matches.findIndex(
             range => compareRangetoView(range) >= 0,
         )
         if (firstInView >= 0) {
@@ -183,7 +183,7 @@ export function jumpToNextFromView(n: number = 1, focus = true) {
             idx = n - 1
         }
     } else {
-        let lastInView = (searchState.matches as any).findLastIndex(
+        const lastInView = (searchState.matches as any).findLastIndex(
             range => compareRangetoView(range) <= 0,
         )
         if (lastInView >= 0) {
@@ -298,7 +298,7 @@ export function addHighlightStyles(
     root: Node | Document | DocumentFragment | ShadowRoot = document,
     referenceNode?: Node | HTMLElement,
 ) {
-    if (searchState.styledRoots.has(root as any)) return
+    if (searchState.styledRoots.has(root)) return
     const win = (root as Document).defaultView
 
     getOrCreateHighlights(win)
@@ -331,24 +331,24 @@ export function addHighlightStyles(
 }
 
 // could use a weak set here instead of only remembering the last root
-let lastStyledRoot = null
+// let lastStyledRoot = null
 // Add a range to the "tridactyl-find" highlights, adding the css styles if necessary
 // this is the main performance hit by far
 // maybe we could only show a maximum number of highlights around the active highlight
-function highlightRange(range: Range) {
-    const root = range.startContainer.getRootNode()
-    if (root !== lastStyledRoot) {
-        addHighlightStyles(root, range.startContainer)
-        lastStyledRoot = root
-    }
+// function highlightRange(range: Range) {
+//     const root = range.startContainer.getRootNode()
+//     if (root !== lastStyledRoot) {
+//         addHighlightStyles(root, range.startContainer)
+//         lastStyledRoot = root
+//     }
 
-    const win = range.startContainer.ownerDocument.defaultView
-    const highlights = getOrCreateHighlights(win).highlights
+//     const win = range.startContainer.ownerDocument.defaultView
+//     const highlights = getOrCreateHighlights(win).highlights
 
-    // might it be faster to create a new Highlight() each time
-    // initialised with a batch of ranges?
-    highlights.add(range)
-}
+//     // might it be faster to create a new Highlight() each time
+//     // initialised with a batch of ranges?
+//     highlights.add(range)
+// }
 
 // just checking
 export function overlayAllMatches() {
@@ -376,11 +376,11 @@ export function overlayAllMatches() {
 }
 
 // We do need a real range to get client rects, I just don't want too many live ranges hanging about before GC
-function setReuseRange(staticRange: StaticRange) {
-    reuseRange.setStart(staticRange.startContainer, staticRange.startOffset)
-    reuseRange.setEnd(staticRange.endContainer, staticRange.endOffset)
-    return reuseRange
-}
+// function setReuseRange(staticRange: StaticRange) {
+//     reuseRange.setStart(staticRange.startContainer, staticRange.startOffset)
+//     reuseRange.setEnd(staticRange.endContainer, staticRange.endOffset)
+//     return reuseRange
+// }
 
 function staticRangeBoundingRect(staticRange: StaticRange) {
     reuseRange.setStart(staticRange.startContainer, staticRange.startOffset)
@@ -394,15 +394,15 @@ function staticRangeClientRects(staticRange: StaticRange) {
     return reuseRange.getClientRects()
 }
 
-function areHighlightsVisible() {
-    const iter = frames.values()
-    let frame = iter.next()
-    while (!frame.done) {
-        if ((frame.value.CSS as any).highlights.get("tridactyl-find").size > 0)
-            return true
-    }
-    return false
-}
+// function areHighlightsVisible() {
+//     const iter = frames.values()
+//     const frame = iter.next()
+//     while (!frame.done) {
+//         if (frame.value.CSS.highlights.get("tridactyl-find").size > 0)
+//             return true
+//     }
+//     return false
+// }
 
 export function highlightAllMatches() {
     highlightMatchSlice(0, searchState.matches.length)
@@ -429,15 +429,15 @@ export function highlightMatchSlice(from = 0, to = searchState.matches.length) {
 
         if (startIndex >= endIndex) continue
 
-        const matches = searchState.matches.slice(startIndex, endIndex)
+        // const matches = searchState.matches.slice(startIndex, endIndex)
 
-        const hl = new (frame as any).Highlight(
+        const hl = new frame.Highlight(
             ...searchState.matches.slice(startIndex, endIndex),
         )
 
         hl.priority = 1
         frames.add(frame)
-        ;(frame.CSS as any).highlights.set("tridactyl-find", hl)
+        frame.CSS.highlights.set("tridactyl-find", hl)
     }
 }
 
@@ -450,7 +450,7 @@ function clearHighlights() {
     //     hl.clear()
     // })
     frames.forEach(frame => {
-        ;((frame as any).CSS as any).highlights.get("tridactyl-find")?.clear()
+        ;(frame as any).CSS.highlights.get("tridactyl-find")?.clear()
     })
 }
 
@@ -459,7 +459,7 @@ function clearActiveHighlight() {
     //     hl.clear()
     // })
     frames.forEach(frame => {
-        ;((frame as any).CSS as any).highlights
+        ;(frame as any).CSS.highlights
             .get("tridactyl-find-active")
             ?.clear()
     })
@@ -1240,22 +1240,6 @@ function setActiveRange(range, focus = false) {
         range.startContainer.parentElement.focus()
 }
 
-// seems this one's no longer used (must've been from before I tried to match the old finding.ts behaviour)
-function gotoMatch(idx: number) {
-    if (searchState.matches.length === 0) return null
-    if (!areHighlightsVisible()) highlightAllMatches()
-
-    idx = idx % searchState.matches.length
-    if (idx < 0) idx = searchState.matches.length + idx
-
-    searchState.activeMatchIdx = idx
-
-    const range = searchState.matches[idx]
-
-    setActiveRange(range)
-    return searchState.matches[idx]
-}
-
 /* function next(n: number = 1) {
     return gotoMatch(searchState.activeMatchIdx + n)
 }
@@ -1279,7 +1263,7 @@ export function stringNormaliser(str: string, whiteSpaceRule: string, level) {
         full: 3,
     }
     // let rawIndex = 0
-    let normIndex = 0
+    // let normIndex = 0
 
     const normChars = []
     const map = [] // map[normIndex] = rawIndex
@@ -1335,7 +1319,7 @@ export function stringNormaliser(str: string, whiteSpaceRule: string, level) {
                 squashingWhitespace = true
             } else {
                 // Squash multiple whitespace chars to one space
-                out = "" 
+                out = ""
             }
         } else {
             squashingWhitespace = false
@@ -1378,7 +1362,7 @@ export function stringNormaliser(str: string, whiteSpaceRule: string, level) {
         // out may now be multiple characters (e.g. "…" → "...") so push every char and the index of the original char
         for (const ch of out) {
             push(ch, i)
-            ++normIndex
+            // ++normIndex
         }
     }
 
