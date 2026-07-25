@@ -12,24 +12,6 @@ function bump_version(versionstr, component = 2) {
     return versionarr.join(".")
 }
 
-async function add_paris(versionstr) {
-    await fs.promises.mkdir(".build_cache", {recursive: true})
-    try {
-        await fs.promises.access(".git")
-        await new Promise((resolve, err) => {
-            exec("git rev-list --count HEAD > .build_cache/count", (execerr, stdout, stderr) => {
-                if (execerr) err(execerr)
-                resolve(stdout.trim())
-            })
-        })
-    }
-    catch {
-        ; // Not in a git directory - don't do anything
-    }
-    return versionstr + " Paris" + (await fs.promises.readFile(".build_cache/count", {encoding: "utf8"})).trim()
-}
-
-async function add_beta(versionstr) {
 function release_name(manifest) {
     return (manifest.version_name || manifest.version)
         .slice(manifest.version.length)
@@ -132,6 +114,13 @@ function set_beta_version(manifest, number, hash) {
     manifest.version_name = [`${version}pre${number}-${hash}`, name].filter(Boolean).join(" ")
 }
 
+function set_paris_version(manifest, number, hash) {
+    const version = manifest.version
+    const name = release_name(manifest)
+    manifest.version = `${version}.${number}`
+    manifest.version_name = [`${version}paris${number}-${hash}`, name].filter(Boolean).join(" ")
+}
+
 async function main() {
     let filename, manifest
     switch (process.argv[2]) {
@@ -214,13 +203,10 @@ async function main() {
         case "paris":
             filename = "./build/manifest.json"
             manifest = require("." + filename)
-            manifest.version = await add_paris(manifest.version)
-            manifest.version_name = manifest.version + "-" + (await get_hash())
-			manifest.applications.gecko.id = "{863dfbc1-34d6-43d5-9004-8e0f67abfb6c}"
-
+            set_paris_version(manifest, await beta_number(), await get_hash())
+            manifest.applications.gecko.id = "{863dfbc1-34d6-43d5-9004-8e0f67abfb6c}"
             // Save manifest.json
             save_manifest(filename, manifest)
-            break
         default:
             throw "Unknown command!"
     }

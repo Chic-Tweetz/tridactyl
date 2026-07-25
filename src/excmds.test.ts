@@ -1,6 +1,8 @@
 import { queryAndURLwrangler } from "@src/lib/webext"
+import * as webext from "@src/lib/webext"
 import * as config from "@src/lib/config"
 import * as Native from "@src/lib/native"
+import state from "@src/state"
 
 jest.mock("@src/lib/webext", () => ({
     ...jest.requireActual("@src/lib/webext"),
@@ -8,13 +10,19 @@ jest.mock("@src/lib/webext", () => ({
     activeTabId: jest.fn().mockResolvedValue(1),
     openInNewTab: jest.fn(),
     activeTabContainerId: jest.fn(),
+    notBackground: jest.fn().mockReturnValue(false),
     queryAndURLwrangler: jest.fn(),
 }))
+
+jest.mock("@src/lib/messaging")
+jest.mock("@src/background/config_rc")
 
 jest.mock("@src/lib/native", () => ({
     ...jest.requireActual("@src/lib/native"),
     ff_cmdline: jest.fn(),
+    getrcpath: jest.fn(),
     nativegate: jest.fn(),
+    read: jest.fn(),
     run: jest.fn(),
 }))
 
@@ -44,9 +52,11 @@ Object.defineProperty(browser, "sessions", {
     value: { getTabValue: jest.fn(), setTabValue: jest.fn() },
 })
 
+webext.initLastAudibleTabTracking()
 const backgroundExcmds = require("@src/.excmds_background.generated")
-const { nativeopen, quickmarkremove, set, tabopen, winopen } = backgroundExcmds
-const { followpage, ttscontrol } = require("@src/.excmds_content.generated")
+const { jsb, nativeopen, quickmarkremove, set, tabopen, winopen } =
+    backgroundExcmds
+const { followpage, js, ttscontrol } = require("@src/.excmds_content.generated")
 
 test.each([
     ["next", ["READ MORE", ">", ">>"], ["^next\\b", ">", "more"], 1],
@@ -102,6 +112,26 @@ test.each(["none", "somecnt"])(
     },
 )
 
+test.each([
+    ["js", js],
+    ["jsb", jsb],
+])("`%s -rc` caches RC-relative source", async (name, command) => {
+    const filename = `${name}.js`
+    jest.mocked(Native.getrcpath).mockResolvedValue("/config/tridactylrc")
+    const read = jest.mocked(Native.read)
+    read.mockClear().mockResolvedValue({
+        cmd: "read",
+        version: null,
+        content: "null",
+        code: 0,
+    })
+
+    for (const flag of ["-rc", "-rc", "-r", "-r"]) await command(flag, filename)
+
+    expect(read).toHaveBeenCalledTimes(3)
+    expect(read).toHaveBeenCalledWith(`/config/${filename}`)
+})
+
 test("`winopen` creates a neutral tab before navigating it", async () => {
     await winopen("https://example.com/")
 
@@ -110,6 +140,41 @@ test("`winopen` creates a neutral tab before navigating it", async () => {
         loadReplace: true,
         url: "https://example.com/",
     })
+})
+
+test("`getLastAudibleTab` prioritises current audio, falls back, and forgets closed tabs", async () => {
+    const currentTab = { id: 1, windowId: 10 } as browser.tabs.Tab
+    const previousTab = { id: 2, windowId: 20 } as browser.tabs.Tab
+    const onUpdated = browser.tabs.onUpdated.addListener as jest.Mock
+    const onRemoved = browser.tabs.onRemoved.addListener as jest.Mock
+    onUpdated.mock.calls[0][0](previousTab.id, { audible: false }, previousTab)
+    jest.mocked(browser.tabs.query).mockResolvedValue([])
+    jest.mocked(browser.tabs.query).mockResolvedValueOnce([currentTab])
+    await expect(webext.getLastAudibleTab()).resolves.toBe(currentTab)
+    jest.mocked(browser.tabs.get).mockResolvedValueOnce(previousTab)
+    await expect(webext.getLastAudibleTab()).resolves.toBe(previousTab)
+    jest.mocked(browser.tabs.get).mockRejectedValueOnce(new Error())
+    await expect(webext.getLastAudibleTab()).resolves.toBeUndefined()
+    onRemoved.mock.calls[0][0](previousTab.id)
+    jest.mocked(browser.tabs.get).mockClear()
+    await webext.getLastAudibleTab()
+    expect(browser.tabs.get).not.toHaveBeenCalled()
+})
+
+test("`changelistjump` skips closed tabs", async () => {
+    state.prevInputs = [
+        { inputId: "open", tab: 1 },
+        { inputId: "closed", tab: 2 },
+    ]
+    const update = jest.mocked(browser.tabs.update)
+    update.mockClear().mockRejectedValueOnce(new Error("Invalid tab ID"))
+
+    await backgroundExcmds.changelistjump()
+
+    expect(update.mock.calls).toEqual([
+        [2, { active: true }],
+        [1, { active: true }],
+    ])
 })
 
 test("`nativeopen` targets the running macOS Firefox application", async () => {
@@ -129,6 +194,37 @@ test("`nativeopen` targets the running macOS Firefox application", async () => {
         `osascript -e 'on run argv' -e 'tell application "Firefox Nightly" to open location item 1 of argv' -e 'end run' 'https://example.com/'`,
     )
 })
+
+test.each(["mktridactylrc", "source"])(
+    "`%s` rejects without native",
+    async command => {
+        jest.mocked(Native.nativegate).mockResolvedValue(false)
+
+        await expect(backgroundExcmds[command]()).rejects.toThrow(
+            new RegExp(`:nativeinstall.*:${command} --clipboard`),
+        )
+    },
+)
+
+test("`source_quiet` suppresses missing-native errors", async () => {
+    jest.mocked(Native.nativegate).mockResolvedValue(false)
+
+    await expect(backgroundExcmds.source_quiet()).resolves.toBeUndefined()
+})
+
+test.each(["mktridactylrc", "source"])(
+    "`%s --clipboard` does not require native",
+    async command => {
+        jest.mocked(Native.nativegate).mockClear()
+        Object.assign(navigator, {
+            clipboard: { readText: jest.fn(), writeText: jest.fn() },
+        })
+
+        await backgroundExcmds[command]("--clipboard")
+
+        expect(Native.nativegate).not.toHaveBeenCalled()
+    },
+)
 
 test("`quickmarkremove` unbinds every quickmark mapping", async () => {
     const bindings = ["gnq", "goq", "gwq", "gpq"]
