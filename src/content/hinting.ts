@@ -103,7 +103,6 @@ class HintState {
             hintstyles.bg === "active" ||
             hintstyles.outline === "active" ||
             hintstyles.fg === "active"
-        renderState.withCmdline = this.filterMode !== "text"
 
         this.hudTranslate.style.translate = `${-window.scrollX}px ${-window.scrollY}px`
     }
@@ -139,8 +138,6 @@ class HintState {
 
         // Remove all hints from the DOM.
         this.hud.remove()
-
-        if (renderState.withCmdline) hidecmdline()
     }
 
     resolveHinting() {
@@ -471,7 +468,6 @@ interface Hintables {
 const renderState = {
     useHintClass: false,
     useActiveHintClass: false,
-    withCmdline: false,
     isRenderQueued: false,
     hintsVisibility: [],
     renderHintsVisibility: false,
@@ -604,7 +600,6 @@ export function hintPage(
             state.selectedHints.push(hint)
             state.textfilter = [""]
             state.filterMode = "flags"
-            renderState.withCmdline = false
             state.showFlags()
             if (
                 state.selectedHints.length > 1 &&
@@ -1382,6 +1377,7 @@ function popKey() {
 function pushKey(key) {
     if (modeState.filterMode === "text") {
         const originalFilter = modeState.textfilter.map(s => s)
+        const numBefore = modeState.activeHints.length
 
         const findex = modeState.textfilter.length - 1
         modeState.textfilter[findex] += key
@@ -1389,7 +1385,6 @@ function pushKey(key) {
         filterByText(modeState.textfilter)
 
         if (
-            modeState &&
             !modeState.activeHints.length &&
             modeState.textfilter[findex].length
         ) {
@@ -1397,7 +1392,10 @@ function pushKey(key) {
             filterByText(modeState.textfilter)
         }
 
-        if (modeState && !modeState.activeHints.length) {
+        if (
+            modeState.activeHints.length === numBefore ||
+            modeState.activeHints.length === 0
+        ) {
             modeState.textfilter = originalFilter
             filterByText(originalFilter)
         }
@@ -1429,13 +1427,13 @@ function pushKey(key) {
 //     })
 // }
 
-function hidecmdline() {
-    browser.runtime.sendMessage({
-        type: "controller_background",
-        command: "acceptExCmd",
-        args: ["hidecmdline"],
-    })
-}
+// function hidecmdline() {
+//     browser.runtime.sendMessage({
+//         type: "controller_background",
+//         command: "acceptExCmd",
+//         args: ["hidecmdline"],
+//     })
+// }
 
 /** Covert to char and pushKey(). This is needed because ex commands ignore whitespace. */
 function pushKeyCodePoint(codepoint) {
@@ -1596,11 +1594,9 @@ function addTypedCharClass(hint: Hint, charCount: number) {
  */
 function filterByTag() {
     modeState.filterMode = "flags"
-    renderState.withCmdline = false
     modeState.filter = ""
     modeState.removeHiddenHints()
     modeState.showFlags()
-    hidecmdline()
 }
 
 /** Switch from hinting by flag chars to searching text within the hints.
@@ -1615,7 +1611,6 @@ function filterByTag() {
 function filterByText(match?: string[]) {
     if (modeState.filterMode !== "text") {
         modeState.filterMode = "text"
-        renderState.withCmdline = true
         modeState.textfilter = match || [""]
 
         modeState.activeHints.forEach(h => {

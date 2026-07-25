@@ -255,7 +255,7 @@ function* ParserController() {
                     break
                 }
             }
-            contentState.suffix = ""
+            // contentState.suffix = ""
             controller
                 .acceptExCmd(exstr, "content")
                 .catch(e => logger.error("Error executing key binding: ", e))
