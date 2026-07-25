@@ -3,6 +3,7 @@
 import { contentState } from "@src/content/state_content"
 import * as keyseq from "@src/lib/keyseq"
 import { mode2maps } from "@src/lib/binding"
+import { isExProgram } from "@src/lib/excmd"
 
 /** Simple container for the nmode state. */
 class NModeState {
@@ -64,20 +65,27 @@ export function parser(keys: keyseq.MinimalKey[]) {
     if ((response.exstr !== undefined && response.isMatch) || !response.isMatch)
         modeState.curCommands += inc
     if (modeState.curCommands >= modeState.numCommands) {
-        const prefix =
-            response.exstr === undefined
-                ? ""
-                : "composite " + response.exstr + "; "
-        response.exstr = prefix + modeState.endCommand // NB: this probably breaks any `js` binds
-
         // KeyTrie change: response.exstr only executed if response.match === true
         // But if response.match === true, we cancel the key (which makes no sense for :nmode ignore ...)
         // Luckily we already have the "noCancel" action we can reuse here
         if (!response.isMatch) {
             response.actions = response.actions || []
             response.actions.push("noCancel")
+            response.isMatch = true
         }
-        response.isMatch = true
+
+        if (isExProgram(response.exstr)) {
+            response.exstr = {
+                ...response.exstr,
+                source: `${response.exstr.source}\n${modeState.endCommand}`,
+            }
+        } else {
+            const prefix =
+                response.exstr === undefined
+                    ? ""
+                    : "composite " + response.exstr + "; "
+            response.exstr = prefix + modeState.endCommand // NB: this probably breaks any `js` binds
+        }
         modeState = undefined
     }
     return response

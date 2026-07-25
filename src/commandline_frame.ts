@@ -77,7 +77,7 @@ const commandline_state = {
     activeCompletions: undefined as CompletionSourceFuse[],
     clInput: window.document.getElementById(
         "tridactyl-input",
-    ) as HTMLInputElement,
+    ) as HTMLTextAreaElement,
     clear,
     cmdline_history_position: 0,
     completionsDiv: window.document.getElementById("completions"),
@@ -205,6 +205,14 @@ function resizeArea() {
         messageTab("commandline_content", "show")
         focus()
     }
+}
+
+function resizeInput(resizeFrame = true) {
+    const input = commandline_state.clInput
+    const previousHeight = input.style.height
+    input.style.height = "auto"
+    input.style.height = `${input.scrollHeight}px`
+    if (resizeFrame && input.style.height !== previousHeight) resizeArea()
 }
 
 /** @hidden
@@ -369,8 +377,8 @@ commandline_state.clInput.addEventListener(
         const session = commandSession
         commandline_state.keyEvents.push(minimalKeyFromKeyboardEvent(keyevent))
         const response = keyParser(commandline_state.keyEvents)
-        const [funcname, ...args] = response.value?.startsWith("ex.")
-            ? response.value.slice(3).split(/\s+/)
+        const [funcname, ...args] = (response.value as string)?.startsWith("ex.")
+            ? (response.value as string).slice(3).split(/\s+/)
             : []
         const command =
             commandline_state.fns[funcname as keyof typeof commandline_state.fns]
@@ -441,6 +449,7 @@ commandline_state.clInput.addEventListener(
 )
 
 export function refresh_completions(exstr) {
+    resizeInput()
     if (!commandline_state.activeCompletions) enableCompletions()
     return Promise.all(
         commandline_state.activeCompletions.map(comp =>
@@ -466,6 +475,7 @@ commandline_state.clInput.addEventListener("input", () => {
 
 /** @hidden **/
 function clInputValueChanged() {
+    resizeInput()
     const exstr = commandline_state.clInput.value
     contentState.current_cmdline = exstr
     contentState.cmdline_filter = ""
@@ -495,11 +505,13 @@ let cmdline_history_current = ""
  *  Otherwise, no need to pass an argument.
  */
 export function clear(evlistener = false) {
-    if (evlistener) commandSession = { pending: 0, queue: [Promise.resolve()] }
-    if (evlistener) prev_cmd_called_history = false
-    if (evlistener)
+    if (evlistener) {
+        commandSession = { pending: 0, queue: [Promise.resolve()] }
+        prev_cmd_called_history = false
         commandline_state.clInput.removeEventListener("blur", noblur)
+    }
     commandline_state.clInput.value = ""
+    resizeInput(!evlistener)
     commandline_state.cmdline_history_position = 0
     cmdline_history_current = ""
 }
@@ -527,7 +539,7 @@ async function history(n) {
     const pot_history = matches[clamped_ind]
     commandline_state.clInput.value =
         pot_history === undefined ? cmdline_history_current : pot_history
-    clInputValueChanged()
+    resizeInput()
 
     // if there was no clampage, update history position
     // there's a more sensible way of doing this but that would require more programmer time
@@ -560,6 +572,7 @@ export function fillcmdline(
     else commandline_state.clInput.value = newcommand
     commandline_state.initialClInputValue = commandline_state.clInput.value
     commandline_state.isVisible = true
+    resizeInput()
     const closed = wait ? waitForClose() : undefined
     let result = Promise.resolve([])
     // Focus is lost for some reason.

@@ -18,8 +18,14 @@
  */
 import * as R from "ramda"
 import * as binding from "@src/lib/binding"
+import { ExCommand, formatExProgram, isExProgram } from "@src/lib/excmd"
 import * as platform from "@src/lib/platform"
 import { DeepPartial } from "tsdef"
+
+const assertV2Argument = (value: string) => {
+    if (/[\s'"]|^(?:\.\||&&|\|\||[|;{}])$/.test(value))
+        throw new Error(`Cannot safely export dialect 2 argument: ${value}`)
+}
 
 /* Remove all nulls from objects recursively
  * NB: also applies to arrays
@@ -106,6 +112,9 @@ export class default_config {
      */
     configversion = "0.0"
 
+    /** Ex command syntax version used for interactively entered commands. */
+    exversion: "1" | "2" = "1"
+
     /**
      * Internal field to handle site-specific configs. Use :seturl/:unseturl to change these values.
      */
@@ -161,7 +170,7 @@ export class default_config {
      * exmaps contains all of the bindings for the command line.
      * You can of course bind regular ex commands but also [editor functions](/static/docs/modules/_src_lib_editor_.html) and [commandline-specific functions](/static/docs/modules/_src_commandline_frame_.html).
      */
-    exmaps = {
+    exmaps: Record<string, ExCommand> = {
         "<Enter>": "ex.accept_line",
         "<C-Enter>": "ex.execute_ex_on_completion",
         "<C-j>": "ex.accept_line",
@@ -218,7 +227,7 @@ export class default_config {
      *
      * They consist of key sequences mapped to ex commands.
      */
-    ignoremaps = {
+    ignoremaps: Record<string, ExCommand> = {
         "<S-Insert>": "mode normal",
         "<AC-Escape>": "mode normal",
         "<AC-`>": "mode normal",
@@ -233,7 +242,7 @@ export class default_config {
      *
      * They consist of key sequences mapped to ex commands.
      */
-    imaps = {
+    imaps: Record<string, ExCommand> = {
         "<Escape>": "composite unfocus | mode normal",
         "<C-[>": "composite unfocus | mode normal",
         "<C-i>": "editor",
@@ -249,7 +258,7 @@ export class default_config {
      *
      * They consist of key sequences mapped to ex commands.
      */
-    inputmaps = {
+    inputmaps: Record<string, ExCommand> = {
         "<Tab>": "focusinput -n",
         "<S-Tab>": "focusinput -N",
         /**
@@ -276,7 +285,7 @@ export class default_config {
      *
      * They consist of key sequences mapped to ex commands.
      */
-    nmaps = {
+    nmaps: Record<string, ExCommand> = {
         "<A-p>": "pin",
         "<A-m>": "mute toggle",
         "<F1>": "help",
@@ -448,7 +457,7 @@ export class default_config {
         N: "findnext --search-from-view --reverse",
     }
 
-    vmaps = {
+    vmaps: Record<string, ExCommand> = {
         "<Escape>":
             "composite js tri.dom.getSelection().empty(); mode normal; hidecmdline",
         "<C-[>":
@@ -479,7 +488,7 @@ export class default_config {
         "🕷🕷INHERITS🕷🕷": "nmaps",
     }
 
-    hintmaps = {
+    hintmaps: Record<string, ExCommand> = {
         "<Backspace>": "hint.popKey",
         "<Escape>": "hint.reset",
         "<C-[>": "hint.reset",
@@ -500,7 +509,7 @@ export class default_config {
      * Browser-wide binds accessible in all modes and on pages where Tridactyl "cannot run".
      * <!-- Note to developers: binds here need to also be listed in manifest.json -->
      */
-    browsermaps = {
+    browsermaps: Record<string, ExCommand> = {
         "<C-,>": "escapehatch",
         "<C-6>": "tab #",
         // "<CS-6>": "tab #", // banned by e2e tests
@@ -521,13 +530,7 @@ export class default_config {
      *
      * Related ex command: `autocmd`.
      */
-    autocmds = {
-        /** Commands that will be run when a page gains focus. */
-        DocFocus: {},
-
-        /** Commands that will be run when a page loses focus. */
-        DocBlur: {},
-
+    autocmds: Record<string, Record<string, ExCommand>> = {
         /**
          * Commands that will be run as soon as Tridactyl loads into a page.
          *
@@ -1825,6 +1828,7 @@ export class default_config {
     hintselectorsincludejs: "true" | "false" = "true"
 }
 
+/* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
 const platform_defaults = {
     win: {
         browsermaps: {
@@ -1864,7 +1868,7 @@ Remove-Item '%TEMP%/tridactyl_installnative.ps1'"`,
         } as unknown,
     },
 } as Record<browser.runtime.PlatformOs, default_config>
-
+/* eslint-enable @typescript-eslint/no-unnecessary-type-assertion */
 /**
  * Key codes for printable keys for [[keyboardlayoutforce]], lower and upper register.
  * See https://developer.mozilla.org/en-US/docs/Web/API/UI_Events/Keyboard_event_code_values
@@ -2964,6 +2968,7 @@ export function parseConfig(): string {
         aucons: [],
         logging: [],
         nulls: [],
+        v2: [],
     }
 
     p = parseConfigHelper(USERCONFIG, p)
@@ -2977,6 +2982,7 @@ export function parseConfig(): string {
         subconfigs: ``,
         logging: ``,
         nulls: ``,
+        v2: ``,
     }
 
     if (p.conf.length > 0)
@@ -2993,15 +2999,22 @@ export function parseConfig(): string {
         s.logging = `" Logging\n${p.logging.join("\n")}\n\n`
     if (p.nulls.length > 0)
         s.nulls = `" Removed settings\n${p.nulls.join("\n")}\n\n`
+    if (p.v2.length > 0)
+        s.v2 = `" Dialect 2 programs\nset exversion 2\n${p.v2.join("\n")}${
+            USERCONFIG.exversion === "2" ? "" : "\nset exversion 1"
+        }\n\n`
+    else if (USERCONFIG.exversion)
+        s.v2 = `set exversion ${USERCONFIG.exversion}\n\n`
 
     const ftdetect = `" For syntax highlighting see https://github.com/tridactyl/vim-tridactyl\n" vim: set filetype=tridactyl`
 
-    return `${s.general}${s.binds}${s.subconfigs}${s.aliases}${s.aucmds}${s.aucons}${s.logging}${s.nulls}${ftdetect}`
+    return `${s.general}${s.binds}${s.subconfigs}${s.aliases}${s.aucmds}${s.aucons}${s.logging}${s.nulls}${s.v2}${ftdetect}`
 }
 
 const parseConfigHelper = (pconf, parseobj, prefix = []) => {
     for (const i of Object.keys(pconf)) {
-        if (typeof pconf[i] !== "object" || Array.isArray(pconf[i])) {
+        if (typeof pconf[i] !== "object") {
+            if (prefix.length === 0 && i === "exversion") continue
             const value = Array.isArray(pconf[i]) ? JSON.stringify(pconf[i]) : pconf[i]
             if (prefix[0] === "subconfigs") {
                 const pattern = prefix[1]
@@ -3016,6 +3029,8 @@ const parseConfigHelper = (pconf, parseobj, prefix = []) => {
             }
         } else if (pconf[i] === null) {
             parseobj.nulls.push(`setnull ${[...prefix, i].join(".")}`)
+        } else if (isExProgram(pconf[i])) {
+            throw new Error("Cannot export dialect 2 program in custom setting")
         } else {
             for (const e of Object.keys(pconf[i])) {
                 if (binding.modeMaps.includes(i)) {
@@ -3033,6 +3048,15 @@ const parseConfigHelper = (pconf, parseobj, prefix = []) => {
                         continue
                     }
 
+                    if (isExProgram(pconf[i][e])) {
+                        assertV2Argument(e)
+                        if (prefix[0] === "subconfigs")
+                            assertV2Argument(prefix[1])
+                        parseobj.v2.push(
+                            `${cmd} ${e} ${formatExProgram(pconf[i][e])}`,
+                        )
+                        continue
+                    }
                     if (pconf[i][e].length > 0) {
                         parseobj.binds.push(`${cmd} ${e} ${pconf[i][e]}`)
                     } else {
@@ -3051,12 +3075,18 @@ const parseConfigHelper = (pconf, parseobj, prefix = []) => {
                     parseobj.conf.push(`abbreviate ${e} ${pconf[i][e]}`)
                 } else if (i === "autocmds") {
                     for (const a of Object.keys(pconf[i][e])) {
-                        const value = pconf[i][e][a]
-                        parseobj.aucmds.push(
-                            value === null
-                                ? `autocmddelete ${e} ${a}`
-                                : `autocmd ${e} ${a} ${value}`,
-                        )
+                        const command = pconf[i][e][a]
+                        const output = `autocmd ${e} ${a} ${formatExProgram(command)}`
+                        if (isExProgram(command)) {
+                            if (prefix.length)
+                                throw new Error(
+                                    "Cannot export scoped dialect 2 autocmd",
+                                )
+                            assertV2Argument(a)
+                            parseobj.v2.push(output)
+                        } else {
+                            parseobj.aucmds.push(output)
+                        }
                     }
                 } else if (i === "autocontain") {
                     parseobj.aucons.push(`autocontain ${e} ${pconf[i][e]}`)

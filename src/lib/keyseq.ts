@@ -42,6 +42,7 @@ import { Parser } from "@src/lib/nearley_utils"
 import * as config from "@src/lib/config"
 import grammar from "@src/grammars/.bracketexpr.generated"
 import { memoise } from "@src/lib/memoise"
+import { ExCommand, isExProgram } from "@src/lib/excmd"
 const bracketexpr_grammar = grammar
 const bracketexpr_parser = new Parser(bracketexpr_grammar)
 
@@ -331,13 +332,13 @@ export type KeyEventLike = MinimalKey | TrustedKeyboardEvent
 
 // {{{ parser and completions
 
-type MapTarget = string | ((...args: any[]) => any)
-type KeyMap = Map<TrieKey[], MapTarget>
+type MapTarget = ExCommand | ((...args: any[]) => any)
+type KeyMap = Map<MinimalKey[], MapTarget>
 
 export interface ParserResponse {
     keys?: MinimalKey[]
-    value?: string
-    exstr?: string
+    value?: MapTarget
+    exstr?: ExCommand
     isMatch?: boolean
     numericPrefix?: number
     didReset?: boolean
@@ -476,9 +477,14 @@ export function parse(
 
     const numericPrefixStr = numericPrefixToExstrSuffix(numericPrefix)
     if (cursor.has("command")) {
+        const target = cursor.get("command")
+        if (isExProgram(target) && numericPrefix.length)
+            throw new Error("Counts are not supported for ex block bindings")
         return {
-            value: cursor.get("command"),
-            exstr: cursor.get("command") + numericPrefixStr,
+            value: target,
+            exstr: isExProgram(target)
+                    ? target
+                    : target + numericPrefixStr,
             isMatch,
             numericPrefix: numericPrefix.length ? Number(numericPrefixStr) : undefined,
             keys: cursor.has("noReset") ? keys : numericPrefix.concat(keys),
@@ -853,7 +859,7 @@ export function keyMap(conf): KeyMap {
     // Fail silently and pass keys through to page if Tridactyl hasn't loaded yet
     if (!config.INITIALISED) return new Map()
 
-    const mapobj: { [keyseq: string]: string } = config.get(conf)
+    const mapobj: Record<string, ExCommand> = config.get(conf)
     if (mapobj === undefined)
         throw new Error(
             "No binds defined for this mode. Reload page with <C-r> and add binds, e.g. :bind --mode=[mode] <Esc> mode normal",
@@ -949,7 +955,7 @@ export function keyTrie(conf) {
             // Set of active node "cursors", lets us add properties to optional nodes if needed
             let active = new Set([root])
 
-            for (const minKey of keyseq) {
+            for (const minKey of keyseq as Iterable<TrieKey>) {
                 const nextActive: Set<Map<any, any>> = new Set()
 
                 let enc = keyEventToString(minKey)
@@ -1023,7 +1029,7 @@ export function keyTrie(conf) {
 
                 // noReset binds, eg :bind <N-g> ...
                 // will trigger without blocking gg
-                if (keyseq[keyseq.length - 1].noReset) {
+                if ((keyseq[keyseq.length - 1] as TrieKey).noReset) {
                     addPropertyToNode(cursor, "noReset")
                 }
             }

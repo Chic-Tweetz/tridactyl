@@ -310,8 +310,8 @@ export async function showAlternateInput(
                         cleanup()
                         // not convinced we're returning focus to the main window in time
                         setTimeout(() => oncancel?.(inp.value))
-                    } else if (parsed.value.startsWith("text.")) {
-                        const args = parsed.value
+                    } else if ((parsed.value as string).startsWith("text.")) {
+                        const args = (parsed.value as string)
                             .slice("text.".length)
                             .split(" ")
                         editor_function(
@@ -320,7 +320,7 @@ export async function showAlternateInput(
                             ...args,
                         )
                     } else {
-                        acceptExCmd(parsed.value)
+                        acceptExCmd(parsed.value as ExCommand)
                     }
                     keys = []
                 }
@@ -446,4 +446,5 @@ export {
 
 import * as SELF from "@src/content/commandline_content"
 import { acceptExCmd } from "@src/lib/controller"
+import { ExCommand } from "@src/lib/excmd"
 Messaging.addListener("commandline_content", Messaging.attributeCaller(SELF))
