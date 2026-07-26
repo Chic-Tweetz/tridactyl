@@ -118,7 +118,7 @@ function set_paris_version(manifest, number, hash) {
     const version = manifest.version
     const name = release_name(manifest)
     manifest.version = `${version}.${number}`
-    manifest.version_name = [`${version}paris${number}-${hash}`, name].filter(Boolean).join(" ")
+    manifest.version_name = [`${version}${number}-${hash}`, "Paris " + name].filter(Boolean).join(" ")
 }
 
 async function main() {
