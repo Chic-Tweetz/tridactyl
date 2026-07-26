@@ -225,7 +225,7 @@ export async function showAlternateInput(
         return null
     }
 
-    const inp = document.createElement("input")
+    const inp = document.createElement("textarea")
     inp.oninput = _event => oninput(inp.value)
     // might be best to change CSS rules from IDs to classes if you wanna do this
     inp.classList.add("tridactyl-input")

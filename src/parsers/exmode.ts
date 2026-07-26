@@ -2,6 +2,7 @@
 
 import { excmdsFunctions, paramTypes, convert } from "@src/.metadata.generated"
 import * as aliases from "@src/lib/aliases"
+import * as config from "@src/lib/config"
 import * as Logging from "@src/lib/logging"
 import { ExExpression, expression, isExpression } from "@src/lib/collections"
 import { stripLeadingColons } from "@src/lib/excmd"
@@ -151,15 +152,42 @@ function convertArgs(params, argv) {
 // Simplistic Ex command line parser.
 // TODO: Quoting arguments
 // TODO: Pipe to separate commands
-// TODO: Abbreviated commands
 export function parser(
     exstr: string,
     all_excmds: any,
     input?: PipelineInput,
 ): any[] {
     const normalizedExstr = stripLeadingColons(exstr)
+    const exaliases = config.get("exaliases")
+    const [unexpandedFunc] = normalizedExstr.trim().split(/\s+/)
+    const builtinExcmds = all_excmds[""] || {}
+    let expandedExstr = normalizedExstr
+
+    if (
+        unexpandedFunc &&
+        !unexpandedFunc.includes(".") &&
+        exaliases[unexpandedFunc] === undefined &&
+        builtinExcmds[unexpandedFunc] === undefined
+    ) {
+        const matches = Object.keys({ ...excmdsFunctions, ...exaliases })
+            .filter(
+                name =>
+                    name.startsWith(unexpandedFunc) &&
+                    (exaliases[name] !== undefined ||
+                        builtinExcmds[name] !== undefined),
+            )
+            .sort()
+        if (matches.length > 1)
+            throw new Error(
+                `Ambiguous excmd: ${unexpandedFunc}. Possible matches: ${matches.join(", ")}`,
+            )
+        if (matches.length === 1)
+            expandedExstr = exstr.replace(unexpandedFunc, matches[0])
+    }
+
     // Expand aliases
-    const expandedExstr = aliases.expandExstr(normalizedExstr)
+    expandedExstr = aliases.expandExstr(expandedExstr, exaliases)
+
     if (input && isExpression(expandedExstr)) {
         const callback = expression(expandedExstr)
         if (!input.piped)

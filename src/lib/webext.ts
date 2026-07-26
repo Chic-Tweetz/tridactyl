@@ -7,6 +7,7 @@ import * as R from "ramda"
 
 export async function getSortedTabs(
     forceSort?: "mru" | "default",
+    allWindows = false,
 ): Promise<browser.tabs.Tab[]> {
     const sortAlg = forceSort ?? config.get("tabsort")
     const comp =
@@ -15,19 +16,18 @@ export async function getSortedTabs(
                   +a.active || -b.active || b.lastAccessed - a.lastAccessed
             : (a, b) => a.index - b.index
     const hiddenVal = config.get("tabshowhidden") === "true" ? undefined : false
-    // cmdline popup: want tabs for a particular window, not the active window (that would just be the popup)
-    const queryObject = notBackground()
-        ? {
-            windowId: (await ownTab()).windowId,
-            hidden: hiddenVal,
+    const query: Parameters<typeof browser.tabs.query>[0] = {
+        hidden: hiddenVal,
+    }
+    if (!allWindows) {
+        if (notBackground()) {
+            // cmdline popup: popup window is not same as target window
+            query.windowId = (await ownTab()).windowId
+        } else {
+            query.currentWindow = true
         }
-        : {
-            currentWindow: true,
-            hidden: hiddenVal,
-        }
-    return browserBg.tabs
-        .query(queryObject)
-        .then(tabs => tabs.sort(comp))
+    }
+    return browserBg.tabs.query(query).then(tabs => tabs.sort(comp))
 }
 
 export function inContentScript() {

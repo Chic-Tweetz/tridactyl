@@ -297,7 +297,7 @@ export function isVisible(thing: Element | Range) {
             return false
     }
 
-    if (thing instanceof Range) return true
+    if ("startContainer" in thing) return true
 
     const element = thing
     // remove elements that are barely within the viewport, tiny, or invisible

@@ -22,7 +22,7 @@ body {
     padding-left: 0.125ex;
 }
 
-#tridactyl-input {
+#tridactyl-input, .tridactyl-input {
     width: 97%;
     box-sizing: border-box;
     font-family: var(--tridactyl-cmdl-font-family);
@@ -39,7 +39,7 @@ body {
     /* border-top: solid 1px lightgray; */
 }
 
-#tridactyl-input:focus {
+#tridactyl-input:focus, .tridactyl-input:focus {
     outline: none;
 }
 

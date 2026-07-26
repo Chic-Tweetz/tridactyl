@@ -321,10 +321,14 @@ span.TridactylHint.TridactylJSHint {
     font-weight: bold;
 }
 
+:root #tridactyl-colon.find::before {
+    content: "🔍";
+}
+
 /* prevent input from going to two lines with the ::before chars */
 :root #tridactyl-input {
     width: calc(100% - 3em);
-    padding-left: 0 !important;
+    /* padding-left: 0 !important; */
 }
 
 :root #command-line-holder {

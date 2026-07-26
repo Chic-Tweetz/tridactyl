@@ -1,5 +1,5 @@
 import * as Perf from "@src/perf"
-import { browserBg, ownTab, prevActiveTabOnWindow } from "@src/lib/webext"
+import { browserBg, ownTab, getSortedTabs, prevActiveTabOnWindow } from "@src/lib/webext"
 import * as Containers from "@src/lib/containers"
 import * as Completions from "@src/completions"
 import * as Messaging from "@src/lib/messaging"
@@ -184,16 +184,19 @@ export class TabAllCompletionSource extends Completions.CompletionSourceFuse {
             return
         }
 
-        const tabsPromise = browserBg.tabs.query({})
+        const mru = config.get("tabsort") == "mru"
+        const tabsPromise = getSortedTabs(mru ? "mru" : "default", true)
         const windowsPromise = this.getWindows()
         const [tabs, windows] = await Promise.all([tabsPromise, windowsPromise])
 
         const options = []
 
-        tabs.sort((a, b) => {
-            if (a.windowId === b.windowId) return a.index - b.index
-            return a.windowId - b.windowId
-        })
+        if (!mru) {
+            tabs.sort((a, b) => {
+                if (a.windowId === b.windowId) return a.index - b.index
+                return a.windowId - b.windowId
+            })
+        }
 
         // cmdline popup: target correct window
         const altTab = await prevActiveTabOnWindow((await ownTab()).windowId)
@@ -202,15 +205,12 @@ export class TabAllCompletionSource extends Completions.CompletionSourceFuse {
         // window
         const excludeCurrentWindow = this.canonicalisePrefix(prefix) === "tabgrab"
         const currentWindow = await browserBg.windows.getCurrent()
-        // Window Ids don't make sense so we're using LASTID and WININDEX to compute a window index
-        // This relies on the fact that tabs are sorted by window ids
-        let lastId = 0
-        let winindex = 0
+        const windowIndices = new Map(
+            [...new Set(tabs.map(tab => tab.windowId))]
+                .sort((a, b) => a - b)
+                .map((windowId, index) => [windowId, index + 1]),
+        )
         for (const tab of tabs) {
-            if (lastId !== tab.windowId) {
-                lastId = tab.windowId
-                winindex += 1
-            }
             // if we are excluding the current window and this tab is in the current window
             // then skip it
             if (excludeCurrentWindow && tab.windowId === currentWindow.id)
@@ -223,7 +223,7 @@ export class TabAllCompletionSource extends Completions.CompletionSourceFuse {
                         tab.windowId === altTab.windowId,
                     tab.active &&
                         tab.windowId === currentWindow.id,
-                    winindex,
+                    windowIndices.get(tab.windowId),
                     await Containers.getFromId(tab.cookieStoreId),
                     windows[tab.windowId].incognito,
                     await tabTgroup(tab.id),
