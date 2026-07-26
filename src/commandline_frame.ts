@@ -448,21 +448,29 @@ commandline_state.clInput.addEventListener(
     true,
 )
 
+let refreshQueue: Promise<unknown> = Promise.resolve()
 export function refresh_completions(exstr) {
     resizeInput()
+    const result = refreshQueue.then(() => refreshCompletions(exstr))
+    refreshQueue = result.catch(() => undefined)
+    return result
+}
+
+function refreshCompletions(exstr) {
     if (!commandline_state.activeCompletions) enableCompletions()
+    // We can't use the regular logging mechanism because the user is using the command line.
     return Promise.all(
         commandline_state.activeCompletions.map(comp =>
-            comp.filter(exstr).then(() => {
-                if (comp.shouldRefresh()) {
-                    return resizeArea()
-                }
-            }),
+            comp
+                .filter(exstr)
+                .then(() => {
+                    if (comp.shouldRefresh()) {
+                        return resizeArea()
+                    }
+                })
+                .catch(err => console.error(err)),
         ),
-    ).catch(err => {
-        console.error(err)
-        return []
-    }) // We can't use the regular logging mechanism because the user is using the command line.
+    )
 }
 
 /** @hidden **/
@@ -605,7 +613,9 @@ export function editor_function(fn_name: keyof typeof tri_editor, ...args) {
 Messaging.addListener("commandline_frame", Messaging.attributeCaller(SELF))
 logger.debug("Added commandline_frame message listener")
 
-commandline_state.fns = getCommandlineFns(commandline_state)
+/** @namespace */
+export const commandlineFns = getCommandlineFns(commandline_state)
+commandline_state.fns = commandlineFns
 nativeInsertFallbacks.set(
     commandline_state.fns.insert_character_or_completion,
     () => {

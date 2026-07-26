@@ -65,7 +65,10 @@ export async function getrcpath(
 ): Promise<string> {
     const res = await sendNativeMsg("getconfigpath", {})
 
-    if (res.code !== 0) throw new Error("getrcpath error: " + res.code)
+    if (res.code !== 0)
+        throw new Error(
+            `No tridactylrc found in the native messenger's config search paths. See :help source for supported locations. Native error: ${res.error || res.code}`,
+        )
 
     if (
         separator == "unix" &&
@@ -274,6 +277,7 @@ export async function nativegate(
         if (interactive)
             logger.error(
                 "# Native messenger not found. Please run `:installnative` and follow the instructions.",
+                e,
             )
         return false
     }

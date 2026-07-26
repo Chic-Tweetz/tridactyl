@@ -73,7 +73,7 @@ async function addSetting(settingName: string) {
         // If there is an HTML element for settings that correspond to the excmd we just found
         if (settingElems[excmd]) {
             const settingSpan = document.createElement("span")
-            settingSpan.innerText = setting
+            settingSpan.innerText = `${setting}: ${settings[setting]}`
             settingSpan.title = formatExProgram(settings[setting])
             // Add the setting to the element
             settingElems[excmd].appendChild(settingSpan)

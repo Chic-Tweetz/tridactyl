@@ -525,7 +525,7 @@ export async function guiset_quiet(rule: string, option: string) {
     // Could potentially fall back to sending minimal example to clipboard if native not installed
 
     // Check for native messenger and make sure we have a plausible profile directory
-    if (!(await Native.nativegate("0.1.1"))) return
+    if (!(await Native.nativegate("0.1.1", false))) return
     const profile_dir = await Native.getProfileDir()
     await setpref("toolkit.legacyUserProfileCustomizations.stylesheets", "true")
 
@@ -876,7 +876,7 @@ export async function exclaim(...str: string[]) {
 //#background
 export async function exclaim_quiet(...str: string[]) {
     let result = ""
-    if (await Native.nativegate()) {
+    if (await Native.nativegate("0", false)) {
         result = (await Native.run(str.join(" "))).content
     }
     return result
@@ -889,7 +889,12 @@ export async function exclaim_quiet(...str: string[]) {
  */
 //#background
 export async function native() {
-    const version = await Native.getNativeMessengerVersion(true)
+    let version
+    try {
+        version = await Native.getNativeMessengerVersion()
+    } catch (e) {
+        return fillcmdline("# Native messenger not found. Please run `:nativeinstall` and follow the instructions. " + e)
+    }
     let done
     if (version !== undefined) {
         done = fillcmdline("# Native messenger is correctly installed, version " + version)
@@ -5424,6 +5429,8 @@ export async function reseturl(pattern: string, mode: string, key: string) {
 
 /** Deletes various bits of Firefox or Tridactyl data
 
+    When used in a tridactylrc, persisted settings may briefly apply at startup before the file is sourced.
+
     The list of possible arguments can be found here:
     https://developer.mozilla.org/en-US/Add-ons/WebExtensions/API/browsingData/DataTypeSet
 
@@ -6522,10 +6529,11 @@ async function js_helper(str: string[]) {
  *
  *  You can use `-d` to make your own ex-commands:
  *
- *      `command loudecho js -d€ window.alert(JS_ARGS.join(" "))€`
- *      And use it like: `loudecho this is a message!`
+ *  `command loudecho js -d€ window.alert(JS_ARGS.join(" "))€`
  *
- *      Everything after `€` will be available in `JS_ARGS`, starting at index 1 (the first item is usually an empty string).
+ *  And use it like: `loudecho this is a message!`
+ *
+ *  Everything after `€` will be available in `JS_ARGS`, starting at index 1 (the first item is usually an empty string).
  *
  */
 /* tslint:disable:no-identical-functions */
