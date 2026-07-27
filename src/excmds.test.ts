@@ -3,12 +3,14 @@ import * as webext from "@src/lib/webext"
 import * as config from "@src/lib/config"
 import * as Native from "@src/lib/native"
 import * as Messaging from "@src/lib/messaging"
+import * as DOM from "@src/lib/dom"
 import state from "@src/state"
 
 jest.mock("@src/lib/webext", () => ({
     ...jest.requireActual("@src/lib/webext"),
     activeTab: jest.fn().mockResolvedValue({ index: 0 }),
     activeTabId: jest.fn().mockResolvedValue(1),
+    ownTab: jest.fn().mockResolvedValue({ id: 1 }),
     openInNewTab: jest.fn(),
     activeTabContainerId: jest.fn(),
     notBackground: jest.fn().mockReturnValue(false),
@@ -46,6 +48,7 @@ Object.assign(browser.runtime, {
     getPlatformInfo: jest.fn(),
     sendNativeMessage: jest.fn(),
 })
+Object.assign(browser.commands, { update: jest.fn() })
 Object.defineProperty(globalThis, "CSS", { value: {} })
 Object.defineProperty(browser, "windows", {
     value: {
@@ -59,9 +62,10 @@ Object.defineProperty(browser, "sessions", {
 
 webext.initLastAudibleTabTracking()
 const backgroundExcmds = require("@src/.excmds_background.generated")
-const { jsb, nativeopen, quickmarkremove, set, tabopen, winopen } =
+const { jsb, nativeopen, quickmarkremove, set, tabopen, unbind, winopen } =
     backgroundExcmds
 const { followpage, js, ttscontrol } = require("@src/.excmds_content.generated")
+const { focusinput, setmode } = require("@src/.excmds_content.generated")
 
 test.each([
     ["next", ["READ MORE", ">", ">>"], ["^next\\b", ">", "more"], 1],
@@ -83,6 +87,18 @@ test.each([
     },
 )
 
+test("`focusinput -l` restores the shared input selector", async () => {
+    document.body.innerHTML =
+        '<textarea id="fallback"></textarea><textarea id="remembered"></textarea>'
+    state.lastInputSelector = '[id="remembered"]'
+    const isSubstantial = jest.spyOn(DOM, "isSubstantial").mockReturnValue(true)
+
+    await focusinput("-l")
+
+    expect(document.activeElement.id).toBe("remembered")
+    isSubstantial.mockRestore()
+})
+
 test("`set` parses string and array followpage patterns", async () => {
     await set("followpagepatterns.next", '["next", ">"]')
     expect(config.get("followpagepatterns", "next")).toEqual(["next", ">"])
@@ -97,6 +113,25 @@ test("`set` preserves deep custom arrays", async () => {
 
     expect(config.getDynamic("custom", "deep", "array")).toEqual([1, 2])
 })
+
+test("`autocontaindelete` removes only the matching rule", async () => {
+    const pattern = "^https?://([^/]*\\.|)one\\.example/"
+    await config.set("autocontain", pattern, "work")
+    await config.set("autocontain", "two.example", "personal")
+    await backgroundExcmds.autocontaindelete("-s", "one\\.example")
+    expect(config.get("autocontain", pattern)).toBeUndefined()
+    expect(config.get("autocontain", "two.example")).toBe("personal")
+})
+
+test.each(["insert", "input", "ignore"])(
+    "`setmode` can enable count awareness in %s mode",
+    async mode => {
+        await setmode(mode, "countaware", "true")
+        expect(config.get("modesubconfigs", mode, "countaware")).toBe("true")
+        await config.unset("modesubconfigs", mode, "countaware")
+        expect(config.get("modesubconfigs", mode, "countaware")).toBe("false")
+    },
+)
 
 test.each(["invalid", "{}"])(
     "`set` rejects non-array custom array value %s",
@@ -262,6 +297,30 @@ test("`quickmarkremove` unbinds every quickmark mapping", async () => {
 
 test.each([undefined, "", "qq"])("`quickmarkremove` rejects %p", async key => {
     await expect(quickmarkremove(key)).rejects.toThrow("quickmarkremove syntax")
+})
+
+test("`unbind` bulk flags select prefixes, bindings and modes", async () => {
+    const getAsync = jest.spyOn(config, "getAsync").mockResolvedValue(undefined)
+    await config.set("nmaps", "z", "nop")
+    await config.set("nmaps", "zz", "nop")
+    await backgroundExcmds.bind("x", "tabdiscard", "--all")
+    await config.set("imaps", "z", "nop")
+    await unbind("--recursive", "--mode=normal", "z")
+    const maps = config.get("nmaps")
+    expect([maps.z, maps.zz]).toEqual([undefined, undefined])
+    expect(maps.x).toBe("tabdiscard --all")
+    expect(config.get("imaps", "z")).toBe("nop")
+    jest.mocked(browser.commands.getAll).mockResolvedValue([
+        { name: "command_1", shortcut: "Ctrl+6" },
+    ])
+    await config.set("nmaps", "z", "nop")
+    await unbind("--recursive", "--mode=*", "z")
+    expect(config.get("nmaps").z).toBeUndefined()
+    expect(config.get("imaps").z).toBeUndefined()
+    await unbind("--all", "--mode=*")
+    expect(Object.keys(config.get("nmaps"))).toHaveLength(0)
+    expect(browser.commands.update).toHaveBeenCalled()
+    getAsync.mockRestore()
 })
 
 test.each([

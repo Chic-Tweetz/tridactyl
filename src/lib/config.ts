@@ -151,9 +151,9 @@ export class default_config {
      */
     modesubconfigs: { [key: string]: DeepPartial<default_config> } = {
         normal: {},
-        insert: {},
-        input: {},
-        ignore: {},
+        insert: { countaware: "false" },
+        input: { countaware: "false" },
+        ignore: { countaware: "false" },
         ex: {},
         hint: {},
         visual: {},
@@ -249,6 +249,7 @@ export class default_config {
         "<AC-Escape>": "mode normal",
         "<AC-`>": "mode normal",
         "<S-Escape>": "mode ignore",
+        "<C-o>": "nmode normal 1 mode ignore",
     }
 
     /**
@@ -643,6 +644,11 @@ export class default_config {
     usekeytranslatemap: "true" | "false" = "true"
 
     /**
+     * Whether digits typed before bindings are interpreted as counts, e.g. whether `2gt` should run `:tabnext_gt 2` or just `:tabnext_gt`. Defaults to false in insert, input, and ignore modes. You can control it per mode with [[setmode]] or per site with [[seturl]]
+     */
+    countaware: "true" | "false" = "true"
+
+    /**
      * Instead of fetching actual character which depends on selected layout,
      * use machine code of a key and convert to character according to keyboardlayoutoverrides. The default layout mapping
      * is US `qwerty`, but can be changed with [[keyboardlayoutbase]].
@@ -771,6 +777,7 @@ export class default_config {
         sanitize: "sanitise",
         "saveas!": "saveas --cleanup --overwrite",
         tutorial: "tutor",
+        glossary: "define",
         h: "help",
         unmute: "mute unmute",
         authors: "credits",
@@ -956,6 +963,9 @@ export class default_config {
      * If set to `false`, hints will only be followed upon confirmation. This applies to cases when there is only a single match or only one link on the page.
      */
     hintautoselect: "true" | "false" = "true"
+
+    /** Whether to hide hints for elements obscured by other elements. */
+    hinthideobscured: "true" | "false" = "false"
 
     /**
      * Controls whether the page can focus elements for you via js

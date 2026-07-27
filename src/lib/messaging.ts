@@ -15,6 +15,7 @@ export type TabMessageType =
     | "state"
     | "lock"
     | "alive"
+    | "history_state"
     | "tab_changes"
     | "stop_buffering_page_keys"
     | "commandline_frame_ready_to_receive_messages"
@@ -135,7 +136,18 @@ export async function message<
 
     // Typescript didn't like this
     // return browser.runtime.sendMessage<typeof message, StripPromise<ReturnType<F>>>(message)
-    return browser.runtime.sendMessage(message)
+    try {
+        return await browser.runtime.sendMessage(message)
+    } catch (error) {
+        // Closing the sender can tear down Firefox's response channel.
+        if (
+            type !== "excmd_background" ||
+            command !== "tabclose" ||
+            args.length > 0 ||
+            error?.message !== "Message manager disconnected"
+        )
+            throw error
+    }
 }
 
 /** Message the active tab of the currentWindow */

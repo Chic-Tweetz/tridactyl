@@ -85,10 +85,10 @@ import * as UrlUtil from "@src/lib/url_util"
 import * as config from "@src/lib/config"
 import * as aliases from "@src/lib/aliases"
 import * as Logging from "@src/lib/logging"
-import { AutoContain } from "@src/lib/autocontainers"
+import { AutoContain, markExplicitContainerTab } from "@src/lib/autocontainers"
 import * as CSS from "css"
 import * as Perf from "@src/perf"
-import { staticThemes, defaultConfigMembers, memberType, typeKind, convert, convertMember } from "@src/.metadata.generated"
+import { staticThemes, excmdsFunctions, defaultConfigMembers, memberType, typeKind, convert, convertMember } from "@src/.metadata.generated"
 import * as Native from "@src/lib/native"
 import * as TTS from "@src/lib/text_to_speech"
 import * as excmd_parser from "@src/parsers/exmode"
@@ -103,6 +103,7 @@ import * as R from "ramda"
 import * as treestyletab from "@src/interop/tst"
 import { uuidv4 } from "@src/lib/math"
 import { ABOUT_PAGES } from "@src/lib/about_pages"
+import glossary from "@src/.glossary.generated.json"
 
 /**
  * This is used to drive some excmd handling in `composite`.
@@ -1191,15 +1192,14 @@ export async function saveJumps(jumps) {
 /** @hidden */
 //#content_helper
 export async function saveTabHistory(history) {
-    return browserBg.sessions.setTabValue(await activeTabId(), "history", history)
+    return browserBg.sessions.setTabValue((await ownTab()).id, "history", history)
 }
 
 /** Returns a promise for an object with history list, index of a current, previous and next pages */
 /** @hidden */
 //#content_helper
 export async function curTabHistory() {
-    const tabid = await activeTabId()
-    return await browserBg.sessions.getTabValue(tabid, "history")
+    return browserBg.sessions.getTabValue((await ownTab()).id, "history")
 }
 
 /** Returns a promise for an object containing the jumplist of all pages accessed in the current tab.
@@ -1630,7 +1630,7 @@ export function scrollpage(n = 1, count = 1) {
  *
  *  Argument: A string you want to search for.
  *
- *  This function accepts `-?` or `--reverse` to search from the bottom rather than the top, `-: n` or `--jump-to n` to jump directly to the nth match, and `-s` or `--case-sensitive` and `-i` or `--case-insensitive` to override `findcase`. The case flags cannot be combined.
+ *  This function accepts `-?` or `--reverse` to search from the bottom rather than the top, `-: n` or `--jump-to n` to jump directly to the nth match, and `-s` or `--case-sensitive` and `-i` or `--case-insensitive` to override `findcase`. The case flags cannot be combined. `-r` or `--regex` accepts [JavaScript regular expressions](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_expressions) or `/pattern/flags`; `g` is added automatically. The case options override `i`, while `findcase` applies when `i` is absent. Regex matches visible raw DOM text in the current document, may span text nodes, and ignores empty matches.
  *
  *  The behavior of this function is affected by the following setting:
  *
@@ -1653,6 +1653,8 @@ export function find(...args: string[]) {
 
             "--case-insensitive": Boolean,
             "-i": "--case-insensitive",
+            "--regex": Boolean,
+            "-r": "--regex",
         },
         {
             argv: args,
@@ -1668,6 +1670,7 @@ export function find(...args: string[]) {
     if ("--jump-to" in argOpt) option["jumpTo"] = argOpt["--jump-to"]
     if (argOpt["--case-sensitive"] || argOpt["--case-insensitive"])
         option["caseSensitive"] = argOpt["--case-sensitive"]
+    option["regex"] = argOpt["--regex"]
     const searchQuery = argOpt._.join(" ")
     return finding.jumpToMatch(searchQuery, option)
 }
@@ -1915,11 +1918,11 @@ export function home(all: "false" | "true" = "false") {
 
 /** Show this page.
 
-    `:help something` jumps to the entry for something. Something can be an excmd, an alias for an excmd, a binding or a setting.
+    `:help something` jumps to the entry for something. Something can be an excmd, an alias for an excmd, a binding, a setting or a glossary term.
 
     On the ex command page, the "nmaps" list is a list of all the bindings for the command you're seeing and the "exaliases" list lists all its aliases.
 
-    If there's a conflict (e.g. you have a "go" binding that does something, a "go" excmd that does something else and a "go" setting that does a third thing), the binding is chosen first, then the setting, then the excmd. In such situations, if you want to let Tridactyl know you're looking for something specfic, you can specify the following flags:
+    If there's a conflict, bindings are chosen first, then settings, aliases, ex commands and finally glossary terms. You can select a category explicitly with the following flags:
 
     `-a`: look for an alias
 
@@ -1929,6 +1932,8 @@ export function home(all: "false" | "true" = "false") {
 
     `-s`: look for a setting
 
+    `-g`: look in the glossary
+
     `-B`: open the help page in a background tab
 
     `-o`: open the help page in the current tab
@@ -1937,7 +1942,7 @@ export function home(all: "false" | "true" = "false") {
 
     `-w`: open the help page in a new window
 
-    If the keyword you gave to `:help` is actually an alias for a composite command (see [[composite]]) , you will be taken to the help section for the first command of the pipeline. You will be able to see the whole pipeline by hovering your mouse over the alias in the "exaliases" list. Unfortunately there currently is no way to display these HTML tooltips from the keyboard.
+    If the keyword you gave to `:help` is actually an alias for a composite command (see [[composite]]) , you will be taken to the help section for the first command of the pipeline.
 
     e.g. `:help bind`
 */
@@ -1949,6 +1954,7 @@ export async function help(...args: string[]) {
             "-b": Boolean,
             "-e": Boolean,
             "-s": Boolean,
+            "-g": Boolean,
             "-B": Boolean,
             "-o": Boolean,
             "-t": Boolean,
@@ -1957,7 +1963,10 @@ export async function help(...args: string[]) {
         { argv: args, allowNegativePositional: true },
     )
 
-    const openInCurrentWindow = option["-o"] || ((await activeTab()).url.startsWith(browser.runtime.getURL("static/docs/")) && !(option["-B"] || option["-t"] || option["-w"]))
+    const glossaryPage = browser.runtime.getURL("static/clippy/glossary.html")
+    const excmdPage = browser.runtime.getURL("static/docs/modules/_src_excmds_.html")
+    const activeUrl = (await activeTab()).url
+    const openInCurrentWindow = option["-o"] || ((activeUrl.startsWith(browser.runtime.getURL("static/docs/")) || activeUrl.startsWith(glossaryPage)) && !(option["-B"] || option["-t"] || option["-w"]))
     const subject = option._.join(" ")
     const settings = await config.getAsync()
     let url = ""
@@ -1975,7 +1984,7 @@ export async function help(...args: string[]) {
                 if (resolved.includes(helpItem)) break
             }
             if (resolved.length > 0) {
-                return browser.runtime.getURL("static/docs/modules/_src_excmds_.html") + "#" + helpItem
+                return excmdPage + "#" + helpItem
             }
             return ""
         },
@@ -1987,14 +1996,18 @@ export async function help(...args: string[]) {
                 // sequence referenced by 'helpItem' and don't check other
                 // modes
                 if (helpItem in bindings) {
-                    const command = programSource(bindings[helpItem]).split(" ")
-                    helpItem = ["composite", "fillcmdline"].includes(command[0]) ? command[1] : command[0]
-                    return browser.runtime.getURL("static/docs/modules/_src_excmds_.html") + "#" + helpItem
+                    helpItem = bindings[helpItem].split(" ")
+                    helpItem = ["composite", "fillcmdline"].includes(helpItem[0]) ? helpItem[1] : helpItem[0]
+                    return excmdPage + "#" + helpItem
                 }
             }
             return ""
         },
-        excmd: (helpItem: string) => browser.runtime.getURL("static/docs/modules/_src_excmds_.html") + "#" + helpItem,
+        excmd: (helpItem: string) => Object.prototype.hasOwnProperty.call(excmdsFunctions, helpItem) ? excmdPage + "#" + helpItem : "",
+        glossary: (helpItem: string) => {
+            const entry = glossary.find(entry => entry.word === helpItem)
+            return entry ? glossaryPage + "#" + encodeURIComponent(entry.anchor) : ""
+        },
         setting: (helpItem: string) => {
             let subSettings = settings
             const settingNames = helpItem.split(".")
@@ -2014,22 +2027,27 @@ export async function help(...args: string[]) {
     }
 
     if (subject === "") {
-        url = browser.runtime.getURL("static/docs/modules/_src_excmds_.html")
+        url = option["-g"] ? glossaryPage : excmdPage
     } else {
+        const categoryFlags = ["-a", "-b", "-e", "-s", "-g"].filter(flag => option[flag])
+        if (categoryFlags.length > 1) throw new Error("Only one help category may be selected")
         // If the user did specify what they wanted, specifically look for it
         if (option["-a"]) url = strategies.alias(subject)
         else if (option["-b"]) url = strategies.binding(subject)
         else if (option["-e"]) url = strategies.excmd(subject)
         else if (option["-s"]) url = strategies.setting(subject)
+        else if (option["-g"]) url = strategies.glossary(subject)
 
         // Otherwise or if it couldn't be found, try all possible items
-        if (url === "") {
-            const priority = [strategies.binding, strategies.setting, strategies.alias, strategies.excmd]
+        if (url === "" && categoryFlags.length === 0) {
+            const priority = [strategies.binding, strategies.setting, strategies.alias, strategies.excmd, strategies.glossary]
             for (const strategy of priority) {
                 url = strategy(subject)
                 if (url !== "") break
             }
         }
+        if (url === "" && categoryFlags.length) throw new Error(`No ${categoryFlags[0]} help found for ${subject}`)
+        if (url === "") url = excmdPage + "#" + subject
     }
 
     let done
@@ -2044,6 +2062,12 @@ export async function help(...args: string[]) {
         done = tabopen(url)
     }
     return done.then(() => undefined)
+}
+
+/** Look up a term in the glossary. */
+//#background
+export async function define(...words: string[]) {
+    return help("-g", ...words)
 }
 
 /**
@@ -2696,25 +2720,21 @@ input[type='password']
  *                  "-b": biggest input field
  */
 //#content
-export function focusinput(nth: number | string) {
+export async function focusinput(nth: number | string) {
     let inputToFocus: HTMLElement = null
 
     // set to false to avoid falling back on the first available input
     // if a special finder fails
     let fallbackToNumeric = true
 
-    // nth = "-l" -> use the last used input for this page
+    // nth = "-l" -> use the last used input
     if (nth === "-l" || !nth) {
-        // try to recover the last used input stored as a
-        // DOM node, which should be exactly the one used before (or null)
-        if (DOM.getLastUsedInput()) {
-            inputToFocus = DOM.getLastUsedInput()
-        } else {
-            // Pick the first input in the DOM.
-            inputToFocus = DOM.getElemsBySelector(INPUTTAGS_selectors, [DOM.isSubstantial])[0] as HTMLElement
-
-            // We could try to save the last used element on page exit, but
-            // that seems like a lot of faff for little gain.
+        inputToFocus = DOM.getLastUsedInput()
+        if (!inputToFocus?.isConnected) {
+            const selector = await State.getAsync("lastInputSelector")
+            if (selector) {
+                inputToFocus = DOM.getElemsBySelector(selector, [DOM.isTextEditable, DOM.isSubstantial])[0] as HTMLElement
+            }
         }
     } else if (nth === "-n" || nth === "-N") {
         // attempt to find next/previous input
@@ -3055,6 +3075,7 @@ export async function tabopenwait(...addressarr: string[]): Promise<browser.tabs
 export async function tabopen_helper({ addressarr = [], waitForDom = false }): Promise<browser.tabs.Tab> {
     let active
     let container
+    let explicitlyContained = false
     let bypassFocusHack = false
     let discarded = false
     let pinned = false
@@ -3092,6 +3113,7 @@ export async function tabopen_helper({ addressarr = [], waitForDom = false }): P
                     container = "firefox-default"
                 } else {
                     container = await Container.fuzzyMatch(args[1])
+                    explicitlyContained = Boolean(container)
                 }
             } else logger.error("[tabopen] can't open a container in a private browsing window.")
 
@@ -3138,6 +3160,8 @@ export async function tabopen_helper({ addressarr = [], waitForDom = false }): P
     args.discarded = discarded
     args.pinned = pinned
     if (typeof maybeURL === "string") {
+        if (explicitlyContained && maybeURL.search("^https?://") >= 0)
+            args.beforeNavigate = markExplicitContainerTab
         return openInNewTab(maybeURL, args, waitForDom)
     }
 
@@ -3145,8 +3169,8 @@ export async function tabopen_helper({ addressarr = [], waitForDom = false }): P
         // browser.search.search(tabId, ...) sometimes does not work when it is executed
         // right after openInNewTab(). Calling browser.tabs.get() between openInNewTab()
         // and browser.search.search() seems to fix that problem.
-        // See https://github.com/tridactyl/tridactyl/pull/4791.
-        return openInNewTab("about:blank", args, waitForDom)
+            // See https://github.com/tridactyl/tridactyl/pull/4791.
+            return openInNewTab("about:blank", args, waitForDom)
             .then(tab => browser.tabs.get(tab.id))
             .then(tab => browser.search.search({ tabId: tab.id, ...maybeURL }))
     }
@@ -4825,12 +4849,9 @@ export function unabbreviate(abbreviation: string) {
         - [[reset]]
 */
 //#background
-export async function bind(...args: Array<string | ExProgram>) {
-    if (args.includes("--recursive")) {
-        throw new Error("`--recursive` can only be called on unbind.")
-    }
-
+export async function bind(...args: string[]) {
     const args_obj = parse_bind_args(...args)
+    if (args_obj.isRecursive || args_obj.mode === "*") throw new Error("`--recursive` and `--mode=*` can only be called on unbind.")
     let p = Promise.resolve()
     if (args_obj.excmd !== "") {
 
@@ -4863,7 +4884,7 @@ export async function bind(...args: Array<string | ExProgram>) {
         p = config.set(args_obj.configName, args_obj.key, args_obj.excmd)
     } else if (args_obj.key.length) {
         // Display the existing bind
-        p = bindshow(...(args as string[]))
+        p = bindshow(...(args))
     }
     return p
 }
@@ -5042,6 +5063,7 @@ export function seturl(pattern: string, key: string, ...values: string[]) {
  *
  * Currently this command is only supported for the following settings:
  * - [[allowautofocus]]
+ * - [[countaware]]
  *
  * Example:
  * - `setmode ignore allowautofocus true`
@@ -5051,7 +5073,8 @@ export function setmode(mode: string, key: string, ...values: string[]) {
     if (!mode || !key || !values.length) {
         throw new Error("seturl syntax: mode key value")
     }
-    if (key !== "allowautofocus") throw new Error("Setting '" + key + "' not supported with setmode")
+    if (!["allowautofocus", "countaware"].includes(key))
+        throw new Error("Setting '" + key + "' not supported with setmode")
 
     return config.set("modesubconfigs", mode, ...validateSetArgs(key, values))
 }
@@ -5137,7 +5160,7 @@ export function getAutocmdEvents() {
 /**
  * Set autocmds to run when certain events happen.
  *
- * @param event Currently, 'TriStart', 'DocStart', 'DocLoad', 'DocEnd', 'DocFocus', 'DocBlur', 'TabEnter', 'TabLeft', 'FullscreenChange', 'FullscreenEnter', 'FullscreenLeft', 'HistoryState', 'HistoryPushState', 'HistoryReplace', 'UriChange', 'ModeEnter', 'ModeLeave', 'AuthRequired', 'BeforeRedirect', 'BeforeRequest', 'BeforeSendHeaders', 'Completed', 'ErrorOccured', 'HeadersReceived', 'ResponseStarted', and 'SendHeaders' are supported
+ * @param event Currently, 'TriStart', 'DocStart', 'DocLoad', 'DocEnd', 'DocFocus', 'DocBlur', 'TabEnter', 'TabLeft', 'FullscreenChange', 'FullscreenEnter', 'FullscreenLeft', 'HistoryState', 'UriChange', 'ModeEnter', 'ModeLeave', 'AuthRequired', 'BeforeRedirect', 'BeforeRequest', 'BeforeSendHeaders', 'Completed', 'ErrorOccured', 'HeadersReceived', 'ResponseStarted', and 'SendHeaders' are supported
  *
  * - DocStart: When a webpage loading. Exactly, when tridactyl is loading in a page.
  * - DocLoad: When the whole html parsed, not including image/css loaded. (Just like jquery $(fn) or the [DOMContentLoaded event](https://developer.mozilla.org/en-US/docs/Web/API/Document/DOMContentLoaded_event).)
@@ -5150,8 +5173,7 @@ export function getAutocmdEvents() {
 
  * - A supported webRequest event (AuthRequired, BeforeRedirect, BeforeRequest, BeforeSendHeaders, Completed, ErrorOccured, HeadersReceived, ResponseStarted and SendHeaders): the corresponding [WebExtension webRequest event](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/webRequest#Events)
 
- * - The 'HistoryState' event is triggered when a page uses the web history API to change the page location / URI. It should be used in preference to 'UriChange' below since it will use almost no resources. The 'UriChange' event may work on websites where 'HistoryState' does not.
- * - The 'HistoryPushState' is triggered only when a page calls 'history.pushState' to change URI, and 'HistoryReplace' is for 'history.replace'. By the way, the HistoryPopState is not implemented.
+ * - The 'HistoryState' event is triggered when same-document navigation changes the page location / URI. It should be used in preference to 'UriChange' below since it will use almost no resources. The 'UriChange' event may work on websites where 'HistoryState' does not.
  * - The 'UriChange' event is for "single page applications" which change their URIs without triggering DocStart or DocLoad events. It uses a timer to check whether the URI has changed, which has a small impact on battery life on pages matching the `url` parameter. We suggest using it sparingly.
  *
  * @param url type depends on the event
@@ -5218,6 +5240,15 @@ export async function autocmd(event: string, url: string, ...parts: Array<string
     return config.set("autocmds", event, url, excmd)
 }
 
+/** @hidden */
+//#background_helper
+function autocontainPattern(args: string[]) {
+    const mode = ["-u", "-s"].includes(args[0]) ? args.shift() : ""
+    const pattern = args.shift()
+    if (mode === "-u") return pattern
+    return mode === "-s" ? `^https?://([^/]*\\.|)${pattern}/` : `^https?://[^/]*${pattern}/`
+}
+
 /**
  * Automatically open a domain and all its subdomains in a specified container.
  *
@@ -5249,22 +5280,26 @@ export async function autocmd(event: string, url: string, ...parts: Array<string
 export function autocontain(...args: string[]) {
     if (args.length === 0) throw new Error("Invalid autocontain arguments.")
 
-    const urlMode = args[0] === "-u"
-    const saneMode = args[0] === "-s"
-    if (urlMode || saneMode) {
-        args.splice(0, 1)
-    }
-    if (args.length < 2) throw new Error("syntax: autocontain [-{u,s}] pattern container proxy1 proxy2")
+    const pattern = autocontainPattern(args)
+    if (args.length < 1) throw new Error("syntax: autocontain [-{u,s}] pattern container proxy1 proxy2")
 
-    let [pattern, container, ...proxies] = args
-
-    if (!urlMode) {
-        pattern = saneMode ? `^https?://([^/]*\\.|)${pattern}/` : `^https?://[^/]*${pattern}/`
-    }
+    const [container, ...proxies] = args
 
     proxies.length && Proxy.exists(proxies)
 
     return config.set("autocontain", pattern, proxies.length ? [container, proxies.join(",")].join("+") : container)
+}
+
+/** Remove an [[autocontain]] rule.
+ *
+ * @param args an optional -s or -u flag followed by the pattern used to create the rule.
+ */
+//#background
+export function autocontaindelete(...args: string[]) {
+    if (args.length === 0) throw new Error("Invalid autocontaindelete arguments.")
+    const pattern = autocontainPattern(args)
+    if (!pattern || args.length) throw new Error("syntax: autocontaindelete [-{u,s}] pattern")
+    return config.unset("autocontain", pattern)
 }
 
 /** Add a proxy for use with [[autocontain]] or `:set proxy`
@@ -5334,7 +5369,11 @@ export function blacklistadd(url: string) {
 /**
    Unbind a sequence of keys so that they do nothing at all.
 
-   Accepts the flag `--recursive` to unbind all binds that start with the specified key sequence, e.g. `:unbind --recursive ;` unbinds all the binds like `;f` `;F` `;;` etc.
+   `--recursive` unbinds every bind starting with the key sequence.
+
+   `--all` unbinds every key in a mode (by default, normal mode). NB: "every key" really means "every key". You should probably immediately add a bind to `mode normal` for that mode so you can leave it again.
+
+   `--mode=*` applies the operation to every mode.
 
     See also:
 
@@ -5343,32 +5382,28 @@ export function blacklistadd(url: string) {
 */
 //#background
 export async function unbind(...args: string[]) {
-    const args_obj = parse_bind_args(...args)
-
-    if (args_obj.isRecursive) {
-        const prefix = args_obj.key
-        const maps = config.get(args_obj.configName as keyof config.default_config)
-        for (const binding in maps) {
-            if (binding.startsWith(prefix)) {
-                config.set(args_obj.configName, binding, null)
-            }
-        }
+    const isAll = args.includes("--all")
+    const args_obj = parse_bind_args(...(isAll ? args.filter(arg => arg !== "--all").concat("") : args))
+    if (args_obj.excmd !== "" || (isAll && (args_obj.key !== "" || args_obj.isRecursive))) throw new Error("unbind syntax: `unbind [--mode=mode|*] [--recursive key|--all|key]`")
+    await config.getAsync()
+    const maps = args_obj.mode === "*" ? [...new Set([...modeMaps, ...Object.keys(config.USERCONFIG).filter(map => map.endsWith("maps") && config.USERCONFIG[map] !== null && typeof config.USERCONFIG[map] === "object")])] : [args_obj.configName]
+    const matches = key => isAll || (args_obj.isRecursive ? key.startsWith(args_obj.key) : key === args_obj.key)
+    const inherits = "🕷🕷INHERITS🕷🕷"
+    const getBindings = map => {
+        const bindings = { ...config.DEFAULTS[map], ...config.USERCONFIG[map] }
+        return bindings[inherits] ? { ...getBindings(bindings[inherits]), ...bindings } : bindings
     }
-
-    if (args_obj.excmd !== "") throw new Error("unbind syntax: `unbind key`")
-    if (args_obj.mode == "browser") {
-        const commands = await browser.commands.getAll()
-
-        const command = commands.filter(c => mozMapToMinimalKey(c.shortcut).toMapstr() == args_obj.key)[0]
-
-        // Fail quietly if bind doesn't exist so people can safely run it in their RC files
-        if (command !== undefined) {
-            await browser.commands.update({ name: command.name, shortcut: "" })
-            await commandsHelper.updateListener()
-        }
+    if (maps.includes("browsermaps")) {
+        const commands = (await browser.commands.getAll()).filter(command => command.shortcut && matches(mozMapToMinimalKey(command.shortcut).toMapstr()))
+        for (const command of commands) await browser.commands.update({ name: command.name, shortcut: "" })
+        if (commands.length) await commandsHelper.updateListener()
     }
-
-    return config.set(args_obj.configName, args_obj.key, null)
+    for (const map of maps) {
+        const unbound = { ...config.USERCONFIG[map] }
+        const keys = isAll || args_obj.isRecursive ? Object.keys(getBindings(map)) : [args_obj.key]
+        for (const key of keys) if (key !== inherits && matches(key)) unbound[key] = null
+        await config.set(map, unbound)
+    }
 }
 
 /**
