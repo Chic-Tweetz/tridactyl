@@ -49,6 +49,7 @@ export interface HintOptions {
     selectors: string[]
     selectorsExclude: string[]
     warnings: string[]
+    elemFilter?: string
 }
 
 /**
@@ -68,6 +69,7 @@ export class HintConfig implements HintOptions {
     public selectorsExclude = []
     public includeDefaultHintables = true
     public warnings = []
+    public elemFilter?: string
 
     public static parse(args: string[]): HintConfig {
         // Argument parser state
@@ -82,12 +84,15 @@ export class HintConfig implements HintOptions {
             ExpectPipeAttribute,
             ExpectSelectorCallback,
             ExpectSelectorExclude,
+            ExpectElementFilterDelim,
+            ExpectElementFilter,
         }
 
         const result = new HintConfig()
-        const multiLetterFlags = ["fr", "wp", "br", "pipe"]
+        const multiLetterFlags = ["fr", "wp", "br", "pipe", "filter"]
         let cOrPipeFlagPresent = false
         let CFlagPresent = false
+        let filterDelim
 
         // Parser state
         let state = State.Initial
@@ -165,6 +170,9 @@ export class HintConfig implements HintOptions {
                                     break
                                 case "x":
                                     newState = State.ExpectSelectorExclude
+                                    break
+                                case "filter":
+                                    newState = State.ExpectElementFilterDelim
                                     break
                                 case "pipe":
                                     cOrPipeFlagPresent = true
@@ -353,6 +361,15 @@ export class HintConfig implements HintOptions {
                     result.selectors.push(arg)
                     state = State.ExpectCallback
                     break
+                case State.ExpectElementFilterDelim:
+                    filterDelim = arg
+                    result.elemFilter = ""
+                    state = State.ExpectElementFilter
+                    break
+                case State.ExpectElementFilter:
+                    if (arg === filterDelim) state = State.Initial
+                    else result.elemFilter += arg + " "
+                    break
             }
         }
 
@@ -456,6 +473,14 @@ export class HintConfig implements HintOptions {
                 elements.elements = elements.elements.filter(
                     element => !element.matches(exclude)
                 )
+            }
+        }
+        if (this.elemFilter) {
+            try {
+                const fn = eval(this.elemFilter)
+                hintables = hintables.map(h => ({ elements: h.elements.filter(el => fn(el)), hintclasses: h.hintclasses }))
+            } catch (_) {
+                this.warnings.push("Element filter error.")
             }
         }
 
