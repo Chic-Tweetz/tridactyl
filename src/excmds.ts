@@ -6831,3 +6831,25 @@ export async function scrollstart(xVelocity: string, yVelocity: string, mult?: s
 export async function scrollstop() {
     scrolling.scrollstop()
 }
+
+//#content
+export async function totd() {
+    let p = true
+    while (p) {
+        p = await new Promise(async (resolve, reject) => {
+            const elems = await DOM.getVisibleElemsBySelector("*", [el => el.children.length === 0])
+            const hintables = hinting.toHintablesArray(elems)
+            hinting.hintPage(
+                hintables,
+                elem => {
+                    elem.classList.add("TridactylKilledElem")
+                    KILL_STACK.push(elem)
+                    return elem
+                },
+                resolve,
+                reject,
+                false,
+            )
+        })
+    }
+}
