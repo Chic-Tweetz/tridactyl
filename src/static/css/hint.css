@@ -26,6 +26,11 @@ span.TridactylHintCharPressed {
     color: var(--tridactyl-hintspan-pressed-fg) !important;
 }
 
+span.TridactylHint.TridactylHintSpanActive > span.TridactylHintCharPressed {
+    color: var(--tridactyl-hintspan-active-pressed-fg) !important;
+}
+
+
 span.TridactylHintA {
     z-index: 2147483647 !important;
 }
@@ -41,7 +46,7 @@ span.TridactylHintUppercase, span.TridactylHintUppercase>span {
 }
 
 div.TridactylHintHost {
-    position: static !important !important;
+    position: static !important;
 }
 
 span.TridactylJSHint {
