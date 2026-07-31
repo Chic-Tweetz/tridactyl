@@ -2,9 +2,9 @@ import * as Perf from "@src/perf"
 import { browserBg, ownTab, getSortedTabs, prevActiveTabOnWindow } from "@src/lib/webext"
 import * as Containers from "@src/lib/containers"
 import * as Completions from "@src/completions"
-import * as Messaging from "@src/lib/messaging"
 import * as config from "@src/lib/config"
 import { tabTgroup } from "@src/lib/tab_groups"
+import { TabCompletionSource } from "@src/completions/TabBase"
 
 class TabAllCompletionOption
     extends Completions.CompletionOptionHTML
@@ -66,6 +66,7 @@ class TabAllCompletionOption
         const favIconUrl = tab.favIconUrl
             ? tab.favIconUrl
             : Completions.DEFAULT_FAVICON
+        const faviconLoading = tab.favIconUrl ? "lazy" : "eager"
         this.html = html`<tr
             class="BufferAllCompletionOption option container_${container.color} container_${container.icon} container_${container.name} ${incognito
                 ? "incognito"
@@ -75,7 +76,9 @@ class TabAllCompletionOption
             <td class="prefixplain" hidden>${preplain}</td>
             <td class="privatewindow"></td>
             <td class="container"></td>
-            <td class="icon"><img src="${favIconUrl}" /></td>
+            <td class="icon">
+                <img loading="${faviconLoading}" src="${favIconUrl}" />
+            </td>
             <td class="title">${valueStr}: ${tab.title}</td>
             <td class="content">
                 <a class="url" target="_blank" href=${tab.url}>${Completions.decodeUrlForDisplay(tab.url)}</a>
@@ -85,10 +88,10 @@ class TabAllCompletionOption
     }
 }
 
-export class TabAllCompletionSource extends Completions.CompletionSourceFuse {
+export class TabAllCompletionSource extends TabCompletionSource {
     public options: TabAllCompletionOption[]
+    private optionSet: string
     private shouldSetStateFromScore = true
-    private removeTabChangesListener: () => void
 
     constructor(private _parent) {
         super(["taball", "tabgrab"], "TabAllCompletionSource", "All Tabs")
@@ -97,60 +100,20 @@ export class TabAllCompletionSource extends Completions.CompletionSourceFuse {
         this._parent.appendChild(this.node)
         this.shouldSetStateFromScore =
             config.get("completions", "TabAll", "autoselect") === "true"
-
-        this.removeTabChangesListener = Messaging.addListener(
-            "tab_changes",
-            () => this.reactToTabChanges(),
-        )
-    }
-
-    public destroy() {
-        this.removeTabChangesListener()
+        this.listenForTabChanges()
     }
 
     async onInput(exstr) {
         return this.updateOptions(exstr)
     }
 
+    async filter(exstr) {
+        this.lastExstr = exstr
+        return this.onInput(exstr)
+    }
+
     setStateFromScore(scoredOpts: Completions.ScoredOption[]) {
         super.setStateFromScore(scoredOpts, this.shouldSetStateFromScore)
-    }
-
-    /**
-     * Map all windows into a {[windowId]: window} object
-     */
-    private async getWindows() {
-        const windows = await browserBg.windows.getAll()
-        const response: { [windowId: number]: browser.windows.Window } = {}
-        windows.forEach(win => (response[win.id] = win))
-        return response
-    }
-
-    /**
-     * Update the list of possible tab options and select (focus on)
-     * the appropriate option.
-     */
-    private async reactToTabChanges(): Promise<void> {
-        if (this.state === "hidden") return
-        const lastFocused = this.lastFocused as TabAllCompletionOption
-        const lastFocusedTabId =
-            lastFocused?.state === "focused" ? lastFocused.tabId : undefined
-        const oldIndex = (this.options || [])
-            .filter(o => o.state !== "hidden")
-            .indexOf(lastFocused)
-        await this.updateOptions(this.lastExstr)
-        if (lastFocusedTabId !== undefined) {
-            const visibleOptions = this.options.filter(o => o.state !== "hidden")
-            const option =
-                visibleOptions.find(o => o.tabId === lastFocusedTabId) ||
-                visibleOptions[Math.min(oldIndex, visibleOptions.length - 1)]
-            if (option) {
-                this.deselect()
-                this.select(option)
-            }
-        }
-        if (!this.node.isConnected) return
-        await Messaging.messageOwnTab("commandline_content", "show")
     }
 
     /**
@@ -169,11 +132,13 @@ export class TabAllCompletionSource extends Completions.CompletionSourceFuse {
     // Eslint doesn't like this decorator but there's nothing we can do about it
     // eslint-disable-next-line @typescript-eslint/member-ordering
     @Perf.measuredAsync
-    private async updateOptions(exstr = "") {
+    private async updateOptions(exstr = "", preserveSelection = false) {
+        const generation = this.beginUpdate()
         this.lastExstr = exstr
         const [prefix] = this.splitOnPrefix(exstr)
 
         // Hide self and stop if prefixes don't match
+        const wasHidden = this.state === "hidden"
         if (prefix) {
             // Show self if prefix and currently hidden
             if (this.state === "hidden") {
@@ -184,12 +149,23 @@ export class TabAllCompletionSource extends Completions.CompletionSourceFuse {
             return
         }
 
-        const mru = config.get("tabsort") == "mru"
-        const tabsPromise = getSortedTabs(mru ? "mru" : "default", true)
-        const windowsPromise = this.getWindows()
-        const [tabs, windows] = await Promise.all([tabsPromise, windowsPromise])
+        const optionSet =
+            this.canonicalisePrefix(prefix) === "tabgrab" ? "tabgrab" : "taball"
+        if (!this.optionsDirty && !wasHidden && this.optionSet === optionSet) {
+            this.completion = undefined
+            this.updateChain()
+            return
+        }
 
-        const options = []
+        const mru = config.get("tabsort") == "mru"
+        const [tabs, altTab, currentWindow, containerList] =
+            await Promise.all([
+                getSortedTabs(mru ? "mru" : "default", true),
+                prevActiveTabOnWindow((await ownTab()).windowId), // cmdline popup
+                browserBg.windows.getCurrent(),
+                browserBg.contextualIdentities.query({}).catch(() => []),
+            ])
+        if (!this.isCurrentUpdate(generation)) return
 
         if (!mru) {
             tabs.sort((a, b) => {
@@ -198,41 +174,67 @@ export class TabAllCompletionSource extends Completions.CompletionSourceFuse {
             })
         }
 
-        // cmdline popup: target correct window
-        const altTab = await prevActiveTabOnWindow((await ownTab()).windowId)
-
         // Check to see if this is a command that needs to exclude the current
         // window
-        const excludeCurrentWindow = this.canonicalisePrefix(prefix) === "tabgrab"
-        const currentWindow = await browserBg.windows.getCurrent()
+        const excludeCurrentWindow = optionSet === "tabgrab"
         const windowIndices = new Map(
             [...new Set(tabs.map(tab => tab.windowId))]
                 .sort((a, b) => a - b)
                 .map((windowId, index) => [windowId, index + 1]),
         )
-        for (const tab of tabs) {
-            // if we are excluding the current window and this tab is in the current window
-            // then skip it
-            if (excludeCurrentWindow && tab.windowId === currentWindow.id)
-                continue
-            options.push(
+        const includedTabs = tabs.filter(
+            tab => !excludeCurrentWindow || tab.windowId !== currentWindow.id,
+        )
+        const tabGroups = await Promise.all(
+            includedTabs.map(tab =>
+                tabTgroup(tab.id).catch(() => undefined),
+            ),
+        )
+        const containerMap = new Map()
+        containerList.forEach(container =>
+            containerMap.set(container.cookieStoreId, container),
+        )
+        if (!this.isCurrentUpdate(generation)) return
+        const options = includedTabs.map(
+            (tab, index) =>
                 new TabAllCompletionOption(
                     tab.id.toString(),
                     tab,
-                    tab.index === altTab.index &&
-                        tab.windowId === altTab.windowId,
-                    tab.active &&
-                        tab.windowId === currentWindow.id,
+                    tab.id === altTab?.id,
+                    tab.active && tab.windowId === currentWindow.id,
                     windowIndices.get(tab.windowId),
-                    await Containers.getFromId(tab.cookieStoreId),
-                    windows[tab.windowId].incognito,
-                    await tabTgroup(tab.id),
+                    containerMap.get(tab.cookieStoreId) ||
+                        Containers.DefaultContainer,
+                    tab.incognito,
+                    tabGroups[index],
                 ),
-            )
-        }
+        )
 
+        const lastFocused = this.lastFocused as TabAllCompletionOption
+        const wasFocused = preserveSelection && lastFocused?.state === "focused"
+        const oldIndex = wasFocused
+            ? (this.options || [])
+                  .filter(o => o.state !== "hidden")
+                  .indexOf(lastFocused)
+            : -1
         this.completion = undefined
         this.options = options
-        return this.updateChain()
+        this.optionSet = optionSet
+        this.optionsDirty = false
+        this.updateChain()
+        if (wasFocused) {
+            const visibleOptions = this.options.filter(o => o.state !== "hidden")
+            const option =
+                visibleOptions.find(o => o.tabId === lastFocused.tabId) ||
+                visibleOptions[Math.min(oldIndex, visibleOptions.length - 1)]
+            if (option) {
+                this.deselect()
+                this.select(option)
+            }
+        }
+    }
+
+    protected refreshForTabChanges() {
+        return this.updateOptions(this.lastExstr, true)
     }
 }

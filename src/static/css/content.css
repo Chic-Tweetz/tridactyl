@@ -80,18 +80,6 @@
     z-index: 2147483647 !important;
 }
 
-/* TODO: use new Tridactyl var/highlight reg names in finding.ts highlights */
-::highlight(tridactyl-find) {
-  color: var(--tridactyl-search-highlight-fg);
-  background-color: var(--tridactyl-search-highlight-bg);
-}
-
-::highlight(tridactyl-find-active) {
-  color: var(--tridactyl-search-highlight-active-fg);
-  background-color: var(--tridactyl-search-highlight-active-bg);
-}
-
-/* TODO: use these over the previous highlight rules! */
 ::highlight(tridactyl-find-highlight) {
     color: var(--tridactyl-search-highlight-text-color, black) !important;
     -webkit-text-fill-color: currentColor !important;
@@ -99,7 +87,7 @@
 }
 
 ::highlight(tridactyl-find-highlight-active) {
-    color: black !important;
+    color: var(--tridactyl-search-highlight-active-text-color, black) !important;
     -webkit-text-fill-color: currentColor !important;
     background-color: var(--tridactyl-search-highlight-active-color) !important;
 }

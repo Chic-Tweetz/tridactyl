@@ -452,8 +452,8 @@ export class default_config {
             "open https://www.youtube.com/watch?v=M3iOROuTuMA",
         m: "gobble 1 markadd",
         "`": "gobble 1 markjump",
-        "/": "searchbar",
-        "?": "searchbar true",
+        "/": "fillcmdline find -r",
+        "?": "fillcmdline find -? -r",
         n: "findnext --search-from-view",
         N: "findnext --search-from-view --reverse",
     }
@@ -927,9 +927,9 @@ export class default_config {
     hintfiltermode: "simple" | "vimperator" | "vimperator-reflow" = "simple"
 
     /**
-     * Whether to optimise for the shortest possible names for each hint, or to use a simple numerical ordering. If set to `numeric`, overrides `hintchars` setting.
+     * Whether to optimise for the shortest possible names for each hint, or to use a simple numerical ordering. If set to `numeric` or `words`, overrides `hintchars` setting. `words` uses random three letter English words (and therefore works badly with hintfiltermode vimperator*)
      */
-    hintnames: "short" | "numeric" | "uniform" = "short"
+    hintnames: "short" | "numeric" | "uniform" | "words" = "short"
 
     /**
      * Whether to display the names for hints in uppercase.
@@ -1371,7 +1371,7 @@ export class default_config {
              * Initially position and navigate from the active tab for physical
              * ordering, or first tab for MRU. "active" and "top" force either.
              */
-            initialposition: "auto" as "auto" | "active" | "top",
+            initialposition: "top" as "auto" | "active" | "top",
             /**
              * Whether to use unicode symbols to display tab statuses
              */
@@ -1405,7 +1405,7 @@ export class default_config {
     /**
      * Number of characters to use as context for the matches shown in completions
      */
-    findcontextlen = 100
+    findcontextlen = 50
 
     /**
      * Whether find should be case-sensitive
@@ -1418,13 +1418,11 @@ export class default_config {
     findhighlighttimeout = 0
 
     /**
-     * Whether Tridactyl should jump to the first match when using `:find`
+     * Whether Tridactyl should preview matches while typing `:find`
      */
-    incsearch: "true" | "false" = "false"
+    incsearch: "true" | "false" = "true"
 
-    /**
-     * How many characters should be typed before triggering incsearch/completions
-     */
+    /** @deprecated Retained for compatibility; this setting has no effect. */
     minincsearchlen = 3
 
     /**

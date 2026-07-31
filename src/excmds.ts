@@ -1616,7 +1616,7 @@ export function scrollpage(n = 1, count = 1) {
 }
 
 /**
- *  Rudimentary find mode, left unbound by default as we don't currently support `incsearch`. Suggested binds:
+ *  Find mode is left unbound by default. Suggested binds:
  *
  * ```text
  * bind / fillcmdline find
@@ -1630,16 +1630,21 @@ export function scrollpage(n = 1, count = 1) {
  *
  *  Argument: A string you want to search for.
  *
- *  This function accepts `-?` or `--reverse` to search from the bottom rather than the top, `-: n` or `--jump-to n` to jump directly to the nth match, and `-s` or `--case-sensitive` and `-i` or `--case-insensitive` to override `findcase`. The case flags cannot be combined. `-r` or `--regex` accepts [JavaScript regular expressions](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_expressions) or `/pattern/flags`; `g` is added automatically. The case options override `i`, while `findcase` applies when `i` is absent. Regex matches visible raw DOM text in the current document, may span text nodes, and ignores empty matches.
+ *  This function accepts `-?` or `--reverse` to search from the bottom rather than the top, `-: n` or `--jump-to n` to jump directly to the nth match, and `-s` or `--case-sensitive` and `-i` or `--case-insensitive` to override `findcase`. The case flags cannot be combined. `-r` or `--regex` accepts [JavaScript regular expressions](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_expressions) or `/pattern/flags`; `g` is added automatically.
  *
  *  The behavior of this function is affected by the following setting:
  *
  *  `findcase`: either "smart", "sensitive" or "insensitive". If "smart", find will be case-sensitive if the pattern contains uppercase letters.
+ *  `findresults`: maximum completion rows to show; `-1` is unlimited and `0` disables them.
+ *  `findcontextlen`: number of context characters to show around each completion.
  *
  *  Known bugs: find will currently happily jump to a non-visible element, and pressing n or N without having searched for anything will cause an error.
  */
 //#content
 export function find(...args: string[]) {
+    // Completion previews pass session metadata as a non-user argument.
+    const preview =
+        typeof (args[0] as any) === "object" ? (args.shift() as any) : undefined
     const parsed = arg.lib(
         {
             "--jump-to": Number,
@@ -1672,6 +1677,14 @@ export function find(...args: string[]) {
         option["caseSensitive"] = argOpt["--case-sensitive"]
     option["regex"] = argOpt["--regex"]
     const searchQuery = argOpt._.join(" ")
+    if (preview) {
+        const { session } = preview
+        if (preview.cancel) return finding.cancelPreview(session)
+        const completions = preview.completions !== false && config.get("findresults") !== 0
+        if (config.get("incsearch") === "true" && searchQuery.length > 0)
+            return finding.previewMatch(session, searchQuery, option, completions, preview.selected === true)
+        return finding.cancelPreview(session)
+    }
     return finding.jumpToMatch(searchQuery, option)
 }
 
@@ -7078,17 +7091,6 @@ export function allowpagebind(pattern: string, keys: string) {
  */
 export function disallowpagebind(pattern: string, keys: string) {
     config.unsetURL(pattern, "whitelistpagebinds", keys)
-}
-
-/**
- * Create an incsearch :find input textbox.
- */
-//#content
-export function searchbar(reverse: string | boolean, fromView: string | boolean) {
-    return finding.searchbar(
-        reverse === "true" || reverse === true,
-        fromView === "true" || fromView === true
-    )
 }
 
 /**

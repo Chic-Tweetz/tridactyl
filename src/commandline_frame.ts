@@ -33,6 +33,7 @@ import { DialogCompletionSource } from "@src/completions/Dialog"
 import { ExcmdCompletionSource } from "@src/completions/Excmd"
 import { ExtensionsCompletionSource } from "@src/completions/Extensions"
 import { FileSystemCompletionSource } from "@src/completions/FileSystem"
+import { FindCompletionSource } from "@src/completions/Find"
 import { GotoCompletionSource } from "@src/completions/Goto"
 import { GuisetCompletionSource } from "@src/completions/Guiset"
 import { GlossaryCompletionSource } from "@src/completions/Glossary"
@@ -207,6 +208,7 @@ function resizeArea() {
         focus()
     }
 }
+window.addEventListener("tridactyl-refresh-completions", resizeArea)
 
 function resizeInput(resizeFrame = true) {
     const input = commandline_state.clInput
@@ -248,7 +250,7 @@ export function enableCompletions() {
     if (!commandline_state.activeCompletions) {
         commandline_state.activeCompletions = [
             AutocmdCompletionSource,
-            // FindCompletionSource,
+            FindCompletionSource,
             BindingsCompletionSource,
             BmarkCompletionSource,
             BookmarkFolderCompletionSource,
@@ -452,8 +454,11 @@ commandline_state.clInput.addEventListener(
 
 let refreshQueue: Promise<unknown> = Promise.resolve()
 export function refresh_completions(exstr) {
+    const session = commandSession
+    const result = refreshQueue.then(() =>
+        session === commandSession ? refreshCompletions(exstr) : undefined,
+    )
     resizeInput()
-    const result = refreshQueue.then(() => refreshCompletions(exstr))
     refreshQueue = result.catch(() => undefined)
     return result
 }
@@ -477,6 +482,9 @@ function refreshCompletions(exstr) {
 
 /** @hidden **/
 let onInputPromise: Promise<void | void[]> = Promise.resolve()
+const COMPLETION_THROTTLE_MS = 100
+let completionTimer
+let lastCompletionStarted = -Infinity
 /** @hidden **/
 commandline_state.clInput.addEventListener("input", () => {
     logger.debug("commandline_frame clInput input event listener")
@@ -484,26 +492,42 @@ commandline_state.clInput.addEventListener("input", () => {
 })
 
 /** @hidden **/
+async function updateCompletions(exstr: string, session = commandSession) {
+    lastCompletionStarted = performance.now()
+    await onInputPromise
+    if (session !== commandSession) return
+    if (exstr !== commandline_state.clInput.value) {
+        contentState.cmdline_filter = exstr
+        return
+    }
+
+    onInputPromise = refresh_completions(exstr)
+    onInputPromise.then(() => {
+        contentState.cmdline_filter = exstr
+    })
+}
+
+/** @hidden **/
 function clInputValueChanged() {
     resizeInput()
     const exstr = commandline_state.clInput.value
+    const session = commandSession
     contentState.current_cmdline = exstr
     contentState.cmdline_filter = ""
-    // Schedule completion computation. We do not start computing immediately because this would incur a slow down on quickly repeated input events (e.g. maintaining <Backspace> pressed)
-    setTimeout(async () => {
-        // Make sure the previous computation has ended
-        await onInputPromise
-        // If we're not the current completion computation anymore, stop
-        if (exstr !== commandline_state.clInput.value) {
-            contentState.cmdline_filter = exstr
-            return
-        }
-
-        onInputPromise = refresh_completions(exstr)
-        onInputPromise.then(() => {
-            contentState.cmdline_filter = exstr
-        })
-    }, 100)
+    // Run immediately when idle, otherwise retain one trailing refresh.
+    clearTimeout(completionTimer)
+    const delay =
+        COMPLETION_THROTTLE_MS - (performance.now() - lastCompletionStarted)
+    if (delay <= 0) void updateCompletions(exstr, session)
+    else
+        completionTimer = setTimeout(
+            () =>
+                void updateCompletions(
+                    commandline_state.clInput.value,
+                    session,
+                ),
+            delay,
+        )
 }
 
 /** @hidden **/
@@ -517,6 +541,8 @@ let cmdline_history_current = ""
 export function clear(evlistener = false) {
     if (evlistener) {
         commandSession = { pending: 0, queue: [Promise.resolve()] }
+        clearTimeout(completionTimer)
+        lastCompletionStarted = -Infinity
         prev_cmd_called_history = false
         commandline_state.clInput.removeEventListener("blur", noblur)
     }

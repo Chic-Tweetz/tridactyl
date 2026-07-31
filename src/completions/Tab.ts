@@ -4,7 +4,7 @@ import { enumerate } from "@src/lib/itertools"
 import * as Containers from "@src/lib/containers"
 import * as Completions from "@src/completions"
 import * as config from "@src/lib/config"
-import * as Messaging from "@src/lib/messaging"
+import { TabCompletionSource } from "@src/completions/TabBase"
 
 class BufferCompletionOption
     extends Completions.CompletionOptionHTML
@@ -76,10 +76,11 @@ class BufferCompletionOption
     }
 }
 
-export class BufferCompletionSource extends Completions.CompletionSourceFuse {
+export class BufferCompletionSource extends TabCompletionSource {
     public options: BufferCompletionOption[]
+    private optionSet: string
+    private unfilteredOptions: BufferCompletionOption[]
     private shouldSetStateFromScore = true
-    private removeTabChangesListener: () => void
     private navigationAnchorTabId: number
 
     // TODO:
@@ -108,15 +109,7 @@ export class BufferCompletionSource extends Completions.CompletionSourceFuse {
         this.sortScoredOptions = true
         this.updateOptions()
         this._parent.appendChild(this.node)
-
-        this.removeTabChangesListener = Messaging.addListener(
-            "tab_changes",
-            () => this.reactToTabChanges(),
-        )
-    }
-
-    public destroy() {
-        this.removeTabChangesListener()
+        this.listenForTabChanges()
     }
 
     async onInput(exstr) {
@@ -200,23 +193,24 @@ export class BufferCompletionSource extends Completions.CompletionSourceFuse {
         return res
     }
 
-    private async fillOptions(prefix: string) {
+    private async fillOptions(prefix: string, generation: number) {
         // Get alternative tab, defined as last accessed tab in any group in
         // this window.
-
-        // cmdline popup: target the correct window
-        const altTab = await prevActiveTabOnWindow((await ownTab()).windowId)
-        // Since tabmove always uses absolute tab indices, we need
-        // to override possible MRU setting to match tabmove behavior
+        // tabmove uses physical order within the pinned or unpinned group.
         const forceSort = prefix === "tabmove" ? "default" : undefined
-        let tabs = await getSortedTabs(forceSort)
+        const [altTab, sortedTabs, container_all] = await Promise.all([
+            prevActiveTabOnWindow((await ownTab()).windowId),
+            getSortedTabs(forceSort),
+            browserBg.contextualIdentities.query({}).catch(() => []),
+        ])
+        if (!this.isCurrentUpdate(generation)) return
+        let tabs = sortedTabs
         if (prefix === "tabmove") {
             const activeTab = tabs.find(tab => tab.active)
             tabs = tabs.filter(tab => tab.pinned === activeTab.pinned)
         }
         const options = []
 
-        const container_all = await browserBg.contextualIdentities.query({})
         const container_map = new Map()
         container_all.forEach(elem =>
             container_map.set(elem.cookieStoreId, elem),
@@ -232,20 +226,21 @@ export class BufferCompletionSource extends Completions.CompletionSourceFuse {
                 new BufferCompletionOption(
                     (index + 1).toString(),
                     tab,
-                    tab.index === altTab.index,
+                    tab.id === altTab?.id,
                     tab_container,
                     index,
                 ),
             )
         }
 
-        this.options = options
+        return options
     }
 
     // Eslint doesn't like this decorator but there's nothing we can do about it
     // eslint-disable-next-line @typescript-eslint/member-ordering
     @Perf.measuredAsync
     private async updateOptions(exstr = "", setInitialPosition = true) {
+        const generation = this.beginUpdate()
         this.lastExstr = exstr
         if (setInitialPosition) this.navigationAnchorTabId = undefined
         let [prefix, query] = this.splitOnPrefix(exstr)
@@ -263,6 +258,7 @@ export class BufferCompletionSource extends Completions.CompletionSourceFuse {
             !(prefix === "tabdiscard" && /^\s*--all(?:\s|$)/u.test(query))
 
         // Hide self and stop if prefixes don't match
+        const wasHidden = this.state === "hidden"
         if (prefix) {
             // Show self if prefix and currently hidden
             if (this.state === "hidden") {
@@ -273,7 +269,24 @@ export class BufferCompletionSource extends Completions.CompletionSourceFuse {
             return
         }
 
-        await this.fillOptions(prefix)
+        const optionSet = prefix === "tabmove" ? prefix : "default"
+        const cacheHit =
+            !this.optionsDirty && !wasHidden && this.optionSet === optionSet
+        let options: BufferCompletionOption[]
+        if (!cacheHit) {
+            options = await this.fillOptions(prefix, generation)
+            if (!options || !this.isCurrentUpdate(generation)) return
+        }
+        const lastFocused =
+            !setInitialPosition && this.lastFocused?.state === "focused"
+                ? (this.lastFocused as BufferCompletionOption)
+                : undefined
+        if (options) {
+            this.unfilteredOptions = options
+            this.optionSet = optionSet
+            this.optionsDirty = false
+        }
+        this.options = this.unfilteredOptions
         this.completion = undefined
 
         /* console.log('updateOptions', this.optionContainer) */
@@ -294,7 +307,22 @@ export class BufferCompletionSource extends Completions.CompletionSourceFuse {
             this.options.forEach(option => (option.state = "normal"))
         }
         this.updateDisplay()
-        if (!setInitialPosition) return
+        if (!setInitialPosition) {
+            const option =
+                this.options.find(
+                    option =>
+                        option.tabId === lastFocused?.tabId &&
+                        option.state !== "hidden",
+                ) ||
+                (lastFocused && this.shouldSetStateFromScore
+                    ? this.getTheNextTabOption(lastFocused)
+                    : undefined)
+            if (option) {
+                this.deselect()
+                this.select(option)
+            }
+            return
+        }
         if (match || query.trim()) return
         const initialPosition = config.get(
             "completions",
@@ -312,31 +340,8 @@ export class BufferCompletionSource extends Completions.CompletionSourceFuse {
         }
     }
 
-    /**
-     * Update the list of possible tab options and select (focus on)
-     * the appropriate option.
-     */
-    private async reactToTabChanges(): Promise<void> {
-        const lastFocused = this.lastFocused as BufferCompletionOption
-        const lastFocusedTabId = lastFocused?.tabId
-        const oldIndex = lastFocused?.tabIndex
-        const wasFocused = lastFocused?.state === "focused"
-        await this.updateOptions(this.lastExstr, false)
-        if (!this.options || this.options.length === 0) return
-        const stillExists = this.options.find(
-            o => o.tabId === lastFocusedTabId && o.state !== "hidden",
-        )
-        if (wasFocused) {
-            this.deselect()
-            const option =
-                stillExists ||
-                (this.shouldSetStateFromScore
-                    ? this.getTheNextTabOption({ tabIndex: oldIndex } as any)
-                    : undefined)
-            if (option) this.select(option)
-        }
-        if (!this.node.isConnected || this.state === "hidden") return
-        await Messaging.messageOwnTab("commandline_content", "show")
+    protected refreshForTabChanges() {
+        return this.updateOptions(this.lastExstr, false)
     }
 
     /**

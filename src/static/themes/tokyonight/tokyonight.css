@@ -138,10 +138,10 @@
     --tritheme-status-private-bg: var(--tridactyl-status-bg);
 
     /* Search highlight */
-    --tridactyl-search-highlight-fg: var(--tridactyl-fg);
-    --tridactyl-search-highlight-bg: var(--tritheme-moon-blue4);
-    --tridactyl-search-highlight-active-fg: black;
-    --tridactyl-search-highlight-active-bg: var(--tritheme-orange3);
+    --tridactyl-search-highlight-text-color: var(--tridactyl-fg);
+    --tridactyl-search-highlight-color: var(--tritheme-moon-blue4);
+    --tridactyl-search-highlight-active-text-color: black;
+    --tridactyl-search-highlight-active-color: var(--tritheme-orange3);
 
     /* Hinting */
 

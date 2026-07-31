@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+var SymbolMetadata_1 = require("./SymbolMetadata");
+Object.defineProperty(exports, "SymbolMetadata", { enumerable: true, get: function () { return SymbolMetadata_1.SymbolMetadata; } });
+var ClassMetadata_1 = require("./ClassMetadata");
+Object.defineProperty(exports, "ClassMetadata", { enumerable: true, get: function () { return ClassMetadata_1.ClassMetadata; } });
+var FileMetadata_1 = require("./FileMetadata");
+Object.defineProperty(exports, "FileMetadata", { enumerable: true, get: function () { return FileMetadata_1.FileMetadata; } });
+var ProgramMetadata_1 = require("./ProgramMetadata");
+Object.defineProperty(exports, "ProgramMetadata", { enumerable: true, get: function () { return ProgramMetadata_1.ProgramMetadata; } });
