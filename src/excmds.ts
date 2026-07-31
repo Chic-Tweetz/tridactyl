@@ -5804,11 +5804,14 @@ const KILL_STACK: Element[] = []
  * - -fr [text] use RegExp to hint the links and inputs
  * - -J* disable javascript hints. Don't generate hints related to javascript events. This is particularly useful when used with the `-c` option when you want to generate only hints for the specified css selectors. Also useful on sites with plenty of useless javascript elements such as google.com
  * - -V create hints for invisible elements. By default, elements outside the viewport when calling :hint are not hinted, this includes them anyways.
+ * - -filter [delim] [elem => boolean] [delim] - filter hintable elements with a JS predicate surrounded by space-separated delimiters, e.g. `hint -filter Ω elem => elem.children.length === 0 Ω`
  *
  * Hinting mode selection:
  *
  * - -q* quick (or rapid) hints mode. Stay in hint mode until you press `<Esc>`, e.g. `:hint -qb` to open multiple hints in the background or `:hint -qW excmd` to execute excmd once for each hint. This will return an array containing all elements or the result of executed functions (e.g. `hint -qpipe a href` will return an array of links).
  *     - For example, use `bind ;jg hint -Jc .rc > .r > a` on google.com to generate hints only for clickable search results of a given query
+ * - -Q* quick "rehints", where elements & their positions are updated per selection. Essentially calls :hint again every time a hint is selected.
+ * - -Qd quick "rehints" with a delay between hints in ms. Useful if selecting an element causes a non-instantaneous change on the page, like expanding/collapsing comments. E.g. `hint  -Qdb 250` to rehint 250ms after selecting each hint.
  * - -! execute all hints without waiting for a selection
  *     - For example, `hint -!bf Comments` opens in background tabs all visible links whose text matches `Comments`
  *
@@ -6040,6 +6043,29 @@ export async function hint(...args: string[]): Promise<any> {
                 }
             }
 
+            resolve(results)
+        } else if (config.rapid === "rehint") {
+		    const results = []
+            let rehintables = hintables
+
+            async function repeat() {
+                const result = await new Promise((res) => {
+                    hinting.hintPage(rehintables, action, res, reject, config.rapid)
+                })
+                return new Promise(res => {
+                    if (result === "") {
+                        res(false)
+                    } else {
+                        results.push(result)
+                        setTimeout(async () => {
+                            rehintables = await config.hintables()
+                            res(true)
+                        }, config.rapidRehintDelay)
+                    }
+                })
+            }
+
+            while (await repeat())
             resolve(results)
         } else {
             // Perform hinting
@@ -7142,14 +7168,15 @@ export function noop() {
  */
 //#content
 export async function totd() {
-    // :hint -KQ -filter Ω e=>Array.from(e.children).every(c=>c.classList.contains("TridactylKilledElem")) Ω *
+    // :hint -KQ -filter Ω e=>Array.from(e.children).every(c => c.classList.contains("TridactylKilledElem") || !tri.dom.isVisible(c)) Ω *
     let p = true
     while (p) {
         p = await new Promise(async (resolve, reject) => {
             const elems = await DOM.getVisibleElemsBySelector(
                 "*", [
                     e => Array.from(e.children)
-                        .every(c => c.classList.contains("TridactylKilledElem")
+                        .every(c => c.classList.contains("TridactylKilledElem") ||
+                            !DOM.isVisible(c)
                     )
                 ])
             const hintables = hinting.toHintablesArray(elems)

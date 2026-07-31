@@ -453,6 +453,15 @@ class HintState {
 
         // All done!
     }
+
+    repositionHints() {
+        requestAnimationFrame(() => {
+            for (const hint of this.hints) {
+                hint.calculateGeometry()
+            }
+            this.deOverlap()
+        })
+    }
 }
 
 /** @hidden*/
@@ -568,6 +577,18 @@ export function hintElements(elements: Element[], option = {}) {
     }
 }
 
+const repositionDebounced = (() => {
+    let queued = false
+    return function() {
+        if (queued) return
+        queued = true
+        setTimeout(() => {
+            reposition()
+            queued = false
+        }, 200)
+    }
+})()
+
 /** For each hintable element, add a hint
  * @hidden
  * */
@@ -576,13 +597,14 @@ export function hintPage(
     onSelect: HintSelectedCallback,
     resolve: (x?) => void = () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
     reject: (x?) => void = () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
-    rapid = false,
+    rapid: boolean | "rehint" = false,
     cancelResult: unknown = "",
 ) {
     reset() // Tidy up in case any previous hinting wasn't exited cleanly
     const buildHints: HintBuilder = defaultHintBuilder()
     const filterHints: HintFilter = defaultHintFilter()
     contentState.mode = "hint"
+    if (rapid === "rehint") rapid = false
     modeState = new HintState(filterHints, resolve, reject, rapid, cancelResult)
 
     if (!rapid) {
@@ -608,6 +630,7 @@ export function hintPage(
                 state.shiftHints()
             }
             removeFilteredCharClass(state)
+            setTimeout(reposition, 250)
         })
     }
     // weird shadow dom related issue on youtube made clientRects accessible
@@ -679,6 +702,8 @@ export function hintPage(
     modeState.deOverlap()
     window.removeEventListener("scroll", updateHudOffset)
     window.addEventListener("scroll", updateHudOffset)
+    window.removeEventListener("resize", repositionDebounced)
+    window.addEventListener("resize", repositionDebounced)
 }
 
 function updateHudOffset() {
@@ -895,9 +920,9 @@ type HintSelectedCallback = (x: any) => any
 @hidden */
 class Hint {
     public readonly flag = document.createElement("span")
-    public readonly highlight: HTMLElement | null = null
-    public readonly outline: HTMLElement | null = null
-    public readonly rect: Omit<ClientRect, "x" | "y" | "toJSON"> = null
+    public highlight: HTMLElement | null = null
+    public outline: HTMLElement | null = null
+    public rect: Omit<ClientRect, "x" | "y" | "toJSON"> = null
     public result: any = null
     private unfilteredName: string
 
@@ -915,37 +940,8 @@ class Hint {
         clientRects?: DOMRectList,
     ) {
         this.unfilteredName = name
-        // We need to compute the offset for elements that are in an iframe
-        let offsetTop = 0
-        let offsetLeft = 0
-        const pad = 4
-        if (target.ownerDocument !== document) {
-            const iframe = DOM.getAllDocumentFrames().find(
-                frame => frame.contentDocument === target.ownerDocument,
-            )
-            const rect = iframe.getClientRects()[0]
-            offsetTop += rect.top
-            offsetLeft += rect.left
-        }
 
-        // Find the first visible client rect of the target
-        clientRects = clientRects || target.getClientRects()
-        let rect = clientRects[0]
-        for (const recti of clientRects) {
-            if (recti.bottom + offsetTop > 0 && recti.right + offsetLeft > 0) {
-                rect = recti
-                break
-            }
-        }
-
-        this.rect = {
-            top: rect.top + offsetTop,
-            bottom: rect.bottom + offsetTop,
-            left: rect.left + offsetLeft,
-            right: rect.right + offsetLeft,
-            width: rect.width,
-            height: rect.height,
-        }
+        this.calculateGeometry(clientRects)
 
         // A span for each char so typed chars can be styled differently
         for (const ch of name) {
@@ -960,50 +956,6 @@ class Hint {
         }
         this.flag.classList.add("TridactylHint" + target.tagName)
         classes?.forEach(f => this.flag.classList.add(f))
-
-        // Add optional overlays
-        if (modeState.highlightHost || modeState.outlineHost) {
-            const mainRect = document.createElement("div")
-            // Add all rectangles for highlights / outlines
-            for (const recti of clientRects) {
-                let rectElem
-                let inset
-                if (recti === rect) {
-                    rectElem = mainRect
-                    inset = `${rect.top + window.scrollY}px ${rect.left + window.scrollX}px`
-                } else {
-                    // Position extra rects relative to the main rect
-                    rectElem = document.createElement("div")
-                    mainRect.appendChild(rectElem)
-                    inset = `${recti.top - rect.top}px ${recti.left - rect.left}px`
-                }
-
-                rectElem.style.cssText = `
-                    inset: ${inset} !important;
-                    width: ${recti.width}px !important;
-                    height: ${recti.height}px !important;
-                `
-            }
-
-            if (modeState.highlightHost) {
-                this.highlight = mainRect
-                this.highlight.className = "TridactylHintHighlight"
-                modeState.highlightHost.appendChild(this.highlight)
-            }
-
-            if (modeState.outlineHost) {
-                this.outline = this.highlight
-                    ? (this.highlight as any).cloneNode(true)
-                    : mainRect
-                this.outline.className = "TridactylHintOutline"
-                modeState.outlineHost.appendChild(this.outline)
-            }
-        }
-
-        const top = rect.top > 0 ? this.rect.top : offsetTop + pad
-        const left = rect.left > 0 ? this.rect.left : offsetLeft + pad
-        this.x = window.scrollX + left
-        this.y = window.scrollY + top
 
         modeState.hintHost.appendChild(this.flag)
     }
@@ -1111,6 +1063,88 @@ class Hint {
             this.y < h.y + h.height &&
             this.y + this.height > h.y
         )
+    }
+
+    public calculateGeometry(cachedRects?: DOMRectList) {
+        // We need to compute the offset for elements that are in an iframe
+        let offsetTop = 0
+        let offsetLeft = 0
+        const pad = 4
+        if (this.target.ownerDocument !== document) {
+            const iframe = DOM.getAllDocumentFrames().find(
+                frame => frame.contentDocument === this.target.ownerDocument,
+            )
+            const rect = iframe.getClientRects()[0]
+            offsetTop += rect.top
+            offsetLeft += rect.left
+        }
+
+        // Find the first visible client rect of the target
+        const clientRects = cachedRects || this.target.getClientRects()
+        let rect = clientRects[0]
+        if (!rect) {
+            this.hidden = true
+            return
+        }
+        for (const recti of clientRects) {
+            if (recti.bottom + offsetTop > 0 && recti.right + offsetLeft > 0) {
+                rect = recti
+                break
+            }
+        }
+
+        this.rect = {
+            top: rect.top + offsetTop,
+            bottom: rect.bottom + offsetTop,
+            left: rect.left + offsetLeft,
+            right: rect.right + offsetLeft,
+            width: rect.width,
+            height: rect.height,
+        }
+
+        const top = rect.top > 0 ? this.rect.top : offsetTop + pad
+        const left = rect.left > 0 ? this.rect.left : offsetLeft + pad
+        this.x = window.scrollX + left
+        this.y = window.scrollY + top
+
+        // Add optional overlays
+        if (modeState.highlightHost || modeState.outlineHost) {
+            const mainRect = document.createElement("div")
+            // Add all rectangles for highlights / outlines
+            for (const recti of clientRects) {
+                let rectElem
+                let inset
+                if (recti === rect) {
+                    rectElem = mainRect
+                    inset = `${ this.y }px ${ this.x }px`
+                } else {
+                    // Position extra rects relative to the main rect
+                    rectElem = document.createElement("div")
+                    mainRect.appendChild(rectElem)
+                    inset = `${ recti.top - rect.top }px ${ recti.left - rect.left }px`
+                }
+
+                rectElem.style.cssText = `
+                    inset: ${inset} !important;
+                    width: ${recti.width}px !important;
+                    height: ${recti.height}px !important;
+                `
+            }
+
+            if (modeState.highlightHost) {
+                this.highlight?.remove()
+                this.highlight = mainRect
+                this.highlight.className = "TridactylHintHighlight"
+                modeState.highlightHost.appendChild(this.highlight)
+            }
+
+            if (modeState.outlineHost) {
+                this.outline?.remove()
+                this.outline = this.highlight ? (this.highlight as any).cloneNode(true) : mainRect
+                this.outline.className = "TridactylHintOutline"
+                modeState.outlineHost.appendChild(this.outline)
+            }
+        }
     }
 
     private updatePosition() {
@@ -1520,8 +1554,9 @@ function cleanup() {
     contentState.mode = DOM.isTextEditable(document.activeElement) ? "insert" : "normal"
     if (state) state.cleanUpHints()
     contentState.suffix = ""
-    window.removeEventListener("scroll", updateHudOffset)
     modeState = undefined
+    window.removeEventListener("scroll", updateHudOffset)
+    window.removeEventListener("resize", repositionDebounced)
     return state
 }
 
@@ -1969,6 +2004,11 @@ function focusParentHint() {
     modeState.focusFirstParentHint()
 }
 
+function reposition() {
+    logger.debug("Recalculating hint positions")
+    requestAnimationFrame(() => modeState.repositionHints())
+}
+
 /** @hidden */
 export function parser(keys: keyseq.MinimalKey[]) {
     const parsed = keyseq.parse(
@@ -2090,5 +2130,6 @@ export function getHintCommands() {
         filterByTag,
         hideFlags,
         showFlags,
+        reposition,
     }
 }
