@@ -696,6 +696,10 @@ function defaultHintBuilder() {
             return buildHintsVimperator
         case "vimperator-reflow":
             return buildHintsVimperator
+        case "words":
+            return buildHintsWordsDeterministic
+        default:
+            return buildHintsSimple
     }
 }
 
@@ -708,6 +712,8 @@ function defaultHintFilter() {
             return filterHintsVimperator
         case "vimperator-reflow":
             return fstr => filterHintsVimperator(fstr, true)
+        case "words":
+            return filterHintsWords
     }
 }
 
@@ -1168,6 +1174,84 @@ function buildHintsSimple(
     }
 }
 
+// const deterministicRandomFromSelector = (()=>{
+//     const seed = Math.random()
+//     return function(selector) {
+//         let hash = seed
+
+//         for (let i = 0; i < selector.length; i++) {
+//             hash = (hash * 31 + selector.charCodeAt(i)) >>> 0
+//         }
+
+//         return hash / 2**32
+//     }
+// })()
+
+/* eslint-disable no-bitwise */
+const deterministicRandomFromSelector = (() => {
+    const seed = Math.random() * 0xffffffff >>> 0
+
+    return function(selector) {
+        let hash = 0x811c9dc5 ^ seed
+
+        for (let i = 0; i < selector.length; i++) {
+            hash ^= selector.charCodeAt(i)
+            hash = (hash * 0x01000193) >>> 0
+        }
+
+        return hash / 2**32
+    }
+})()
+/* eslint-enable no-bitwise */
+
+/** @hidden */
+function buildHintsWordsDeterministic(
+    hintablesArray: Hintables[],
+    onSelect: HintSelectedCallback,
+) {
+    const hintablesfiltered = hintablesArray.map(h => ({ elements: h.elements.filter(el => Hint.isHintable(el)), hintclasses: h.hintclasses }))
+
+    const suffixChars = config.get("hintchars")
+
+    const usednames: Map<number, number | string[]> = new Map()
+
+    const allwordindices = hintablesfiltered
+        .flatMap(hintables => hintables.elements.map(el => {
+            const idx = Math.floor(deterministicRandomFromSelector(
+                DOM.getSelector(el as HTMLElement)
+            ) * HINT_WORDS.length)
+            console.log("el", el, DOM.getSelector(el as HTMLElement), "idx:", idx, "word:", HINT_WORDS[idx])
+            const used = usednames.get(idx)
+            if (!used) usednames.set(idx, 1)
+            else usednames.set(idx, used as number + 1)
+            return idx
+            })
+        )
+    console.log(allwordindices)
+
+    for (const [idx] of usednames) {
+        const count = usednames.get(idx) as number
+        if (count === 1) usednames.set(idx, [""])
+        else usednames.set(idx, Array.from(
+            hintnames_short(count, suffixChars),
+        ))
+    }
+
+    const allnames = allwordindices
+        .map(idx => HINT_WORDS[idx] + (usednames.get(idx) as string[]).pop())
+
+    for (const hintables of hintablesfiltered) {
+        const names = allnames.slice(modeState.hints.length)
+        for (const [el, name] of izip(hintables.elements, names)) {
+            logger.debug({ el, name })
+            modeState.hintchars += name
+            modeState.hints.push(
+                new Hint(el, name, null, onSelect, hintables.hintclasses),
+            )
+        }
+    }
+}
+
 /** Helper for vimperator hinting.
 
     Allow customize vimperator hinting filter by overriding functions of the
@@ -1300,6 +1384,36 @@ function filterHintsSimple(fstr) {
         }
     }
     if (active.length === 1 && config.get("hintautoselect") === "true") {
+        selectFocusedHint()
+    }
+}
+
+/** @hidden */
+function filterHintsWords(fstr) {
+    const active: Hint[] = []
+    let foundMatch
+
+    // Fix bug where sometimes a bigger number would be selected (e.g. 10 rather than 1)
+    // such that smaller numbers couldn't be selected
+    const hints =
+        config.get("hintnames") == "numeric"
+            ? R.sortBy(R.pipe(R.prop("name"), parseInt), modeState.hints)
+            : modeState.hints
+
+    for (const h of hints) {
+        if (!h.name.startsWith(fstr)) h.hidden = true
+        else {
+            if (!foundMatch) {
+                h.focused = true
+                modeState.focusedHint = h
+                foundMatch = true
+            }
+            h.hidden = false
+            addFilteredCharClass(h, fstr)
+            active.push(h)
+        }
+    }
+    if (active.length && fstr.length === active[0].name.length) {
         selectFocusedHint()
     }
 }

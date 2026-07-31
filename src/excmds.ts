@@ -7136,3 +7136,34 @@ export async function scrollstop() {
 export function noop() {
     return undefined
 }
+
+/**
+ * Defeat near-endless waves of deadly HTML elements using only your fingers and your wits.
+ */
+//#content
+export async function totd() {
+    // :hint -KQ -filter Ω e=>Array.from(e.children).every(c=>c.classList.contains("TridactylKilledElem")) Ω *
+    let p = true
+    while (p) {
+        p = await new Promise(async (resolve, reject) => {
+            const elems = await DOM.getVisibleElemsBySelector(
+                "*", [
+                    e => Array.from(e.children)
+                        .every(c => c.classList.contains("TridactylKilledElem")
+                    )
+                ])
+            const hintables = hinting.toHintablesArray(elems)
+            hinting.hintPage(
+                hintables,
+                elem => {
+                    elem.classList.add("TridactylKilledElem")
+                    KILL_STACK.push(elem)
+                    return elem
+                },
+                resolve,
+                reject,
+                false,
+            )
+        })
+    }
+}
