@@ -37,7 +37,8 @@ export enum OpenMode {
  * Hinting parameters interface
  */
 export interface HintOptions {
-    rapid: boolean
+    rapid: boolean | "rehint"
+    rapidRehintDelay: number
     textFilter: null | string | RegExp
     openMode: OpenMode
     includeInvisible: boolean
@@ -55,7 +56,8 @@ export interface HintOptions {
  * Hinting parameters class for parsing
  */
 export class HintConfig implements HintOptions {
-    public rapid = false
+    public rapid: boolean | "rehint" = false
+    public rapidRehintDelay = 0
     public textFilter = null
     public openMode = OpenMode.Default
     public includeInvisible = false
@@ -82,10 +84,11 @@ export class HintConfig implements HintOptions {
             ExpectPipeAttribute,
             ExpectSelectorCallback,
             ExpectSelectorExclude,
+            ExpectRapidRehintDelay,
         }
 
         const result = new HintConfig()
-        const multiLetterFlags = ["fr", "wp", "br", "pipe"]
+        const multiLetterFlags = ["fr", "wp", "br", "pipe", "Qd"]
         let cOrPipeFlagPresent = false
         let CFlagPresent = false
 
@@ -131,6 +134,13 @@ export class HintConfig implements HintOptions {
                                     break
                                 case "q":
                                     result.rapid = true
+                                    break
+                                case "Q":
+                                    result.rapid = "rehint"
+                                    break
+                                case "Qd":
+                                    result.rapid = "rehint"
+                                    newState = State.ExpectRapidRehintDelay
                                     break
                                 case "f":
                                     newState = State.ExpectF
@@ -352,6 +362,14 @@ export class HintConfig implements HintOptions {
                     // -cF, expect selector, then callback
                     result.selectors.push(arg)
                     state = State.ExpectCallback
+                    break
+                case State.ExpectRapidRehintDelay:
+                    if (!isNaN(parseInt(arg, 10))) {
+                        result.rapidRehintDelay = parseInt(arg, 10)
+                    } else {
+                        result.warnings.push(`could not parse delay as integer -${arg}`)
+                    }
+                    state = State.Initial
                     break
             }
         }

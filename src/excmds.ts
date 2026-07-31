@@ -5806,6 +5806,29 @@ export async function hint(...args: string[]): Promise<any> {
             }
 
             resolve(results)
+        } else if (config.rapid === "rehint") {
+		    const results = []
+            let rehintables = hintables
+
+            async function repeat() {
+                const result = await new Promise((res) => {
+                    hinting.hintPage(rehintables, action, res, reject, config.rapid)
+                })
+                return new Promise(res => {
+                    if (result === "") {
+                        res(false)
+                    } else {
+                        results.push(result)
+                        setTimeout(async () => {
+                            rehintables = await config.hintables()
+                            res(true)
+                        }, config.rapidRehintDelay)
+                    }
+                })
+            }
+
+            while (await repeat())
+            resolve(results)
         } else {
             // Perform hinting
             hinting.hintPage(hintables, action, resolve, reject, config.rapid)
