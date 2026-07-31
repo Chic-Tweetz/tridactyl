@@ -1116,7 +1116,7 @@ class Hint {
                 let inset
                 if (recti === rect) {
                     rectElem = mainRect
-                    inset = `${ this.y }px ${ this.x }px`
+                    inset = `${ window.scrollY + recti.top }px ${ window.scrollX + recti.left }px`
                 } else {
                     // Position extra rects relative to the main rect
                     rectElem = document.createElement("div")
@@ -1125,9 +1125,9 @@ class Hint {
                 }
 
                 rectElem.style.cssText = `
-                    inset: ${inset} !important;
-                    width: ${recti.width}px !important;
-                    height: ${recti.height}px !important;
+                    inset: ${ inset } !important;
+                    width: ${ recti.width }px !important;
+                    height: ${ recti.height }px !important;
                 `
             }
 
