@@ -16,6 +16,22 @@ span.TridactylHint {
     z-index: 2147483646 !important;
 }
 
+span.TridactylHint.TridactylHintSpanActive {
+    background: var(--tridactyl-hintspan-active-bg) !important;
+    -webkit-text-fill-color: var(--tridactyl-hintspan-active-fg) !important;
+    border-color: var(--tridactyl-hintspan-active-border-color) !important;
+}
+
+span.TridactylHintCharPressed {
+    color: var(--tridactyl-hintspan-pressed-fg) !important;
+    -webkit-text-fill-color: var(--tridactyl-hintspan-pressed-fg) !important;
+}
+
+span.TridactylHint.TridactylHintSpanActive > span.TridactylHintCharPressed {
+    color: var(--tridactyl-hintspan-active-pressed-fg) !important;
+    -webkit-text-fill-color: var(--tridactyl-hintspan-active-pressed-fg) !important;
+}
+
 span.TridactylHintA {
     z-index: 2147483647 !important;
 }
@@ -37,17 +53,6 @@ span.TridactylJSHint {
 
 .TridactylKilledElem {
     display: none !important;
-}
-
-span.TridactylHint.TridactylHintSpanActive {
-    background: var(--tridactyl-hintspan-active-bg) !important;
-    -webkit-text-fill-color: var(--tridactyl-hintspan-active-fg) !important;
-    border-color: var(--tridactyl-hintspan-active-border-color) !important;
-}
-
-span.TridactylHintCharPressed {
-    color: var(--tridactyl-hintspan-pressed-fg) !important;
-    -webkit-text-fill-color: var(--tridactyl-hintspan-pressed-fg) !important;
 }
 
 div.TridactylHud {

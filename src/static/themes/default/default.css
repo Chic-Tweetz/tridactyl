@@ -50,7 +50,7 @@
     --tridactyl-hintspan-font-size: var(--tridactyl-small-font-size);
     --tridactyl-hintspan-font-weight: bold;
     --tridactyl-hintspan-fg: white;
-    --tridactyl-hintspan-pressed-fg: var(--tridactyl-hintspan-fg);
+    --tridactyl-hintspan-pressed-fg: color-mix(var(--tridactyl-hintspan-bg), var(--tridactyl-hintspan-fg));
     --tridactyl-hintspan-bg: red;
     --tridactyl-hintspan-border-color: ButtonShadow;
     --tridactyl-hintspan-border-width: 0px;
@@ -60,6 +60,7 @@
     --tridactyl-hintspan-active-fg: var(--tridactyl-hint-active-bg);
     --tridactyl-hintspan-active-bg: var(--tridactyl-hint-active-fg);
     --tridactyl-hintspan-active-border-color: var(--tridactyl-hintspan-border-color);
+    --tridactyl-hintspan-active-pressed-fg: color-mix(var(--tridactyl-hintspan-active-bg), var(--tridactyl-hintspan-active-fg));
 
     /* Element highlights */
     --tridactyl-hint-fg: var(--tridactyl-fg);

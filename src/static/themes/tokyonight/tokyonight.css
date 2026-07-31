@@ -159,8 +159,6 @@
     --tridactyl-hintspan-active-fg: var(--tridactyl-hintspan-bg);
     --tridactyl-hintspan-active-bg: var(--tritheme-moon-yellow);
 
-    --tridactyl-hintspan-pressed-fg: grey;
-
     /* Element highlights */
     --tritactyl-hint-fg: rgb(211, 235, 249);
     --tridactyl-hint-bg: rgba(0, 4, 66, 0.35);
