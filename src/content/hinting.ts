@@ -501,14 +501,14 @@ export function hintPage(
         buildHints(hintableElements, hint => {
             const state = modeState
             state.cleanUpHints()
-            hint.result = onSelect(hint.target)
+            hint.result = onSelect(hint.target.deref())
             state.selectedHints.push(hint)
             if (modeState === state) reset()
         })
     } else {
         buildHints(hintableElements, hint => {
             const state = modeState
-            hint.result = onSelect(hint.target)
+            hint.result = onSelect(hint.target.deref())
             state.selectedHints.push(hint)
             if (
                 state.selectedHints.length > 1 &&
@@ -537,7 +537,7 @@ export function hintPage(
     //      - are either _not_ <a>
     //      - or their href points to the sampe place as first one
 
-    const firstTarget = modeState.hints[0].target
+    const firstTarget = modeState.hints[0].target.deref()
 
     const firstTargetIsSelectable = (): boolean =>
         firstTarget instanceof HTMLAnchorElement &&
@@ -548,8 +548,8 @@ export function hintPage(
         undefined ===
         modeState.hints.find(
             h =>
-                !(h.target instanceof HTMLAnchorElement) ||
-                h.target.href !== (firstTarget as HTMLAnchorElement).href,
+                !(h.target.deref() instanceof HTMLAnchorElement) ||
+                (h.target.deref() as HTMLAnchorElement).href !== (firstTarget as HTMLAnchorElement).href,
         )
 
     if (
@@ -789,6 +789,7 @@ class Hint {
     public readonly highlight: HTMLElement | null = null
     public readonly outline: HTMLElement | null = null
     public readonly rect: Omit<ClientRect, "x" | "y" | "toJSON"> = null
+    public readonly target: WeakRef<Element>
     public result: any = null
     private unfilteredName: string
 
@@ -798,12 +799,13 @@ class Hint {
     private _y = 0
 
     constructor(
-        public readonly target: Element,
+        target: Element,
         public name: string,
         public readonly filterData: any,
         private readonly onSelect: HintSelectedCallback,
         classes?: string[],
     ) {
+        this.target = new WeakRef(target)
         this.unfilteredName = name
         // We need to compute the offset for elements that are in an iframe
         let offsetTop = 0
@@ -918,13 +920,18 @@ class Hint {
     // If not, do a state machine.
     set hidden(hide: boolean) {
         this.flag.hidden = hide
+        // Dead elements (e.g. elements that were in a removed iframe) cause errors
+        // when accessing their properties.
+        // Example: bing.com image search. Click an image to bring up an iframe popup.
+        // Hint with that iframe open and select the close button.
+        // iframe is removed, but we try to clean up hints that were for elements inside it.
         if (hide) {
             this.focused = false
-            this.target.classList.remove("TridactylHintElem")
+            this.target.deref()?.classList?.remove("TridactylHintElem")
             this.highlight?.setAttribute("hidden", "")
             this.outline?.setAttribute("hidden", "")
         } else {
-            this.target.classList.add("TridactylHintElem")
+            this.target.deref()?.classList?.add("TridactylHintElem")
             this.highlight?.removeAttribute("hidden")
             this.outline?.removeAttribute("hidden")
         }
@@ -932,8 +939,8 @@ class Hint {
 
     set focused(focus: boolean) {
         if (focus) {
-            this.target.classList.add("TridactylHintActive")
-            this.target.classList.remove("TridactylHintElem")
+            this.target.deref()?.classList?.add("TridactylHintActive")
+            this.target.deref()?.classList?.remove("TridactylHintElem")
 
             if (this.highlight)
                 this.highlight.classList.add("TridactylHintHighlightActive")
@@ -943,8 +950,8 @@ class Hint {
 
             this.flag.classList.add("TridactylHintSpanActive")
         } else {
-            this.target.classList.add("TridactylHintElem")
-            this.target.classList.remove("TridactylHintActive")
+            this.target.deref()?.classList?.add("TridactylHintElem")
+            this.target.deref()?.classList?.remove("TridactylHintActive")
 
             if (this.highlight)
                 this.highlight.classList.remove("TridactylHintHighlightActive")
