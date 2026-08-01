@@ -1336,11 +1336,10 @@ export async function hintables(
     withjs = false,
     includeInvisible = false,
 ) {
-    if (withjs) DOM.pruneHintworthyJSElems()
     const jsElems = withjs
         ? Array.from(
               new Set([
-                  ...DOM.hintworthy_js_elems,
+                  ...DOM.getPrunedHintworthyJSElems(),
                   ...DOM.getElemsBySelector("*", [
                       el => Boolean((el as HTMLElement).onclick),
                   ]),
