@@ -700,19 +700,27 @@ export function compareElementArea(a: HTMLElement, b: HTMLElement): number {
     return aArea - bArea
 }
 
-export const hintworthy_js_elems: Set<Element> = new Set()
+// This is stupid (this map is for dealing with dead elements btw)
+// Maybe I can just do this for iframe elements somehow
+// If only weak sets were iterable
+const hintworthy_js_elems_map: Map<Element, WeakRef<Element>> = new Map()
 const MAX_HINTWORTHY_JS_ELEMS = 1000
 const HINTWORTHY_JS_ELEMS_PRUNE_INTERVAL = 100
 let hintworthy_js_elems_additions = 0
 
+export function getPrunedHintworthyJSElems() {
+    pruneHintworthyJSElems()
+    return Array.from(hintworthy_js_elems_map.values()).map(ref => ref.deref())
+}
+
 export function pruneHintworthyJSElems() {
-    for (const elem of hintworthy_js_elems) {
-        if (!elem.isConnected) {
-            hintworthy_js_elems.delete(elem)
+    for (const [elem, ref] of hintworthy_js_elems_map) {
+        if (!ref.deref() || !elem.isConnected) {
+            hintworthy_js_elems_map.delete(elem)
         }
     }
-    while (hintworthy_js_elems.size > MAX_HINTWORTHY_JS_ELEMS) {
-        hintworthy_js_elems.delete(hintworthy_js_elems.values().next().value)
+    while (hintworthy_js_elems_map.size > MAX_HINTWORTHY_JS_ELEMS) {
+        hintworthy_js_elems_map.delete(hintworthy_js_elems_map.values().next().value)
     }
     hintworthy_js_elems_additions = 0
 }
@@ -771,12 +779,12 @@ export function registerEvListenerAction(
         case "mouseup":
         case "mouseover":
             if (add) {
-                hintworthy_js_elems.add(elem)
+                hintworthy_js_elems_map.set(elem, new WeakRef(elem))
                 hintworthy_js_elems_additions += 1
                 if (
                     hintworthy_js_elems_additions >=
                         HINTWORTHY_JS_ELEMS_PRUNE_INTERVAL ||
-                    hintworthy_js_elems.size > MAX_HINTWORTHY_JS_ELEMS
+                    hintworthy_js_elems_map.size > MAX_HINTWORTHY_JS_ELEMS
                 ) {
                     pruneHintworthyJSElems()
                 }
@@ -785,7 +793,7 @@ export function registerEvListenerAction(
                 // "mousedown" and removes "mousedown" twice, we lose track of the
                 // elem even though it still has a "click" listener.
                 // Fixing this might not be worth the added complexity.
-                hintworthy_js_elems.delete(elem)
+                hintworthy_js_elems_map.delete(elem)
             }
     }
 }
