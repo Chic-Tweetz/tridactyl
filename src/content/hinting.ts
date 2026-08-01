@@ -1130,7 +1130,7 @@ class Hint {
                 let inset
                 if (recti === rect) {
                     rectElem = mainRect
-                    inset = `${ window.scrollY + recti.top }px ${ window.scrollX + recti.left }px`
+                    inset = `${ window.scrollY + this.rect.top }px ${ window.scrollX + this.rect.left }px`
                 } else {
                     // Position extra rects relative to the main rect
                     rectElem = document.createElement("div")
@@ -1722,7 +1722,7 @@ export async function hintables(
         DOM.getElemsBySelector("*", [
             el => {
                 if ((el as any).onclick) {
-                    DOM.hintworthy_js_elems.add(el)
+                    DOM.addHintworthyJSElem(el)
                     return true
                 }
                 return false

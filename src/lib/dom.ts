@@ -204,6 +204,74 @@ export function* elementsByXPath(xpath, parent?) {
 /** Type for functions that can filter element arrays */
 type ElementFilter = (element: Element) => boolean
 
+/** getComputedStyle is supposed to be slow, so I'm trying a cache out */
+const computedStyleCache = (() => {
+    let computed_style_cache: WeakMap<Element, CSSStyleDeclaration> = new WeakMap()
+    window.addEventListener("blur", () => computed_style_cache = new WeakMap())
+    // let clearQueued = false
+
+    return function(elem: Element) {
+        let style = computed_style_cache.get(elem)
+        if (!style) {
+            style = getComputedStyle(elem)
+            computed_style_cache.set(elem, style)
+        }
+
+        // if (!clearQueued) {
+        //     clearQueued = true
+        //     setTimeout(() => {
+        //         computed_style_cache = new WeakMap()
+        //         clearQueued = false
+        //     }, 0)
+        // }
+
+        return style
+    }
+})()
+
+// Opacity is really annoying :) computed styles won't reflect inherited opacity
+const opacityCache = (() => {
+    let opacityCache: WeakMap<Element, { value: CSSStyleDeclaration }> = new WeakMap()
+    // Need to clear this more than i need to clear computed styles cache as these values aren't live
+    // unlesssssss....!
+    // let clearQueued = false
+    window.addEventListener("blur", () => opacityCache = new WeakMap())
+
+    return function(elem: Element) {
+        // if (!clearQueued) {
+        //     clearQueued = true
+        //     setTimeout(() => {
+        //         opacityCache = new WeakMap()
+        //         clearQueued = false
+        //     }, 0)
+        // }
+        const elemStackOpacity = { value: undefined }
+        let computedStyle
+
+        while (elem) {
+            const cached = opacityCache.get(elem)
+            if (cached) {
+                elemStackOpacity.value = cached.value
+                return cached.value.opacity !== "0"
+            }
+
+            opacityCache.set(elem, elemStackOpacity)
+
+            computedStyle = computedStyleCache(elem)
+            if (computedStyle.opacity === "0") {
+                elemStackOpacity.value = computedStyle
+                return false
+            }
+
+            elem = elem.parentElement
+        }
+
+        elemStackOpacity.value = computedStyle
+        return true
+    }
+})()
+
+
 /** Is the element of "substantial" size and shown on the page. The element
  * doesn't need to be in the viewport. This is useful when you want to
  * scroll to something, but still want to exclude tiny and useless items
@@ -211,7 +279,7 @@ type ElementFilter = (element: Element) => boolean
 export function isSubstantial(element: Element) {
     const clientRect = element.getClientRects()[0]
     if (!clientRect) return false
-    const computedStyle = getComputedStyle(element)
+    const computedStyle = computedStyleCache(element)
     // remove elements that are barely within the viewport, tiny, or invisible
     switch (true) {
         case clientRect.width < 3:
@@ -302,7 +370,7 @@ export function isVisible(thing: Element | Range) {
     const element = thing
     // remove elements that are barely within the viewport, tiny, or invisible
     // Only call getComputedStyle when necessary
-    const computedStyle = getComputedStyle(element)
+    const computedStyle = computedStyleCache(element)
     // I'm sure the widthMatters and heightMatters are important but I don't understand them
     switch (true) {
         case clientRect.width < 3:
@@ -427,6 +495,11 @@ export async function getVisibleElemsBySelector(selector: string | null = "*", f
             .flat()
             .filter(el => isPainted(el as HTMLElement) &&
                 (!hideObscured || isUnobscured(el as Element)) &&
+                !(
+                    // Sick of hinting the whichkey iframe!
+                    (el as Element).tagName === "IFRAME" &&
+                    (el as HTMLIFrameElement).src === browser.runtime.getURL("static/blank.html")
+                ) &&
                 filters.every(filter => filter(el as HTMLElement))
             ) as HTMLElement[]
     )
@@ -464,9 +537,9 @@ export function isUnobscured(element: Element) {
 // Like isVisible with no rect checks
 // Useful to catch "visibility: hidden;" css rule which eludes the IntersectionObserver
 export function isPainted(elem: HTMLElement) {
-    const s = getComputedStyle(elem)
+    const s = computedStyleCache(elem)
     return (
-        s.visibility !== "hidden" && s.display !== "none" && s.opacity !== "0"
+        s.visibility !== "hidden" && s.display !== "none" && opacityCache(elem)
     )
 }
 
@@ -708,6 +781,18 @@ const MAX_HINTWORTHY_JS_ELEMS = 1000
 const HINTWORTHY_JS_ELEMS_PRUNE_INTERVAL = 100
 let hintworthy_js_elems_additions = 0
 
+export function addHintworthyJSElem(elem: Element) {
+    hintworthy_js_elems_map.set(elem, new WeakRef(elem))
+    hintworthy_js_elems_additions += 1
+    if (
+        hintworthy_js_elems_additions >=
+            HINTWORTHY_JS_ELEMS_PRUNE_INTERVAL ||
+        hintworthy_js_elems_map.size > MAX_HINTWORTHY_JS_ELEMS
+    ) {
+        pruneHintworthyJSElems()
+    }
+}
+
 export function getPrunedHintworthyJSElems() {
     pruneHintworthyJSElems()
     return Array.from(hintworthy_js_elems_map.values()).map(ref => ref.deref())
@@ -779,15 +864,7 @@ export function registerEvListenerAction(
         case "mouseup":
         case "mouseover":
             if (add) {
-                hintworthy_js_elems_map.set(elem, new WeakRef(elem))
-                hintworthy_js_elems_additions += 1
-                if (
-                    hintworthy_js_elems_additions >=
-                        HINTWORTHY_JS_ELEMS_PRUNE_INTERVAL ||
-                    hintworthy_js_elems_map.size > MAX_HINTWORTHY_JS_ELEMS
-                ) {
-                    pruneHintworthyJSElems()
-                }
+                addHintworthyJSElem(elem)
             } else {
                 // Possible bug: If a page adds an event listener for "click" and
                 // "mousedown" and removes "mousedown" twice, we lose track of the
