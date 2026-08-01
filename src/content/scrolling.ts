@@ -245,19 +245,25 @@ export async function scroll(
     return didScroll
 }
 
+// WeakRef avoids error if currentFocused is an element that was in a since removed iframe
+let currentFocused
+setCurrentFocus(dom.activeElement())
+
 let lastRecursiveScrolled = null
 let lastFocused = null
-let currentFocused = dom.activeElement() as any
 let lastX = 0
 let lastY = 0
 
-// export let currentFocused exports it as readonly, so we have to write a function
-export function setCurrentFocus(v) {
-    currentFocused = v
+export function getCurrentFocus(): Element | undefined {
+    return currentFocused?.deref()
+}
+
+export function setCurrentFocus(elem: Element | null | undefined) {
+    currentFocused = elem ? new WeakRef(elem) : null
 }
 
 function focusHandler(event) {
-    currentFocused = event.target
+    setCurrentFocus(event.target)
 }
 
 // Adding these in content.ts, along with any iframes discovered
@@ -294,10 +300,10 @@ export async function recursiveScroll(
             // Try scrolling the active node or one of its parent elements
 
             // If nothing has been given focus explicitly use the activeElement
-            if (!currentFocused || currentFocused.nodeName == "#document")
-                currentFocused = document.activeElement
+            if (!getCurrentFocus() || getCurrentFocus()?.nodeName == "#document")
+                setCurrentFocus(document.activeElement)
 
-            node = currentFocused
+            node = getCurrentFocus()
             while (true) {
                 if (await scroll(xDistance, yDistance, node, undefined, generation)) return true
                 node = node.parentElement

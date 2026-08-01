@@ -186,13 +186,12 @@ class HintState {
     }
 
     focusFirstParentHint() {
-        let parent = this.focusedHint.target.parentElement
+        let parent = this.focusedHint.target.deref()?.parentElement
         while (parent) {
-            if (parent.classList.contains("TridactylHintElem")) {
-                const focus = this.activeHints.find(h => h.target === parent)
-                if (!focus) return
+            const parentHint = this.hints.find(h => h.target.deref() === parent)
+            if (parentHint) {
                 this.focusedHint.focused = false
-                this.focusedHint = focus
+                this.focusedHint = parentHint
                 this.focusedHint.focused = true
                 break
             }
@@ -492,12 +491,13 @@ function render() {
     requestAnimationFrame(() => {
         for (const hint of renderState.hintsVisibility) {
             if (hint.flag.hidden) {
-                hint.target.classList.remove("TridactylHintElem")
+                if (renderState.useHintClass)
+                    hint.target.deref()?.classList?.remove("TridactylHintElem")
                 hint.highlight?.setAttribute("hidden", "")
                 hint.outline?.setAttribute("hidden", "")
             } else {
                 if (renderState.useHintClass)
-                    hint.target.classList.add("TridactylHintElem")
+                    hint.target.deref()?.classList?.add("TridactylHintElem")
                 hint.highlight?.removeAttribute("hidden")
                 hint.outline?.removeAttribute("hidden")
             }
@@ -611,14 +611,14 @@ export function hintPage(
         buildHints(hintableElements, hint => {
             const state = modeState
             state.cleanUpHints()
-            hint.result = onSelect(hint.target)
+            hint.result = onSelect(hint.target.deref())
             state.selectedHints.push(hint)
             if (modeState === state) reset()
         })
     } else {
         buildHints(hintableElements, hint => {
             const state = modeState
-            hint.result = onSelect(hint.target)
+            hint.result = onSelect(hint.target.deref())
             state.selectedHints.push(hint)
             state.textfilter = [""]
             state.filterMode = "flags"
@@ -654,7 +654,7 @@ export function hintPage(
     //      - are either _not_ <a>
     //      - or their href points to the sampe place as first one
 
-    const firstTarget = modeState.hints[0].target
+    const firstTarget = modeState.hints[0].target.deref()
 
     const firstTargetIsSelectable = (): boolean =>
         firstTarget instanceof HTMLAnchorElement &&
@@ -665,8 +665,8 @@ export function hintPage(
         undefined ===
         modeState.hints.find(
             h =>
-                !(h.target instanceof HTMLAnchorElement) ||
-                h.target.href !== (firstTarget as HTMLAnchorElement).href,
+                !(h.target.deref() instanceof HTMLAnchorElement) ||
+                (h.target.deref() as HTMLAnchorElement).href !== (firstTarget as HTMLAnchorElement).href,
         )
 
     if (
@@ -919,6 +919,7 @@ type HintSelectedCallback = (x: any) => any
 /** Place a flag by each hintworthy element
 @hidden */
 class Hint {
+    public readonly target: WeakRef<Element>
     public readonly flag = document.createElement("span")
     public highlight: HTMLElement | null = null
     public outline: HTMLElement | null = null
@@ -932,13 +933,14 @@ class Hint {
     private _y = 0
 
     constructor(
-        public readonly target: Element,
+        target: Element,
         public name: string,
         public readonly filterData: any,
         private readonly onSelect: HintSelectedCallback,
         classes?: string[],
         clientRects?: DOMRectList,
     ) {
+        this.target = new WeakRef(target)
         this.unfilteredName = name
 
         this.calculateGeometry(clientRects)
@@ -987,13 +989,18 @@ class Hint {
         renderState.pushHintsVisibility(this)
 
         /*
+        // Dead elements (e.g. elements that were in a removed iframe) cause errors
+        // when accessing their properties.
+        // Example: bing.com image search. Click an image to bring up an iframe popup.
+        // Hint with that iframe open and select the close button.
+        // iframe is removed, but we try to clean up hints that were for elements inside it.
         if (hide) {
             this.focused = false
-            this.target.classList.remove("TridactylHintElem")
+            this.target.deref()?.classList?.remove("TridactylHintElem")
             this.highlight?.setAttribute("hidden", "")
             this.outline?.setAttribute("hidden", "")
         } else {
-            this.target.classList.add("TridactylHintElem")
+            this.target.deref()?.classList?.add("TridactylHintElem")
             this.highlight?.removeAttribute("hidden")
             this.outline?.removeAttribute("hidden")
         }
@@ -1003,9 +1010,10 @@ class Hint {
     set focused(focus: boolean) {
         if (focus) {
             if (renderState.useActiveHintClass)
-                this.target.classList.add("TridactylHintActive")
+                this.target.deref()?.classList?.add("TridactylHintActive")
 
-            this.target.classList.remove("TridactylHintElem")
+            if (renderState.useHintClass)
+                this.target.deref()?.classList?.remove("TridactylHintElem")
 
             if (this.highlight)
                 this.highlight.classList.add("TridactylHintHighlightActive")
@@ -1016,9 +1024,10 @@ class Hint {
             this.flag.classList.add("TridactylHintSpanActive")
         } else {
             if (renderState.useHintClass)
-                this.target.classList.add("TridactylHintElem")
+                this.target.deref()?.classList?.add("TridactylHintElem")
 
-            this.target.classList.remove("TridactylHintActive")
+            if (renderState.useActiveHintClass)
+                this.target.deref()?.classList?.remove("TridactylHintActive")
 
             if (this.highlight)
                 this.highlight.classList.remove("TridactylHintHighlightActive")
@@ -1066,13 +1075,18 @@ class Hint {
     }
 
     public calculateGeometry(cachedRects?: DOMRectList) {
+        const target = this.target.deref()
+        if (!target) {
+            this.hidden = true
+            return
+        }
         // We need to compute the offset for elements that are in an iframe
         let offsetTop = 0
         let offsetLeft = 0
         const pad = 4
-        if (this.target.ownerDocument !== document) {
+        if (target.ownerDocument !== document) {
             const iframe = DOM.getAllDocumentFrames().find(
-                frame => frame.contentDocument === this.target.ownerDocument,
+                frame => frame.contentDocument === target.ownerDocument,
             )
             const rect = iframe.getClientRects()[0]
             offsetTop += rect.top
@@ -1080,7 +1094,7 @@ class Hint {
         }
 
         // Find the first visible client rect of the target
-        const clientRects = cachedRects || this.target.getClientRects()
+        const clientRects = cachedRects || target.getClientRects()
         let rect = clientRects[0]
         if (!rect) {
             this.hidden = true
@@ -1410,8 +1424,6 @@ function filterHintsSimple(fstr) {
                 modeState.focusedHint = h
                 foundMatch = true
             }
-            // style the typed characters
-            addTypedCharClass(h, fstr.length)
             h.hidden = false
             addFilteredCharClass(h, fstr)
             active.push(h)
@@ -1806,18 +1818,6 @@ export function hintByText(match: string | RegExp) {
     )
 }
 
-/** Add class to typed hint chars so they can be styled however.
- *  @hidden
- */
-function addTypedCharClass(hint: Hint, charCount: number) {
-    for (let i = 0; i < charCount; ++i) {
-        hint.flag.children[i].className = "TridactylHintCharTyped"
-    }
-    for (let i = charCount; i < hint.flag.children.length; ++i) {
-        hint.flag.children[i].className = ""
-    }
-}
-
 /** As I've added filterByText, I need a way to move back to hint char selection
  *  seems you can still select hints which were filtered by text
  *  should removeHiddenHints() not handle that? (and do I even care?)
@@ -1844,7 +1844,7 @@ function filterByText(match?: string[]) {
         modeState.textfilter = match || [""]
 
         modeState.activeHints.forEach(h => {
-            if (!DOM.isVisible(h.target)) h.hidden = true
+            if (!h.target.deref() || !DOM.isVisible(h.target.deref())) h.hidden = true
         })
 
         if (!modeState.activeHints.length) {
@@ -1877,7 +1877,11 @@ function filterByText(match?: string[]) {
     let focus = modeState.focusedHint
 
     for (const hint of modeState.hints) {
-        const el = hint.target
+        const el = hint.target.deref()
+        if (!el) {
+            hint.hidden = true
+            continue
+        }
         let text
         if (el instanceof HTMLInputElement) {
             text = el.value.trim()
@@ -2037,7 +2041,7 @@ export function parser(keys: keyseq.MinimalKey[]) {
 }
 
 function getHints(): { target: Element; flag: Element }[] {
-    return modeState.hints.map(h => ({ target: h.target, flag: h.flag }))
+    return modeState.hints.map(h => ({ target: h.target.deref(), flag: h.flag }))
 }
 
 function hideFlags() {
@@ -2084,7 +2088,8 @@ function filterHints(
     const active: Hint[] = []
 
     for (const h of hints) {
-        if (!predicate(h.target, h.flag)) h.hidden = true
+        const el = h.target.deref()
+        if (!el || !predicate(el, h.flag)) h.hidden = true
         else {
             h.hidden = false
             active.push(h)
