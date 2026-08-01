@@ -80,12 +80,18 @@ function* ParserController() {
     }
 
     const ignoreKeyupsExplicit = new Set()
+
+    // I believe "ignoreKeyupsContextual" should be default behaviour
+    // instead, <D-x> type binds should add to a set to do the opposite (explicitly allow keyups to match nothing/reset keyseq), e.g.
+    // const allowResetKeyups = new Set()
+    // Currently, moving between same-origin iframes is not great, partly because of this
     const ignoreKeyupsContextual = new Set()
     const ignoreRepeats = new Set()
     let keyEvents: MinimalKey[] = []
     let previousSuffix = ""
 
     // If we lose focus we have no idea whether keys are held
+    // Though we could try to listen in the top window for iframes that receive focus
     window.addEventListener("blur", e => {
         if (!e.isTrusted) return
         cancelKeyups.clear()
@@ -102,15 +108,15 @@ function* ParserController() {
     // :bind <D-x>, <P-x>, <R-x>, <N-x> are what set these properties
     const parserActions = {
         "ignoreKeyupExplicit": (keyevent: KeyEventLike) => {
-            if (keyevent instanceof KeyboardEvent)
+            if (isTrustedKeyboardEvent(keyevent))
                 ignoreKeyupsExplicit.add(keyevent.code)
         },
         "ignoreKeyupContextual": (keyevent: KeyEventLike) => {
-            if (keyevent instanceof KeyboardEvent)
+            if (isTrustedKeyboardEvent(keyevent))
                 ignoreKeyupsContextual.add(keyevent.code)
         },
         "ignoreRepeats": (keyevent: KeyEventLike) => {
-            if (keyevent instanceof KeyboardEvent)
+            if (isTrustedKeyboardEvent(keyevent))
                 ignoreRepeats.add(keyevent.code)
         },
         "noReset": (_keyevent: KeyEventLike, response: ParserResponse) => {
@@ -119,7 +125,7 @@ function* ParserController() {
     }
 
     function preParseUpdateStateAndShouldSkip(keyevent: KeyEventLike) {
-        if (!(keyevent instanceof KeyboardEvent)) return false
+        if (!(isTrustedKeyboardEvent(keyevent))) return false
         if (keyevent.type === "keyup") {
             if (cancelKeyups.has(keyevent.code)) {
                 keyevent.preventDefault()
@@ -146,7 +152,7 @@ function* ParserController() {
     }
 
     function postParseUpdateStateAndShouldSkip(keyevent: KeyEventLike, response: ParserResponse) {
-        if (!(keyevent instanceof KeyboardEvent)) return false
+        if (!(isTrustedKeyboardEvent(keyevent))) return false
         // Added a "noCancel" property which lets keys through to the page
         // Suggest only careful use with :bindurl, for instance,
         // allow gmail gi shortcut to work:
@@ -327,7 +333,7 @@ export function acceptKey(keyevent: TrustedKeyboardEvent) {
         }
 
         // KeyCanceller.push effectively becomes this now:
-        if (keyevent instanceof KeyboardEvent) {
+        if (isTrustedKeyboardEvent(keyevent)) {
             keyevent.preventDefault()
             keyevent.stopImmediatePropagation()
             if (keyevent.type === "keydown") {
