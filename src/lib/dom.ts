@@ -231,42 +231,44 @@ const computedStyleCache = (() => {
 
 // Opacity is really annoying :) computed styles won't reflect inherited opacity
 const opacityCache = (() => {
-    let opacityCache: WeakMap<Element, { value: CSSStyleDeclaration }> = new WeakMap()
-    // Need to clear this more than i need to clear computed styles cache as these values aren't live
-    // unlesssssss....!
-    // let clearQueued = false
-    window.addEventListener("blur", () => opacityCache = new WeakMap())
+    let opacityCache: WeakMap<Element, { value: boolean }> = new WeakMap()
+    let clearQueued = false
 
     return function(elem: Element) {
-        // if (!clearQueued) {
-        //     clearQueued = true
-        //     setTimeout(() => {
-        //         opacityCache = new WeakMap()
-        //         clearQueued = false
-        //     }, 0)
-        // }
-        const elemStackOpacity = { value: undefined }
+        // Short-lived cache, intended for looping over hintables basically
+        if (!clearQueued) {
+            clearQueued = true
+            setTimeout(() => {
+                opacityCache = new WeakMap()
+                clearQueued = false
+            }, 0)
+        }
+
+        // Wrapped in an object to set for every element in the ancestor stack at once
+        const elemStackOpacity = { value: true }
         let computedStyle
 
         while (elem) {
             const cached = opacityCache.get(elem)
+
+            // Cache hit, return early (best outcome!)
             if (cached) {
                 elemStackOpacity.value = cached.value
-                return cached.value.opacity !== "0"
+                return cached.value
             }
 
             opacityCache.set(elem, elemStackOpacity)
-
             computedStyle = computedStyleCache(elem)
+
+            // This element and all its children are invisible
             if (computedStyle.opacity === "0") {
-                elemStackOpacity.value = computedStyle
+                elemStackOpacity.value = false
                 return false
             }
 
             elem = elem.parentElement
         }
-
-        elemStackOpacity.value = computedStyle
+        // Element and all ancestors have opacity > 0
         return true
     }
 })()
