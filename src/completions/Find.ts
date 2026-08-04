@@ -1,6 +1,7 @@
 import * as Completions from "../completions"
 import * as Messaging from "@src/lib/messaging"
 import { ownTabId } from "@src/lib/webext"
+import * as Config from "@src/lib/config"
 
 class FindCompletionOption
     extends Completions.CompletionOptionHTML
@@ -60,7 +61,10 @@ export class FindCompletionSource extends Completions.CompletionSourceFuse {
         const hasJump = /(^|\s)(--jump-to(?:=|\s)|-:(?:\s|$))/.test(optionArgs)
         const regex = /(^|\s)(-r|--regex)(?=\s|$)/.test(optionArgs)
         const delay = regex
-            ? new Promise<void>(resolve => window.setTimeout(resolve, 250))
+            ? new Promise<void>(resolve => {
+                const delay = parseInt(Config.get("incsearchdelay"), 10)
+                window.setTimeout(resolve, isNaN(delay) ? 250 : delay)
+            })
             : Promise.resolve()
         this.pending = delay
             .then(() => {

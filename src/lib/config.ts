@@ -1422,6 +1422,11 @@ export class default_config {
      */
     incsearch: "true" | "false" = "true"
 
+    /**
+     * How long to wait before starting a new :find incsearch while typing.
+     */
+    incsearchdelay = 150
+
     /** @deprecated Retained for compatibility; this setting has no effect. */
     minincsearchlen = 3
 
