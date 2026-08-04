@@ -64,7 +64,6 @@ class HintState {
     readonly hintHost = document.createElement("div")
     readonly highlightHost: Element | null = null
     readonly outlineHost: Element | null = null
-    readonly hintsBase: Hint[] = []
 
     public selectedHints: Hint[] = []
     public filter = ""
@@ -452,15 +451,6 @@ class HintState {
 
         // All done!
     }
-
-    repositionHints() {
-        requestAnimationFrame(() => {
-            for (const hint of this.hints) {
-                hint.calculateGeometry()
-            }
-            this.deOverlap()
-        })
-    }
 }
 
 /** @hidden*/
@@ -478,9 +468,13 @@ const renderState = {
     useActiveHintClass: false,
     isRenderQueued: false,
     hintsVisibility: [],
-    renderHintsVisibility: false,
+    updateHintPositions: false,
     pushHintsVisibility: hint => {
         renderState.hintsVisibility.push(hint)
+        render()
+    },
+    reposition: () => {
+        renderState.updateHintPositions = true
         render()
     },
 }
@@ -489,20 +483,43 @@ function render() {
     if (renderState.isRenderQueued) return
     renderState.isRenderQueued = true
     requestAnimationFrame(() => {
-        for (const hint of renderState.hintsVisibility) {
-            if (hint.flag.hidden) {
-                if (renderState.useHintClass)
-                    hint.target.deref()?.classList?.remove("TridactylHintElem")
-                hint.highlight?.setAttribute("hidden", "")
-                hint.outline?.setAttribute("hidden", "")
-            } else {
-                if (renderState.useHintClass)
-                    hint.target.deref()?.classList?.add("TridactylHintElem")
-                hint.highlight?.removeAttribute("hidden")
-                hint.outline?.removeAttribute("hidden")
+        if (renderState.updateHintPositions) {
+            modeState?.highlightHost?.remove()
+            modeState?.outlineHost?.remove()
+            modeState?.highlightHost?.replaceChildren()
+            modeState?.outlineHost?.replaceChildren()
+
+            for (const hint of modeState.activeHints) {
+                hint.calculateGeometry()
             }
         }
-        renderState.hintsVisibility = []
+
+        if (renderState.hintsVisibility.length) {
+            for (const hint of renderState.hintsVisibility) {
+                if (hint.flag.hidden) {
+                    if (renderState.useHintClass)
+                        hint.target.deref()?.classList?.remove("TridactylHintElem")
+                    hint.highlight?.setAttribute("hidden", "")
+                    hint.outline?.setAttribute("hidden", "")
+                } else {
+                    if (renderState.useHintClass)
+                        hint.target.deref()?.classList?.add("TridactylHintElem")
+                    hint.highlight?.removeAttribute("hidden")
+                    hint.outline?.removeAttribute("hidden")
+                }
+            }
+            renderState.hintsVisibility = []
+        }
+
+        if (renderState.updateHintPositions) {
+            if (modeState.outlineHost)
+                modeState.hudTranslate.prepend(modeState.outlineHost)
+            if (modeState.highlightHost)
+                modeState.hudTranslate.prepend(modeState.highlightHost)
+            modeState.deOverlap()
+            renderState.updateHintPositions = false
+        }
+
         renderState.isRenderQueued = false
     })
 }
@@ -578,14 +595,10 @@ export function hintElements(elements: Element[], option = {}) {
 }
 
 const repositionDebounced = (() => {
-    let queued = false
+    let timeout = null
     return function() {
-        if (queued) return
-        queued = true
-        setTimeout(() => {
-            reposition()
-            queued = false
-        }, 200)
+        clearTimeout(timeout)
+        timeout = setTimeout(reposition, 200)
     }
 })()
 
@@ -633,9 +646,6 @@ export function hintPage(
             setTimeout(reposition, 250)
         })
     }
-    // weird shadow dom related issue on youtube made clientRects accessible
-    // if classLists changed between calls to new Hint (very odd and annoying but this seems to fix it...)
-    modeState.hints.forEach(hint => (hint.hidden = false))
 
     if (!modeState.hints.length) {
         // No more hints to display
@@ -710,6 +720,7 @@ function updateHudOffset() {
     window.requestAnimationFrame(() => {
         modeState.hudTranslate.style.translate = `${-window.scrollX}px ${-window.scrollY}px`
     })
+    repositionDebounced()
 }
 
 /** @hidden */
@@ -932,6 +943,9 @@ class Hint {
     private _x = 0
     private _y = 0
 
+    private _active = true
+    private _noRects = false
+
     constructor(
         target: Element,
         public name: string,
@@ -1007,6 +1021,24 @@ class Hint {
         */
     }
 
+    set active(active: boolean) {
+        if (this._active !== active) {
+            this._active = active
+            this.hidden = this._noRects ? true : !active
+        }
+    }
+
+    get active() {
+        return this._active
+    }
+
+    set noRects(noRects: boolean) {
+        if (this._noRects !== noRects) {
+            this._noRects = noRects
+            this.hidden = !this._active ? true : noRects
+        }
+    }
+
     set focused(focus: boolean) {
         if (focus) {
             if (renderState.useActiveHintClass)
@@ -1077,7 +1109,7 @@ class Hint {
     public calculateGeometry(cachedRects?: DOMRectList) {
         const target = this.target.deref()
         if (!target) {
-            this.hidden = true
+            this.noRects = true
             return
         }
         // We need to compute the offset for elements that are in an iframe
@@ -1097,9 +1129,10 @@ class Hint {
         const clientRects = cachedRects || target.getClientRects()
         let rect = clientRects[0]
         if (!rect) {
-            this.hidden = true
+            this.noRects = true
             return
         }
+        this.noRects = false
         for (const recti of clientRects) {
             if (recti.bottom + offsetTop > 0 && recti.right + offsetLeft > 0) {
                 rect = recti
@@ -1144,6 +1177,9 @@ class Hint {
                     height: ${ recti.height }px !important;
                 `
             }
+
+            if (!this._active)
+                mainRect.setAttribute("hidden", "")
 
             if (modeState.highlightHost) {
                 this.highlight?.remove()
@@ -1268,14 +1304,13 @@ function buildHintsWordsDeterministic(
             const idx = Math.floor(deterministicRandomFromSelector(
                 DOM.getSelector(el as HTMLElement)
             ) * HINT_WORDS.length)
-            console.log("el", el, DOM.getSelector(el as HTMLElement), "idx:", idx, "word:", HINT_WORDS[idx])
+
             const used = usednames.get(idx)
             if (!used) usednames.set(idx, 1)
             else usednames.set(idx, used as number + 1)
             return idx
             })
         )
-    console.log(allwordindices)
 
     for (const [idx] of usednames) {
         const count = usednames.get(idx) as number
@@ -1417,14 +1452,14 @@ function filterHintsSimple(fstr) {
             : modeState.hints
 
     for (const h of hints) {
-        if (!h.name.startsWith(fstr)) h.hidden = true
+        if (!h.name.startsWith(fstr)) h.active = false
         else {
             if (!foundMatch) {
                 h.focused = true
                 modeState.focusedHint = h
                 foundMatch = true
             }
-            h.hidden = false
+            h.active = true
             addFilteredCharClass(h, fstr)
             active.push(h)
         }
@@ -1447,14 +1482,14 @@ function filterHintsWords(fstr) {
             : modeState.hints
 
     for (const h of hints) {
-        if (!h.name.startsWith(fstr)) h.hidden = true
+        if (!h.name.startsWith(fstr)) h.active = false
         else {
             if (!foundMatch) {
                 h.focused = true
                 modeState.focusedHint = h
                 foundMatch = true
             }
-            h.hidden = false
+            h.active = true
             addFilteredCharClass(h, fstr)
             active.push(h)
         }
@@ -1540,9 +1575,9 @@ function filterHintsVimperator(query: string, reflow = false) {
     // Set hidden state of the hints
     for (const hint of modeState.hints) {
         if (active.includes(hint)) {
-            hint.hidden = false
+            hint.active = true
         } else {
-            hint.hidden = true
+            hint.active = false
         }
     }
 
@@ -1605,6 +1640,7 @@ function popKey() {
         modeState.filterFunc(modeState.filter)
         contentState.suffix = modeState?.filter || ""
     }
+    reposition()
 }
 
 /** Add key to filtstr and filter */
@@ -1843,7 +1879,7 @@ function filterByText(match?: string[]) {
         modeState.textfilter = match || [""]
 
         modeState.activeHints.forEach(h => {
-            if (!h.target.deref() || !DOM.isVisible(h.target.deref())) h.hidden = true
+            if (!h.target.deref() || !DOM.isVisible(h.target.deref())) h.active = false
         })
 
         if (!modeState.activeHints.length) {
@@ -1878,7 +1914,7 @@ function filterByText(match?: string[]) {
     for (const hint of modeState.hints) {
         const el = hint.target.deref()
         if (!el) {
-            hint.hidden = true
+            hint.active = false
             continue
         }
         let text
@@ -1889,18 +1925,18 @@ function filterByText(match?: string[]) {
         }
 
         if (!text || text === "") {
-            hint.hidden = true
+            hint.active = false
         } else if (
             match.every(str => text.toUpperCase().includes(str.toUpperCase()))
         ) {
-            hint.hidden = false
+            hint.active = true
             active.push(hint)
             if (shortestText > text.length) {
                 shortestText = text.length
                 focus = hint
             }
         } else {
-            hint.hidden = true
+            hint.active = false
         }
     }
 
@@ -1959,7 +1995,7 @@ function selectFocusedHint(delay = false) {
         contentState.suffix = ""
         modeState.hints.forEach(h => {
             h.restoreName()
-            h.hidden = false
+            h.active = true
         })
         focused.select()
     }
@@ -2009,7 +2045,7 @@ function focusParentHint() {
 
 function reposition() {
     logger.debug("Recalculating hint positions")
-    requestAnimationFrame(() => modeState.repositionHints())
+    renderState.reposition()
 }
 
 /** @hidden */
@@ -2088,9 +2124,9 @@ function filterHints(
 
     for (const h of hints) {
         const el = h.target.deref()
-        if (!el || !predicate(el, h.flag)) h.hidden = true
+        if (!el || !predicate(el, h.flag)) h.active = false
         else {
-            h.hidden = false
+            h.active = true
             active.push(h)
         }
     }
