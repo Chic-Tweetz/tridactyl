@@ -1394,14 +1394,17 @@ export async function scrolltab(tabId: number, scrollX: number, scrollY: number,
  */
 //#background
 export async function markadd(key: string) {
-    if ((await browser.windows.getCurrent()).incognito) {
-        throw new Error("Marks cannot be set in private mode")
-    }
+    // if ((await browser.windows.getCurrent()).incognito) {
+    //     throw new Error("Marks cannot be set in private mode")
+    // }
     // TODO: i18n: this should only ban numbers, not e.g. cyrillic
     if (!/[a-z]/i.exec(key) || key.length !== 1) {
         throw new Error("markadd accepts only a single letter")
     }
     if (key === key.toUpperCase()) {
+        if ((await browser.windows.getCurrent()).incognito) {
+            throw new Error("Global marks cannot be set in private mode")
+        }
         return markaddglobal(key)
     }
     return markaddlocal(key)
@@ -1421,7 +1424,10 @@ export async function markaddlocal(key: string) {
     localUrlMarks.set(key, newLocalMark)
     localMarks.set(urlWithoutAnchor, localUrlMarks)
     state.localMarks = localMarks
-    fillcmdline_tmp(3000, `# marks: local mark '${key}' set`)
+    if ((await browserBg.windows.getCurrent()).incognito)
+        fillcmdline_tmp(3000, `# marks: local private mark '${key}' set (this tab only)`)
+    else
+        fillcmdline_tmp(3000, `# marks: local mark '${key}' set`)
 }
 
 /**
