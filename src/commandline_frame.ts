@@ -106,6 +106,13 @@ const commandline_state = {
 
 // first theming of commandline iframe
 theme(document.querySelector(":root"))
+.then(() => {
+    requestAnimationFrame(() => {
+        if (commandline_state.isVisible) {
+            Messaging.messageOwnTab("commandline_content", "show")
+        }
+    })
+})
 
 /** @hidden **/
 function resizeArea() {
