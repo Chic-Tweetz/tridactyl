@@ -115,6 +115,13 @@ const commandline_state = {
 
 // first theming of commandline iframe
 theme(document.querySelector(":root"))
+.then(() => {
+    requestAnimationFrame(() => {
+        if (commandline_state.isVisible) {
+            Messaging.messageOwnTab("commandline_content", "show")
+        }
+    })
+})
 
 // if we use a popup, we don't want to message the cmdline's tab but whichever tab it's meant to control
 let messageTab = Messaging.messageOwnTab
