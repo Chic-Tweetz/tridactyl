@@ -4219,12 +4219,14 @@ export async function fillcmdline_nofocus(...strarr: string[]) {
     return Messaging.messageOwnTab("commandline_frame", "fillcmdline", [strarr.join(" "), false, false])
 }
 
+let fillcmdline_tmp_timeout = null
 /** Shows str in the command line for ms milliseconds. Recommended duration: 3000ms. */
 //#content
 export async function fillcmdline_tmp(ms: number, ...strarr: string[]) {
     await showcmdline(false)
     const done = Messaging.messageOwnTab("commandline_frame", "fillcmdline", [strarr.join(" "), false, false])
-    setTimeout(() => {
+    clearTimeout(fillcmdline_tmp_timeout)
+    fillcmdline_tmp_timeout = setTimeout(() => {
         if (document.activeElement?.id !== "cmdline_iframe") {
             CommandLineContent.hide_and_blur()
             Messaging.messageOwnTab("commandline_frame", "clear", [true])
