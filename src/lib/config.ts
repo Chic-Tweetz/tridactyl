@@ -142,6 +142,9 @@ export class default_config {
             // #5054
             modeindicator: "false",
         },
+        "https://raw.githubusercontent.com": {
+            cspclobber: "true",
+        },
     }
 
     /**
@@ -1435,6 +1438,16 @@ export class default_config {
      * Change this to "clobber" to ruin the "Content Security Policy" of all sites a bit and make Tridactyl run a bit better on some of them, e.g. raw.github*
      */
     csp: "untouched" | "clobber" = "untouched"
+
+    /**
+     * Remove CSP rules which prevent Tridactyl from functioning.
+     * Use with `:seturl` to set for particular sites.
+     *
+     * This is the same functionality as the old [[csp]] setting.
+     * If included on the real Tridacytl, it would fail review.
+     * Use with caution I guess!
+     */
+    cspclobber: "true" | "false" = "false"
 
     /**
      * JavaScript RegExp used to recognize words in text.* functions (e.g. text.transpose_words). Should match any character belonging to a word.

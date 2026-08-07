@@ -264,6 +264,13 @@ browser.webRequest.onBeforeRequest.addListener(
     ["blocking"],
 )
 
+// Prevent CSP blocking cmdline iframe/hint styles
+browser.webRequest.onHeadersReceived.addListener(
+    request.clobberCSP,
+    { urls: ["<all_urls>"], types:["main_frame"] },
+    [ "blocking", "responseHeaders" ]
+)
+
 browser.tabs.onCreated.addListener(aucon.tabCreatedListener)
 browser.tabs.onRemoved.addListener(aucon.tabRemovedListener)
 

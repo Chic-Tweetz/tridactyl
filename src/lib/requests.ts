@@ -1,5 +1,6 @@
 import * as csp from "csp-serdes"
 import Logger from "@src/lib/logging"
+import * as config from "@src/lib/config"
 
 const logger = new Logger("requests")
 
@@ -28,6 +29,9 @@ class DefaultMap<K, V> extends Map<K, V> {
  * it when they fix the bug.
  */
 export function clobberCSP(response) {
+    if (config.getURL(response.url, ["cspclobber"]) !== "true")
+        return
+
     const headers = response.responseHeaders
     const cspHeader = headers.find(
         header => header.name.toLowerCase() === "content-security-policy",
