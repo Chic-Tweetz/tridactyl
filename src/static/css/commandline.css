@@ -23,6 +23,7 @@ body {
 }
 
 #tridactyl-input, .tridactyl-input {
+    field-sizing: content;
     width: 97%;
     box-sizing: border-box;
     font-family: var(--tridactyl-cmdl-font-family);

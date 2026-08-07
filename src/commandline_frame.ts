@@ -115,19 +115,13 @@ const commandline_state = {
 
 // first theming of commandline iframe
 theme(document.querySelector(":root"))
-.then(() => {
-    requestAnimationFrame(() => {
-        if (commandline_state.isVisible) {
-            Messaging.messageOwnTab("commandline_content", "show")
-        }
-    })
-})
 
 // if we use a popup, we don't want to message the cmdline's tab but whichever tab it's meant to control
 let messageTab = Messaging.messageOwnTab
 let popupTabTarget
 
-export function asPopup(forTab=-1, trailspace=true, str="") {
+// Popup cmdline broke at some point! Would quite like to fix that!
+export function asPopup(forTab = -1, trailspace = true, str = "") {
     if (forTab !== -1) popupTabTarget = forTab
 
     // would this be foolsih (almost certainly, yes)
@@ -183,7 +177,6 @@ export function asPopup(forTab=-1, trailspace=true, str="") {
     messageTab = (type, command, args) =>
         Messaging.messageTab(popupTabTarget, type, command, args)
 
-
     Messaging.addListener("controller_content", (message, _sender, _sendResponse) => {
         if (message.command === "acceptExCmd") {
             browserBg.tabs.get(popupTabTarget).then(tab => {
@@ -208,22 +201,22 @@ export function asPopup(forTab=-1, trailspace=true, str="") {
     return true
 }
 
-/** @hidden **/
-function resizeArea() {
-    if (commandline_state.isVisible && !popupTabTarget) {
-        messageTab("commandline_content", "show")
-        focus()
+// Unused. Probably will remain unused.
+// I've removed the resize functions in favour of a resizeObserver.
+// But I've instead put a resize observer in the content script so this is a theoretical backup.
+export const resizeViaMessaging = (() => {
+    let observing = false
+    return function() {
+        if (observing) return
+        observing = true
+        const resizeObserver = new ResizeObserver(() => {
+            if (commandline_state.isVisible && !popupTabTarget) {
+                messageTab("commandline_content", "show")
+            }
+        })
+        resizeObserver.observe(document.body)
     }
-}
-window.addEventListener("tridactyl-refresh-completions", resizeArea)
-
-function resizeInput(resizeFrame = true) {
-    const input = commandline_state.clInput
-    const previousHeight = input.style.height
-    input.style.height = "auto"
-    input.style.height = `${input.scrollHeight}px`
-    if (resizeFrame && input.style.height !== previousHeight) resizeArea()
-}
+})()
 
 /** @hidden
  * This is a bit loosely defined at the moment.
@@ -465,7 +458,7 @@ export function refresh_completions(exstr) {
     const result = refreshQueue.then(() =>
         session === commandSession ? refreshCompletions(exstr) : undefined,
     )
-    resizeInput()
+    // resizeInput()
     refreshQueue = result.catch(() => undefined)
     return result
 }
@@ -477,11 +470,11 @@ function refreshCompletions(exstr) {
         commandline_state.activeCompletions.map(comp =>
             comp
                 .filter(exstr)
-                .then(() => {
-                    if (comp.shouldRefresh()) {
-                        return resizeArea()
-                    }
-                })
+                // .then(() => {
+                //     if (comp.shouldRefresh()) {
+                //         return resizeArea()
+                //     }
+                // })
                 .catch(err => console.error(err)),
         ),
     )
@@ -516,7 +509,7 @@ async function updateCompletions(exstr: string, session = commandSession) {
 
 /** @hidden **/
 function clInputValueChanged() {
-    resizeInput()
+    // resizeInput()
     const exstr = commandline_state.clInput.value
     const session = commandSession
     contentState.current_cmdline = exstr
@@ -554,7 +547,6 @@ export function clear(evlistener = false) {
         commandline_state.clInput.removeEventListener("blur", noblur)
     }
     commandline_state.clInput.value = ""
-    resizeInput(!evlistener)
     commandline_state.cmdline_history_position = 0
     cmdline_history_current = ""
 }
@@ -582,7 +574,6 @@ async function history(n) {
     const pot_history = matches[clamped_ind]
     commandline_state.clInput.value =
         pot_history === undefined ? cmdline_history_current : pot_history
-    resizeInput()
 
     // if there was no clampage, update history position
     // there's a more sensible way of doing this but that would require more programmer time
@@ -615,7 +606,9 @@ export function fillcmdline(
     else commandline_state.clInput.value = newcommand
     commandline_state.initialClInputValue = commandline_state.clInput.value
     commandline_state.isVisible = true
-    resizeInput()
+
+    messageTab("commandline_content", "show")
+
     const closed = wait ? waitForClose() : undefined
     let result = Promise.resolve([])
     // Focus is lost for some reason.

@@ -64,7 +64,6 @@ export function makeIframe() {
                     Messaging.messageOwnTab("stop_buffering_page_keys")
 
                     if (msg.command === "fillcmdline") {
-                        console.log("Auto cmdline popup:", msg.args)
                         // seems trailing spaces are trimmed when messaged so can't handle that here
                         Messaging.messageOwnTab(
                             "controller_content",
@@ -93,6 +92,14 @@ export function makeIframe() {
                 if (contentState.pseudo_mode === "ex")
                     contentState.pseudo_mode = ""
             })
+            const resizeObserver = new ResizeObserver(() => {
+                cmdline_iframe.style.setProperty(
+                    "height",
+                    cmdline_iframe.contentDocument.body.offsetHeight + "px",
+                    "important"
+                )
+            })
+            resizeObserver.observe(cmdline_iframe.contentDocument.body)
         }
     })
     cmdline_iframe.name = iframeGeneration
@@ -355,6 +362,7 @@ export async function show(hidehover = false, deadline = Date.now() + 5000) {
     try {
         if (!enabled && !(await init(true))) return false
         ensureIframeExists()
+
         const ready = iframeReady
         if (!(cmdline_iframe as any).ready) await Promise.race([ready, new Promise((_, reject) => setTimeout(reject, deadline - Date.now()))])
         if (ready !== iframeReady) return show(hidehover, deadline)
@@ -372,16 +380,13 @@ export async function show(hidehover = false, deadline = Date.now() + 5000) {
             document.body.removeChild(a)
         }
 
-        ensureIframeExists()
         cmdline_iframe.inert = false
 
         cmdline_iframe.setAttribute("popover", "manual")
         ;(cmdline_iframe as any).showPopover()
 
         cmdline_iframe.classList.remove("hidden")
-        const height =
-            cmdline_iframe.contentWindow.document.body.offsetHeight + "px"
-        cmdline_iframe.setAttribute("style", `height: ${height} !important;`)
+        cmdline_iframe.style.removeProperty("display")
         return true
     } catch (e) {
         // Note: We can't use cmdline_logger.error because it will try to log
@@ -396,7 +401,8 @@ export function hide() {
         cmdline_iframe.removeAttribute("popover")
         cmdline_iframe.inert = true
         cmdline_iframe.classList.add("hidden")
-        cmdline_iframe.setAttribute("style", "height: 0px !important;")
+        cmdline_iframe.style.setProperty("display", "none", "important")
+        // cmdline_iframe.setAttribute("style", "height: 0px !important;")
         customCompletions.hide()
     } catch (e) {
         // Using cmdline_logger here is OK because cmdline_logger won't try to
