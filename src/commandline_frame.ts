@@ -470,6 +470,13 @@ function refreshCompletions(exstr) {
         commandline_state.activeCompletions.map(comp =>
             comp
                 .filter(exstr)
+                .then(() => {
+                    // It looks like commandline_content's resizeObserver has a ~1 frame delay perhaps?
+                    // which is usually fine but can make the commandline flicker when completions move
+                    if (comp.shouldRefresh()) {
+                        messageTab("commandline_content", "resize_iframe")
+                    }
+                })
                 // .then(() => {
                 //     if (comp.shouldRefresh()) {
                 //         return resizeArea()

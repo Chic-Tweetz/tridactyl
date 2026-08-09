@@ -88,7 +88,9 @@ export abstract class CompletionSource {
 
     shouldRefresh() {
         // A completion source should be refreshed if it is not hidden or if it just became hidden
-        return this._state !== "hidden" || this.state !== this._prevState
+        const refresh = this._state !== "hidden" || this.state !== this._prevState
+        this._prevState = this._state
+        return refresh
     }
 
     prev(inc = 1): Promise<boolean> {

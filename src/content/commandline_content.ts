@@ -92,13 +92,7 @@ export function makeIframe() {
                 if (contentState.pseudo_mode === "ex")
                     contentState.pseudo_mode = ""
             })
-            const resizeObserver = new ResizeObserver(() => {
-                cmdline_iframe.style.setProperty(
-                    "height",
-                    cmdline_iframe.contentDocument.body.offsetHeight + "px",
-                    "important"
-                )
-            })
+            const resizeObserver = new ResizeObserver(resize_iframe)
             resizeObserver.observe(cmdline_iframe.contentDocument.body)
         }
     })
@@ -106,6 +100,15 @@ export function makeIframe() {
     iframeReady = new Promise(resolve => (resolveIframeReady = resolve))
     hide()
 }
+
+export function resize_iframe() {
+    cmdline_iframe.style.setProperty(
+        "height",
+        cmdline_iframe.contentDocument.body.offsetHeight + "px",
+        "important"
+    )
+}
+
 makeIframe()
 Messaging.addListener("commandline_frame_ready_to_receive_messages", message => message.command === iframeGeneration && ((cmdline_iframe as any).ready = true) && resolveIframeReady())
 theme(window.document.querySelector(":root"))
