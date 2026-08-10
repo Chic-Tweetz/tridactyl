@@ -1856,6 +1856,23 @@ export class default_config {
      *  Otherwise, they can be ignored using ":hint -J".
      */
     hintselectorsincludejs: "true" | "false" = "true"
+
+    /**
+     * Ignore "keyboard widgets" when moving to inputs or deciding whether to move to insert mode automatically.
+     *
+     * `:seturl outlook.live.com/mail inputsignorewidgets true`
+     */
+    inputsblacklistwidgets: "true" | "false" = "false"
+
+    /**
+     * Do not treat matching elements as inputs. CSS selectors to treat as not text-editable.
+     *
+     * Empty string for no blacklist (default). Use `:unset` or `:unseturl` to revert to this.
+     *
+     * Decides whether Tridactyl automatically enters insert mode upon focusing matching elements, or whether commands like `:focusinput` should consider them.
+     */
+    inputsblacklistselectors = ""
+
 }
 
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */

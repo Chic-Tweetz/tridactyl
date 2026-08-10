@@ -37,16 +37,20 @@ export function afterPageLoad(action: () => void) {
  */
 export function isTextEditable(element: Element) {
     if (element) {
+        const blacklistSelectors = config.get("inputsblacklistselectors")
         // Disabled options can remain focusable, so prefer their listbox owner.
         const keyboardWidget =
-            element.closest('[role="listbox"]') ||
-            element.closest(
-                '[role="combobox"], [role="option"], [aria-haspopup="listbox"], .ui.selection.dropdown[tabindex]:not(.disabled)',
-            )
+            config.get("inputsblacklistwidgets") === "false"
+                ? element.closest('[role="listbox"]') ||
+                element.closest(
+                    '[role="combobox"], [role="option"], [aria-haspopup="listbox"], .ui.selection.dropdown[tabindex]:not(.disabled)',
+                )
+                : null
         if (
             (element as any).readOnly === true ||
             (element as any).ariaReadOnly === "true" ||
-            (keyboardWidget || element).closest('[aria-disabled="true"]')
+            (keyboardWidget || element).closest('[aria-disabled="true"]') ||
+            (blacklistSelectors && (keyboardWidget || element).matches(blacklistSelectors))
         )
             return false
         // HTML is always upper case, but XHTML is not necessarily upper case
