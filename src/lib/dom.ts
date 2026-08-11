@@ -9,6 +9,7 @@ import {
     activeTabContainerId,
     inContentScript,
 } from "@src/lib/webext"
+import * as HUD from "@src/content/hud"
 const logger = new Logging.Logger("dom")
 
 export function afterPageLoad(action: () => void) {
@@ -414,6 +415,7 @@ export async function getVisibleElemsBySelector(selector: string | null = "*", f
         intersectingElems
             .flat()
             .filter(el => isPainted(el as HTMLElement) &&
+                notInHUD(el) &&
                 (!hideObscured || isUnobscured(el as Element)) &&
                 filters.every(filter => filter(el as HTMLElement))
             ) as HTMLElement[]
@@ -539,6 +541,10 @@ function getShadowElementsBySelector(selector: string, within = document) {
     return elems
 }
 
+function notInHUD(elem) {
+    return !HUD.isElementInHUD(elem)
+}
+
 /** Get all elements that match the given selector
  *
  * @param selector   `the CSS selector to choose elements with
@@ -564,7 +570,7 @@ export function getElemsBySelector(selector: string, filters: ElementFilter[]) {
         elems = elems.filter(filter)
     }
 
-    return elems
+    return elems.filter(elem => notInHUD(elem))
 }
 
 /** Get the nth input element on a page

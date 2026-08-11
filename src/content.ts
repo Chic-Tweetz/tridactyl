@@ -70,6 +70,7 @@ const visual = await import("@src/lib/visual")
 const metadata = await import("@src/.metadata.generated")
 const { tabTgroup } = await import("@src/lib/tab_groups")
 const completion_providers = await import("@src/completions/providers")
+const hud = await import("@src/content/hud")
 
 controller.setExCmds({
     "": excmds_content,
@@ -169,7 +170,7 @@ const iframeObserver = new MutationObserver(mutations => {
 function listenInIframe(frame: FrameElement) {
     frame.addEventListener("load", onIframeLoad)
     try {
-        if (frame.src.startsWith("moz-extension:")) return
+        if (frame.src.startsWith("moz-extension:") && frame !== hud.getHudIframe()) return
         const doc = frame.contentDocument
         if (!doc?.defaultView || observedIframeRoots.has(doc)) return
         listen(doc.defaultView)
@@ -341,6 +342,27 @@ function addStatusIndicator() {
         return
     }
 
+    const hideme = document.createElement("span")
+    hideme.className = "TridactylStatusIndicator"
+    hideme.textContent = "normal is what youd say?"
+    hud.addMouseHidesElement(hideme)
+
+    const clickme = document.createElement("button")
+    clickme.onclick = () => console.log("oh yeah click me baby")
+    clickme.textContent = "Can you CLICK THIS?!"
+    hud.addMousableElement(clickme)
+
+    const clickme2 = document.createElement("button")
+    clickme2.onclick = () => console.log("oh you asshole")
+    clickme2.textContent = "BUT, Can you CLICK THIS?! (I HOPE NOT!)"
+    hud.addMouselessElement(clickme2)
+
+    const typeme = document.createElement("input")
+    typeme.oninput = () => console.log(typeme.value)
+    hud.addMousableElement(typeme)
+
+
+
     // Do we want container indicators?
     const containerIndicator = config.get("containerindicator")
 
@@ -468,7 +490,9 @@ function addStatusIndicator() {
             "config",
             modeindicatorshowkeys,
         )
+
         statusIndicatorText.textContent = result
+        hideme.textContent = result
 
         const baseCls = "cleanslate TridactylStatusIndicator"
         const privateCls = browser.extension.inIncognitoContext

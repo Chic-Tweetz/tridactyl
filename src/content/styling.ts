@@ -44,6 +44,7 @@ const customCss = {
 }
 
 export async function theme(element: Element) {
+    const doc = element.ownerDocument
     // Remove any old theme
 
     /**
@@ -57,7 +58,7 @@ export async function theme(element: Element) {
     // DEPRECATION ENDS
 
     if (
-        element === document.documentElement &&
+        element === doc.documentElement &&
         !THEMED_ELEMENTS.includes(element)
     ) {
         THEMED_ELEMENTS.push(element)
@@ -65,7 +66,7 @@ export async function theme(element: Element) {
 
     // Insert hint CSS rules according to config - copying how themes are inserted
     if (isMozExtension) {
-        const oldHintStyle = document.getElementById("tridactyl-hint-style")
+        const oldHintStyle = doc.getElementById("tridactyl-hint-style")
         if (oldHintStyle) oldHintStyle.remove()
     } else if (insertedHintElemCSS) {
         await browserBg.tabs.removeCSS(await ownTabId(), hintElemCss)
@@ -126,10 +127,10 @@ export async function theme(element: Element) {
 
     if (isMozExtension) {
         if (hintElemCss.code !== "") {
-            const style = document.createElement("style")
+            const style = doc.createElement("style")
             style.id = "tridactyl-hint-style"
             style.textContent = hintElemCss.code
-            document.head.appendChild(style)
+            doc.head.appendChild(style)
         }
     } else if (hintElemCss.code !== "") {
         await browserBg.tabs.insertCSS(await ownTabId(), hintElemCss)
@@ -137,7 +138,7 @@ export async function theme(element: Element) {
     }
 
     if (isMozExtension) {
-        const oldThemeStyle = document.getElementById("tridactyl-theme-style")
+        const oldThemeStyle = doc.getElementById("tridactyl-theme-style")
         if (oldThemeStyle) oldThemeStyle.remove()
     } else if (insertedCSS) {
         // Typescript doesn't seem to be aware than remove/insertCSS's tabid
@@ -171,10 +172,10 @@ export async function theme(element: Element) {
             : await config.getAsync("customthemes", newTheme)
         if (customCss.code) {
             if (isMozExtension) {
-                const style = document.createElement("style")
+                const style = doc.createElement("style")
                 style.id = "tridactyl-theme-style"
                 style.textContent = customCss.code
-                document.head.appendChild(style)
+                doc.head.appendChild(style)
             } else {
                 await browserBg.tabs.insertCSS(await ownTabId(), customCss)
                 insertedCSS = true

@@ -42,6 +42,7 @@ import * as R from "ramda"
 /** @hidden */
 const logger = new Logger("hinting")
 import * as keyseq from "@src/lib/keyseq"
+import * as HUD from "@src/content/hud"
 
 /** Calclate the distance between two segments.
  * @hidden
@@ -106,7 +107,8 @@ class HintState {
         }
 
         // Remove all hints from the DOM.
-        this.hud.remove()
+        // this.hud.remove()
+        HUD.removeElement(this.hud)
     }
 
     resolveHinting() {
@@ -576,12 +578,15 @@ export function hintPage(
         modeState.hudTranslate.appendChild(modeState.outlineHost)
     modeState.hudTranslate.appendChild(modeState.hintHost)
     modeState.hud.appendChild(modeState.hudTranslate)
-    document.documentElement.appendChild(modeState.hud)
-    const hud = modeState.hud as any
-    if (typeof hud.showPopover === "function") {
-        hud.setAttribute("popover", "manual")
-        hud.showPopover()
-    }
+
+    HUD.addMouselessElement(modeState.hud)
+
+    // document.documentElement.appendChild(modeState.hud)
+    // const hud = modeState.hud as any
+    // if (typeof hud.showPopover === "function") {
+    //     hud.setAttribute("popover", "manual")
+    //     hud.showPopover()
+    // }
     modeState.deOverlap()
     window.removeEventListener("scroll", updateHudOffset)
     window.addEventListener("scroll", updateHudOffset)
