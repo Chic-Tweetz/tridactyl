@@ -123,20 +123,23 @@ class HintState {
     }
 
     get activeHints() {
-        return this.filteredHints.filter(h => !h.flag.hidden)
+        return this.filteredHints.filter(h => !h.hidden)
     }
 
     /**
      * Remove hinting elements and classes from the DOM
      */
     cleanUpHints() {
+        if (this.filteredHints.length === 0) return
+        // Remove all hints from the DOM.
+        this.hud.remove()
+
         // Undo any alterations of the hinted elements
         for (const hint of this.hints) {
             hint.hidden = true
         }
 
-        // Remove all hints from the DOM.
-        this.hud.remove()
+        this.filteredHints = []
     }
 
     resolveHinting() {
@@ -492,11 +495,14 @@ function render() {
             for (const hint of modeState.activeHints) {
                 hint.calculateGeometry()
             }
+
+            if (modeState.focusedHint) modeState.focusedHint.focused = true
         }
 
         if (renderState.hintsVisibility.length) {
             for (const hint of renderState.hintsVisibility) {
-                if (hint.flag.hidden) {
+                hint.flag.hidden = hint.hidden
+                if (hint.hidden) {
                     if (renderState.useHintClass)
                         hint.target.deref()?.classList?.remove("TridactylHintElem")
                     hint.highlight?.setAttribute("hidden", "")
@@ -943,6 +949,7 @@ class Hint {
     private _x = 0
     private _y = 0
 
+    private _hidden = true
     private _active = true
     private _noRects = false
 
@@ -998,7 +1005,9 @@ class Hint {
     // These styles would be better with pseudo selectors. Can we do custom ones?
     // If not, do a state machine.
     set hidden(hide: boolean) {
-        this.flag.hidden = hide
+        if (hide === this._hidden) return
+        this._hidden = hide
+        // this.flag.hidden = hide // Hide these in the render loop as well
         if (hide) this.focused = false
         renderState.pushHintsVisibility(this)
 
@@ -1019,6 +1028,10 @@ class Hint {
             this.outline?.removeAttribute("hidden")
         }
         */
+    }
+
+    get hidden() {
+        return this._hidden
     }
 
     set active(active: boolean) {
@@ -1597,13 +1610,17 @@ function filterHintsVimperator(query: string, reflow = false) {
  * Remove all hints, reset STATE.
  **/
 function cleanup() {
+    if (contentState.mode === "hint") {
+        contentState.mode = DOM.isTextEditable(document.activeElement) ? "insert" : "normal"
+        contentState.suffix = ""
+    }
     const state = modeState
-    contentState.mode = DOM.isTextEditable(document.activeElement) ? "insert" : "normal"
-    if (state) state.cleanUpHints()
-    contentState.suffix = ""
-    modeState = undefined
-    window.removeEventListener("scroll", updateHudOffset)
-    window.removeEventListener("resize", repositionDebounced)
+    if (state) {
+        modeState = undefined
+        state.cleanUpHints()
+        window.removeEventListener("scroll", updateHudOffset)
+        window.removeEventListener("resize", repositionDebounced)
+    }
     return state
 }
 
@@ -1618,6 +1635,9 @@ addContentStateChangedListener((property, oldMode) => {
 })
 
 function popKey() {
+    if (modeState.focusedHint) {
+        modeState.focusedHint.focused = false
+    }
     if (modeState.filterMode === "text") {
         const findex = modeState.textfilter.length - 1
         if (modeState.textfilter[findex].length > 1) {
@@ -1640,6 +1660,7 @@ function popKey() {
         modeState.filterFunc(modeState.filter)
         contentState.suffix = modeState?.filter || ""
     }
+
     reposition()
 }
 
