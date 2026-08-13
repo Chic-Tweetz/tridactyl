@@ -5,9 +5,27 @@ const elementsToProxies = new Map()
 let initQueue: (() => any)[] = []
 let hudIframe = null
 let hudDoc = null
+let elementHost = null
 let overlayHost = null
 let hud = document.createElement("div")
+let shadow = hud.attachShadow({mode:"closed"})
 let initPromise
+
+const allowNoIframeWorkaround = true // config setting I suppose
+const autoFail = false // for testing
+
+// on allowNoIframeFallback, consider:
+// cmdline - in its own iframe anyway (so allow!)
+// mode indicator - currently exposed so might as well allow, can show last used excmd so some may prefer blocking if no iframe
+// hinting - doesn't expose anything sensitive, allow
+// is there any other UI in tridactyl (by deafult)? don't think so
+// however, I want to make a "hintable" option selector (similar to/enabling a version of that crazy :js tab picker i made)
+// i also like the idea of adding input elements to the page that the page can't see, which i have felt may be uesful on some occasions
+type UIElementOptions = {
+    mouseable?: true | false | "hide",
+    hintable?: true | false,
+    allowNoIframeFallback?: true | false,
+}
 
 export function getHudIframe() {
     return hudIframe
@@ -15,7 +33,7 @@ export function getHudIframe() {
 
 // Stop hinting proxies and stuff
 export function isElementInHUD(element) {
-    return (overlayHost && overlayHost.contains(element)) || element === hudIframe
+    return hud.contains(element)
 }
 
 function makeHudIframe(): Promise<HTMLIFrameElement> {
@@ -35,7 +53,7 @@ function makeHudIframe(): Promise<HTMLIFrameElement> {
 
     return new Promise((resolve, reject) => {
         iframe.addEventListener("load", () => {
-            if (iframe.contentDocument) {
+            if (iframe.contentDocument && !autoFail) {
                 // iframe and proxy parent should share an ancestor (probably also a shadow dom)
                 // and that is what should use popover
                 // okay, popover is weird and i forget what it does or how it works
@@ -46,17 +64,21 @@ function makeHudIframe(): Promise<HTMLIFrameElement> {
 
 
                 hudDoc = iframe.contentDocument
+                elementHost = hudDoc.body
                 overlayHost = makeHudProxiesOverlay()
                 styling.theme(iframe.contentDocument.documentElement)
                 resolve(iframe)
             } else {
                 console.error("Could not access HUD iframe's content")
                 failed = true
-                reject()
+                if (allowNoIframeWorkaround) {
+                    makeNoIframeBackupHost()
+                }
                 iframe.remove()
+                reject()
             }
         })
-        hud.appendChild(iframe)
+        shadow.appendChild(iframe)
     })
 }
 
@@ -67,7 +89,21 @@ function makeHud() {
         hud.setAttribute("popover", "manual")
         hud.showPopover()
     }
+}
 
+// If you have no iframe and still want to allow elements to be added
+// you can skip all the mouse event workarounds
+// but in the meantime i guess this is fine
+function makeNoIframeBackupHost() {
+    elementHost = document.createElement("div")
+    elementHost.style.position = "fixed"
+    elementHost.style.top = "0"
+    elementHost.style.left = "0"
+    elementHost.style.width = "100%"
+    elementHost.style.height = "100%"
+    styling.theme(shadow)
+    shadow.appendChild(elementHost)
+    overlayHost = makeHudProxiesOverlay()
 }
 
 function makeHudProxiesOverlay() {
@@ -77,7 +113,7 @@ function makeHudProxiesOverlay() {
     proxyOverlay.style.left = "0"
     proxyOverlay.style.width = "0"
     proxyOverlay.style.height = "0"
-    hud.appendChild(proxyOverlay)
+    shadow.appendChild(proxyOverlay)
 
     // TODO: figure out popover, use it in some parent element/shadow dom that contains the iframe and proxy overlay
     // if (typeof proxyOverlay.showPopover === "function") {
@@ -90,9 +126,12 @@ function makeHudProxiesOverlay() {
 async function init() {
     if (initPromise) return initPromise
     makeHud()
-    initPromise = makeHudIframe()
-    hudIframe = await initPromise
+    try {
+        initPromise = makeHudIframe()
+        hudIframe = await initPromise
+    } catch(_) {}
     for (const fn of initQueue) {
+        console.log("from queue!", fn)
         fn()
     }
     initQueue = []
@@ -117,6 +156,7 @@ function mouseOver(elem, onmouseout) {
 
             surrounder.style.position = "fixed"
             surrounder.style.background = "rgba(0,0,200,0.5)"
+            surrounder.style.pointerEvents = "all"
         }
 
         surrounderelems[0].style.left = "0"
@@ -167,13 +207,14 @@ export async function addMouseHidesElement(element: HTMLElement) {
         init()
         return
     }
-    if (failed) return
+    if (failed && !allowNoIframeWorkaround) return
+
 
     element.style.pointerEvents = "none"
-
-    hudDoc.body.appendChild(element)
+    elementHost.appendChild(element)
 
     const proxy = document.createElement("div")
+    proxy.style.pointerEvents = "all"
     updateGeometry(element, proxy)
     overlayHost.appendChild(proxy)
 
@@ -185,7 +226,7 @@ export async function addMouseHidesElement(element: HTMLElement) {
         element.classList.add("TridactylInvisible")
         element.style.display = "none"
         mouseOver(proxy, () => {
-            proxy.style.pointerEvents = ""
+            proxy.style.pointerEvents = "all"
             element.classList.remove("TridactylInvisible")
             element.style.display = ""
         })
@@ -198,11 +239,15 @@ export async function addMousableElement(element: HTMLElement) {
         init()
         return
     }
+    if (failed && !allowNoIframeWorkaround) return
+
+    elementHost.appendChild(element)
+
+    element.style.pointerEvents = "all"
     if (failed) return
 
-    hudDoc.body.appendChild(element)
-
     const proxy = document.createElement("div")
+    proxy.style.pointerEvents = "all"
     updateGeometry(element, proxy)
     overlayHost.appendChild(proxy)
 
@@ -211,11 +256,15 @@ export async function addMousableElement(element: HTMLElement) {
 
     proxy.addEventListener("mouseenter", () => {
         proxy.style.pointerEvents = "none"
-        hudIframe.style.pointerEvents = ""
+
+        if (!failed)
+            hudIframe.style.pointerEvents = "all"
 
         mouseOver(proxy, () => {
-            proxy.style.pointerEvents = ""
-            hudIframe.style.pointerEvents = "none"
+            proxy.style.pointerEvents = "all"
+
+            if (!failed)
+                hudIframe.style.pointerEvents = "none"
         })
     })
 }
@@ -226,9 +275,12 @@ export async function addMouselessElement(element: HTMLElement) {
         init()
         return
     }
-    if (failed) return
+    if (failed && !allowNoIframeWorkaround) return
+    if (failed) {
+        element.style.pointerEvents = "none"
+    }
     elementsToProxies.set(element, null)
-    hudDoc.body.appendChild(element)
+    elementHost.appendChild(element)
 }
 
 export function removeElement(element) {
@@ -260,6 +312,7 @@ function observeElement(element) {
     observer.observe(element, config)
 }
 
+// not debounced yet mind you
 function onresizeDebounced() {
     onresize()
 }

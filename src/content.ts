@@ -274,6 +274,7 @@ window["tri"] = Object.assign(Object.create(null), {
     excmds,
     finding_content,
     hinting_content,
+    hud,
     itertools,
     logger,
     metadata,

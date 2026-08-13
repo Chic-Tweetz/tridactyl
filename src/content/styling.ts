@@ -5,8 +5,6 @@ import { browserBg, ownTabId } from "@src/lib/webext"
 
 const logger = new Logging.Logger("styling")
 
-const isMozExtension = window.location.protocol === "moz-extension:"
-
 export const THEMES = staticThemes
 
 function capitalise(str) {
@@ -26,6 +24,67 @@ function removeThemeClasses(element: Element) {
     }
 }
 
+function isShadowRoot(target: any): target is ShadowRoot {
+    return (
+        target &&
+        target.nodeType === Node.DOCUMENT_FRAGMENT_NODE &&
+        typeof (target as ShadowRoot).host === "object"
+    )
+}
+
+function getRootDocument(target: Element | Document | ShadowRoot) {
+    if (isShadowRoot(target)) {
+        return target.host.ownerDocument
+    }
+    return target instanceof Document ? target : target.ownerDocument
+}
+
+function getStyleRoot(target: Element | Document | ShadowRoot) {
+    if (isShadowRoot(target)) {
+        return target
+    }
+    const rootNode = target instanceof Document ? target : target.getRootNode()
+    return isShadowRoot(rootNode) ? rootNode : getRootDocument(target)
+}
+
+function getStyleElementById(target: Document | ShadowRoot, id: string) {
+    return isShadowRoot(target)
+        ? target.querySelector(`#${id}`)
+        : target.getElementById(id)
+}
+
+const SHADOW_ROOT_BASE_STYLE_ID = "tridactyl-base-theme-style"
+const SHADOW_ROOT_BASE_STYLE_IMPORTS = [
+    "static/css/content.css",
+    "static/css/hint.css",
+    "static/themes/default/default.css",
+]
+
+function appendStyle(target: Document | ShadowRoot, id: string, code: string) {
+    const style = getRootDocument(target).createElement("style")
+    style.id = id
+    style.textContent = code
+    if (isShadowRoot(target)) {
+        target.appendChild(style)
+    } else {
+        target.head.appendChild(style)
+    }
+}
+
+async function appendBaseShadowStyle(root: ShadowRoot) {
+    const oldBaseStyle = root.querySelector(`#${SHADOW_ROOT_BASE_STYLE_ID}`)
+    if (oldBaseStyle) oldBaseStyle.remove()
+
+    const code = SHADOW_ROOT_BASE_STYLE_IMPORTS
+        .map(
+            source =>
+                `@import url('${browser.runtime.getURL(source)}');`,
+        )
+        .join("\n")
+
+    appendStyle(root, SHADOW_ROOT_BASE_STYLE_ID, code)
+}
+
 // At the moment elements are only ever `:root` and so this array and stuff is all a bit overdesigned.
 const THEMED_ELEMENTS = []
 
@@ -43,8 +102,17 @@ const customCss = {
     code: "",
 }
 
-export async function theme(element: Element) {
-    const doc = element.ownerDocument
+export async function theme(element: Element | Document | ShadowRoot) {
+    const root = getStyleRoot(element)
+    const doc = getRootDocument(root)
+    const isShadow = isShadowRoot(root)
+    const isMozExtension = doc.defaultView.location.protocol === "moz-extension:"
+    const classTarget = isShadow
+        ? root.host
+        : element instanceof Document
+        ? doc.documentElement
+        : element
+
     // Remove any old theme
 
     /**
@@ -54,19 +122,26 @@ export async function theme(element: Element) {
      *
      * Retained for backwards compatibility.
      **/
-    removeThemeClasses(element)
+    if (classTarget instanceof Element) {
+        removeThemeClasses(classTarget)
+    }
     // DEPRECATION ENDS
 
     if (
-        element === doc.documentElement &&
-        !THEMED_ELEMENTS.includes(element)
+        classTarget instanceof Element &&
+        classTarget === doc.documentElement &&
+        !THEMED_ELEMENTS.includes(classTarget)
     ) {
-        THEMED_ELEMENTS.push(element)
+        THEMED_ELEMENTS.push(classTarget)
+    }
+
+    if (isShadow) {
+        await appendBaseShadowStyle(root)
     }
 
     // Insert hint CSS rules according to config - copying how themes are inserted
-    if (isMozExtension) {
-        const oldHintStyle = doc.getElementById("tridactyl-hint-style")
+    if (isMozExtension || isShadow) {
+        const oldHintStyle = getStyleElementById(root, "tridactyl-hint-style")
         if (oldHintStyle) oldHintStyle.remove()
     } else if (insertedHintElemCSS) {
         await browserBg.tabs.removeCSS(await ownTabId(), hintElemCss)
@@ -125,20 +200,24 @@ export async function theme(element: Element) {
             : "") +
         activeOverlayRules
 
-    if (isMozExtension) {
+    if (isMozExtension || isShadow) {
         if (hintElemCss.code !== "") {
-            const style = doc.createElement("style")
+            const style = getRootDocument(root).createElement("style")
             style.id = "tridactyl-hint-style"
             style.textContent = hintElemCss.code
-            doc.head.appendChild(style)
+            if (isShadow) {
+                root.appendChild(style)
+            } else {
+                doc.head.appendChild(style)
+            }
         }
     } else if (hintElemCss.code !== "") {
         await browserBg.tabs.insertCSS(await ownTabId(), hintElemCss)
         insertedHintElemCSS = true
     }
 
-    if (isMozExtension) {
-        const oldThemeStyle = doc.getElementById("tridactyl-theme-style")
+    if (isMozExtension || isShadow) {
+        const oldThemeStyle = getStyleElementById(root, "tridactyl-theme-style")
         if (oldThemeStyle) oldThemeStyle.remove()
     } else if (insertedCSS) {
         // Typescript doesn't seem to be aware than remove/insertCSS's tabid
@@ -156,8 +235,8 @@ export async function theme(element: Element) {
      *
      * Retained for backwards compatibility.
      **/
-    if (config.get("themeprivacy") !== "true") {
-        element.classList.add(prefixTheme(newTheme))
+    if (config.get("themeprivacy") !== "true" && classTarget instanceof Element) {
+        classTarget.classList.add(prefixTheme(newTheme))
     }
     // DEPRECATION ENDS
 
@@ -171,11 +250,15 @@ export async function theme(element: Element) {
               "');"
             : await config.getAsync("customthemes", newTheme)
         if (customCss.code) {
-            if (isMozExtension) {
-                const style = doc.createElement("style")
+            if (isMozExtension || isShadow) {
+                const style = getRootDocument(root).createElement("style")
                 style.id = "tridactyl-theme-style"
                 style.textContent = customCss.code
-                doc.head.appendChild(style)
+                if (isShadow) {
+                    root.appendChild(style)
+                } else {
+                    doc.head.appendChild(style)
+                }
             } else {
                 await browserBg.tabs.insertCSS(await ownTabId(), customCss)
                 insertedCSS = true
