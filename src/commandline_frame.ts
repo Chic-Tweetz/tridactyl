@@ -343,6 +343,43 @@ export function focus() {
         }
     }
     commandline_state.clInput.focus()
+
+    // How does this happen? iframe not ready or something maybe?
+    // happens somewhat frequently too.
+    // Normally first retry fixes it
+    // Somtimes it takes 5 retries. Like exactly 5, every time.
+    // So it either: works immediately, works after 1 frame, or works after 5 frames
+    // big shrug, i'm just going to leave this workaround in
+    // No clue!
+    if (document.activeElement !== commandline_state.clInput) {
+        const retry = (attempts = 100) => {
+            console.warn("cmdline_frame focus() failed; retrying, attempts left:", attempts)
+            if (!commandline_state.isVisible || attempts === 0) {
+                Messaging.messageOwnTab("stop_buffering_page_keys")
+                console.warn("cmdline was hidden or we gave up trying to focus!")
+                return
+            }
+            commandline_state.clInput.focus()
+            if (document.activeElement === commandline_state.clInput) {
+                console.warn("cmdline focus retry succeeded")
+
+                commandline_state.clInput.removeEventListener("blur", noblur)
+                commandline_state.clInput.addEventListener("blur", noblur)
+                logger.debug(
+                    "commandline_frame clInput focus(), activeElement is clInput: " +
+                        (window.document.activeElement === commandline_state.clInput),
+                )
+                Messaging.messageOwnTab("stop_buffering_page_keys").then(
+                    consumeBufferedPageKeys,
+                )
+                return
+            }
+            setTimeout(() => (retry(attempts - 1)))
+        }
+        setTimeout(retry)
+        return
+    }
+
     commandline_state.clInput.removeEventListener("blur", noblur)
     commandline_state.clInput.addEventListener("blur", noblur)
     logger.debug(
@@ -618,6 +655,7 @@ export function fillcmdline(
 
     const closed = wait ? waitForClose() : undefined
     let result = Promise.resolve([])
+
     // Focus is lost for some reason.
     if (ffocus) {
         focus()

@@ -4428,7 +4428,6 @@ export async function fillcmdline(...strarr: string[]) {
     startBufferingPageKeys()
     await showcmdline(false)
     logger.debug("excmds fillcmdline sending fillcmdline to commandline_frame")
-    startBufferingPageKeys()
     return Messaging.messageOwnTab("commandline_frame", "fillcmdline", [str, true /*trailspace*/, true /*focus*/, wait])
 }
 
@@ -4438,7 +4437,6 @@ export async function fillcmdline_notrail(...strarr: string[]) {
     const str = strarr.join(" ")
     startBufferingPageKeys()
     await showcmdline(false)
-    startBufferingPageKeys()
     return Messaging.messageOwnTab("commandline_frame", "fillcmdline", [str, false /*trailspace*/, true /*focus*/])
 }
 
