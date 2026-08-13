@@ -343,24 +343,24 @@ function addStatusIndicator() {
         return
     }
 
-    const hideme = document.createElement("span")
-    hideme.className = "TridactylStatusIndicator"
-    hideme.textContent = "normal is what youd say?"
-    hud.addMouseHidesElement(hideme)
+    // const hideme = document.createElement("span")
+    // hideme.className = "TridactylStatusIndicator"
+    // hideme.textContent = "normal is what youd say?"
+    // hud.addMouseHidesElement(hideme)
 
-    const clickme = document.createElement("button")
-    clickme.onclick = () => console.log("oh yeah click me baby")
-    clickme.textContent = "Can you CLICK THIS?!"
-    hud.addMousableElement(clickme)
+    // const clickme = document.createElement("button")
+    // clickme.onclick = () => console.log("oh yeah click me baby")
+    // clickme.textContent = "Can you CLICK THIS?!"
+    // hud.addElement(clickme, { hintable: true, mouseable: true })
 
-    const clickme2 = document.createElement("button")
-    clickme2.onclick = () => console.log("oh you asshole")
-    clickme2.textContent = "BUT, Can you CLICK THIS?! (I HOPE NOT!)"
-    hud.addMouselessElement(clickme2)
+    // const clickme2 = document.createElement("button")
+    // clickme2.onclick = () => console.log("oh you asshole")
+    // clickme2.textContent = "BUT, Can you CLICK THIS?! (I HOPE NOT!)"
+    // hud.addElement(clickme2, { hintable: true, mouseable: false })
 
-    const typeme = document.createElement("input")
-    typeme.oninput = () => console.log(typeme.value)
-    hud.addMousableElement(typeme)
+    // const typeme = document.createElement("input")
+    // typeme.oninput = () => console.log(typeme.value)
+    // hud.addElement(typeme, { hintable: true, mouseable: true })
 
 
 
@@ -493,7 +493,7 @@ function addStatusIndicator() {
         )
 
         statusIndicatorText.textContent = result
-        hideme.textContent = result
+        // hideme.textContent = result
 
         const baseCls = "cleanslate TridactylStatusIndicator"
         const privateCls = browser.extension.inIncognitoContext

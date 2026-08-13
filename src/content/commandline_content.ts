@@ -4,6 +4,7 @@ import Logger from "@src/lib/logging"
 import * as config from "@src/lib/config"
 import { theme } from "@src/content/styling"
 import * as Messaging from "@src/lib/messaging"
+import * as hud from "@src/content/hud"
 const logger = new Logger("messaging")
 const cmdline_logger = new Logger("cmdline")
 
@@ -59,7 +60,7 @@ async function init(onDemand = false) {
     }
 
     if ((noiframe === "false" || (onDemand && noiframe === "lazy")) && notridactyl !== "true" && !enabled) {
-        document.documentElement.appendChild(cmdline_iframe)
+        hud.addMousableElement(cmdline_iframe)
         enabled = true
 
         // Fix #5050: reinsert iframe after React throws a tantrum
@@ -91,7 +92,7 @@ export async function reactIsCrap(){
     while(true){
         if (cmdline_iframe.contentWindow == null) {
             makeIframe()
-            document.documentElement.appendChild(cmdline_iframe)
+            hud.addMousableElement(cmdline_iframe)
         }
         await new Promise(resolve => setTimeout(resolve, 500))
     }
@@ -113,7 +114,7 @@ init().catch(() => {
 export function ensureIframeExists() {
     if (enabled && !cmdline_iframe.isConnected) {
         makeIframe()
-        document.documentElement.appendChild(cmdline_iframe)
+        hud.addMousableElement(cmdline_iframe)
     }
 }
 

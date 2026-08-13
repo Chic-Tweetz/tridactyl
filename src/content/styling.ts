@@ -32,18 +32,24 @@ function isShadowRoot(target: any): target is ShadowRoot {
     )
 }
 
-function getRootDocument(target: Element | Document | ShadowRoot) {
+function getRootDocument(target: Element | Document | ShadowRoot): Document {
     if (isShadowRoot(target)) {
         return target.host.ownerDocument
     }
-    return target instanceof Document ? target : target.ownerDocument
+    // Can't do instanceof Document if target is an iframe document
+    // return target instanceof Document ? target : target.ownerDocument
+
+    // But Document.ownerDocument will just be null anyway so
+    return target.ownerDocument || target as Document
 }
 
 function getStyleRoot(target: Element | Document | ShadowRoot) {
     if (isShadowRoot(target)) {
         return target
     }
-    const rootNode = target instanceof Document ? target : target.getRootNode()
+    const rootNode = target.nodeType === Node.DOCUMENT_NODE
+        ? target
+        : target.getRootNode()
     return isShadowRoot(rootNode) ? rootNode : getRootDocument(target)
 }
 
@@ -65,7 +71,7 @@ function appendStyle(target: Document | ShadowRoot, id: string, code: string) {
     style.id = id
     style.textContent = code
     if (isShadowRoot(target)) {
-        target.appendChild(style)
+        (target.querySelector("#tridactyl-styles") || target).appendChild(style)
     } else {
         target.head.appendChild(style)
     }
@@ -109,7 +115,7 @@ export async function theme(element: Element | Document | ShadowRoot) {
     const isMozExtension = doc.defaultView.location.protocol === "moz-extension:"
     const classTarget = isShadow
         ? root.host
-        : element instanceof Document
+        : element.nodeType === Node.DOCUMENT_NODE
         ? doc.documentElement
         : element
 
@@ -122,17 +128,22 @@ export async function theme(element: Element | Document | ShadowRoot) {
      *
      * Retained for backwards compatibility.
      **/
-    if (classTarget instanceof Element) {
-        removeThemeClasses(classTarget)
+    if (classTarget.nodeType === Node.ELEMENT_NODE) {
+        removeThemeClasses(classTarget as Element)
     }
     // DEPRECATION ENDS
 
     if (
-        classTarget instanceof Element &&
+        classTarget.nodeType === Node.ELEMENT_NODE &&
         classTarget === doc.documentElement &&
         !THEMED_ELEMENTS.includes(classTarget)
     ) {
         THEMED_ELEMENTS.push(classTarget)
+    } else if (
+        isShadow &&
+        !THEMED_ELEMENTS.includes(root)
+    ) {
+        THEMED_ELEMENTS.push(root)
     }
 
     if (isShadow) {
@@ -206,7 +217,7 @@ export async function theme(element: Element | Document | ShadowRoot) {
             style.id = "tridactyl-hint-style"
             style.textContent = hintElemCss.code
             if (isShadow) {
-                root.appendChild(style)
+                (root.querySelector("#tridactyl-styles") || root).appendChild(style)
             } else {
                 doc.head.appendChild(style)
             }
@@ -235,8 +246,8 @@ export async function theme(element: Element | Document | ShadowRoot) {
      *
      * Retained for backwards compatibility.
      **/
-    if (config.get("themeprivacy") !== "true" && classTarget instanceof Element) {
-        classTarget.classList.add(prefixTheme(newTheme))
+    if (config.get("themeprivacy") !== "true" && classTarget.nodeType === Node.ELEMENT_NODE) {
+        (classTarget as Element).classList.add(prefixTheme(newTheme))
     }
     // DEPRECATION ENDS
 
@@ -255,7 +266,7 @@ export async function theme(element: Element | Document | ShadowRoot) {
                 style.id = "tridactyl-theme-style"
                 style.textContent = customCss.code
                 if (isShadow) {
-                    root.appendChild(style)
+                    (root.querySelector("#tridactyl-styles") || root).appendChild(style)
                 } else {
                     doc.head.appendChild(style)
                 }
@@ -270,6 +281,7 @@ export async function theme(element: Element | Document | ShadowRoot) {
 }
 
 function retheme() {
+    console.log("retheme:", THEMED_ELEMENTS)
     THEMED_ELEMENTS.forEach(element => {
         theme(element).catch(e => {
             logger.warning(

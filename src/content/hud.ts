@@ -1,7 +1,7 @@
 import * as styling from "@src/content/styling"
+import * as hinting from "@src/content/hinting"
 
 let failed = false
-const elementsToProxies = new Map()
 let initQueue: (() => any)[] = []
 let hudIframe = null
 let hudDoc = null
@@ -14,6 +14,8 @@ let initPromise
 const allowNoIframeWorkaround = true // config setting I suppose
 const autoFail = false // for testing
 
+const elementsToProxies = new Map()
+const hintables: Set<Element> = new Set()
 // on allowNoIframeFallback, consider:
 // cmdline - in its own iframe anyway (so allow!)
 // mode indicator - currently exposed so might as well allow, can show last used excmd so some may prefer blocking if no iframe
@@ -27,13 +29,44 @@ type UIElementOptions = {
     allowNoIframeFallback?: true | false,
 }
 
+export function addElement(element, options: UIElementOptions = {}) {
+    if (failed && !options.allowNoIframeFallback) return
+    if (options.hintable) {
+        // hintables.add(element)
+        // what if what if what if...
+        element.classList.add("TridactylHUDHintable")
+    }
+    switch (options.mouseable) {
+        case true: return addMousableElement(element)
+        case "hide": return addMouseHidesElement(element)
+        default: return addMouselessElement(element)
+    }
+}
+
 export function getHudIframe() {
     return hudIframe
 }
 
 // Stop hinting proxies and stuff
-export function isElementInHUD(element) {
-    return hud.contains(element)
+export function isHUDElement(element) {
+    return shadow.contains(element) || element === hud
+}
+
+export function isHudHintable(element) {
+    return hintables.has(element)
+}
+
+export function getHintableElements(selectors = "*", filters: ((elem) => boolean)[] = []): Element[] {
+    // return Array.from(hintables)
+    return (Array.from(elementHost.querySelectorAll(selectors)) as Element[])
+        .filter(el => el.matches(".TridactylHUDHintable,.TridactylHUDHintable *"))
+}
+
+export function hint() {
+    hinting.hintPage(
+        hinting.toHintablesArray(getHintableElements()),
+        element => element.click(),
+    )
 }
 
 function makeHudIframe(): Promise<HTMLIFrameElement> {
@@ -54,17 +87,11 @@ function makeHudIframe(): Promise<HTMLIFrameElement> {
     return new Promise((resolve, reject) => {
         iframe.addEventListener("load", () => {
             if (iframe.contentDocument && !autoFail) {
-                // iframe and proxy parent should share an ancestor (probably also a shadow dom)
-                // and that is what should use popover
-                // okay, popover is weird and i forget what it does or how it works
-                // if (typeof iframe.showPopover === "function") {
-                //     iframe.setAttribute("popover", "manual")
-                //     iframe.showPopover()
-                // }
-
+                iframe.contentDocument.body.style.margin = "0"
+                iframe.contentDocument.body.style.padding = "0"
 
                 hudDoc = iframe.contentDocument
-                elementHost = hudDoc.body
+                elementHost = hudDoc.documentElement
                 overlayHost = makeHudProxiesOverlay()
                 styling.theme(iframe.contentDocument.documentElement)
                 resolve(iframe)
@@ -95,13 +122,16 @@ function makeHud() {
 // you can skip all the mouse event workarounds
 // but in the meantime i guess this is fine
 function makeNoIframeBackupHost() {
+    const styleHolder = document.createElement("div")
+    styleHolder.style.display = "none"
+    styleHolder.id = "tridactyl-styles"
+    styling.theme(shadow)
     elementHost = document.createElement("div")
     elementHost.style.position = "fixed"
     elementHost.style.top = "0"
     elementHost.style.left = "0"
     elementHost.style.width = "100%"
     elementHost.style.height = "100%"
-    styling.theme(shadow)
     shadow.appendChild(elementHost)
     overlayHost = makeHudProxiesOverlay()
 }
@@ -114,12 +144,6 @@ function makeHudProxiesOverlay() {
     proxyOverlay.style.width = "0"
     proxyOverlay.style.height = "0"
     shadow.appendChild(proxyOverlay)
-
-    // TODO: figure out popover, use it in some parent element/shadow dom that contains the iframe and proxy overlay
-    // if (typeof proxyOverlay.showPopover === "function") {
-    //     proxyOverlay.setAttribute("popover", "manual")
-    //     proxyOverlay.showPopover()
-    // }
     return proxyOverlay
 }
 
@@ -135,17 +159,22 @@ async function init() {
         fn()
     }
     initQueue = []
+    // Let's just brute-force make sure the elements have their proxies in the right place
+    setTimeout(onresize, 50)
+    setTimeout(onresize, 500)
+    setTimeout(onresize, 1000)
     return initPromise
 }
 
 let mouseOverElem = null
+let autoUpdateSurrounders = false
 let onMouseOut = null
 let surrounderelems
-function mouseOver(elem, onmouseout) {
+function mouseOver(elem, onmouseout, followElement = false) {
     if (onMouseOut) onMouseOut()
     mouseOverElem = elem
     onMouseOut = onmouseout
-    const rect = elem.getBoundingClientRect()
+    autoUpdateSurrounders = followElement
 
     if (!surrounderelems) {
         surrounderelems = []
@@ -155,7 +184,7 @@ function mouseOver(elem, onmouseout) {
             surrounder.addEventListener("mouseover", mouseout)
 
             surrounder.style.position = "fixed"
-            surrounder.style.background = "rgba(0,0,200,0.5)"
+            // surrounder.style.background = "rgba(0,0,200,0.5)"
             surrounder.style.pointerEvents = "all"
         }
 
@@ -176,17 +205,23 @@ function mouseOver(elem, onmouseout) {
         surrounderelems[3].style.bottom = "0"
     }
 
-    surrounderelems[0].style.width = rect.x + "px"
-    surrounderelems[1].style.height = rect.y + "px"
-    surrounderelems[2].style.left = rect.right + "px"
-    surrounderelems[3].style.top = rect.bottom + "px"
-
+    updateSurrounders()
     surrounderelems.forEach(elem => overlayHost.appendChild(elem))
 }
 
+function updateSurrounders() {
+    if (!surrounderelems?.length || !mouseOverElem) return
+    const rect = mouseOverElem.getBoundingClientRect()
+    surrounderelems[0].style.width = Math.max(0, rect.x) + "px"
+    surrounderelems[1].style.height = Math.max(0, rect.y) + "px"
+    surrounderelems[2].style.left = Math.max(0, rect.right) + "px"
+    surrounderelems[3].style.top = Math.max(0, rect.bottom) + "px"
+}
+
 function mouseout() {
-    onMouseOut?.()
+    console.log("MOUSE OUT")
     mouseOverElem = null
+    onMouseOut?.()
     onMouseOut = null
     surrounderelems.forEach(elem => elem.remove())
 }
@@ -198,7 +233,7 @@ function updateGeometry(element, proxy) {
     proxy.style.left = r.x + "px"
     proxy.style.width = r.width + "px"
     proxy.style.height = r.height + "px"
-    proxy.style.border = "1px solid red"
+    // proxy.style.border = "1px solid red"
 }
 
 export async function addMouseHidesElement(element: HTMLElement) {
@@ -265,7 +300,9 @@ export async function addMousableElement(element: HTMLElement) {
 
             if (!failed)
                 hudIframe.style.pointerEvents = "none"
-        })
+            },
+            true,
+        )
     })
 }
 
@@ -275,6 +312,8 @@ export async function addMouselessElement(element: HTMLElement) {
         init()
         return
     }
+
+    observeElement(element)
     if (failed && !allowNoIframeWorkaround) return
     if (failed) {
         element.style.pointerEvents = "none"
@@ -286,6 +325,8 @@ export async function addMouselessElement(element: HTMLElement) {
 export function removeElement(element) {
     elementsToProxies.get(element)?.remove()
     elementsToProxies.delete(element)
+    hintables.delete(element)
+    element.remove()
     if (mouseOverElem === element) {
         mouseOverElem = null
         onMouseOut = null
@@ -298,12 +339,33 @@ const observer = new MutationObserver((mutationList) => {
     const toUpdate = new Set()
     for (const mutation of mutationList) {
         toUpdate.add(mutation.target)
+        // // Think I might go a different direction with this
+        // // and use (element).querySelctorAll("...")
+        // // on the root hintable element to get stuff
+        // if (mutation.type === "childList" && hintables.has(mutation.target as Element)) {
+        //     for (const node of mutation.removedNodes) {
+        //         hintables.delete(node as Element)
+        //     }
+        //     for (const node of mutation.addedNodes) {
+        //         if (node.nodeType === Node.ELEMENT_NODE) {
+        //             console.log("new hintable node:", node)
+        //             hintables.add(node as Element)
+        //         }
+        //     }
+        // }
     }
     for (const elem of toUpdate) {
         const targetProxy = elementsToProxies.get(elem)
         if (targetProxy) {
+            console.log("what")
             updateGeometry(elem, targetProxy)
+            console.log(targetProxy, mouseOverElem)
+            if (targetProxy === mouseOverElem && autoUpdateSurrounders) {
+                console.log("yes update")
+                updateSurrounders()
+            }
         }
+
     }
 })
 
@@ -312,14 +374,30 @@ function observeElement(element) {
     observer.observe(element, config)
 }
 
-// not debounced yet mind you
+let lastResize = 0
+let resizeTimer = null
+const RESIZE_DELAY = 50
 function onresizeDebounced() {
-    onresize()
+    clearTimeout(resizeTimer)
+    const now = performance.now()
+    if (now > lastResize + RESIZE_DELAY) {
+        lastResize = now
+        onresize()
+    } else {
+        resizeTimer = setTimeout(() => {
+            lastResize = performance.now()
+            onresize()
+        }, RESIZE_DELAY)
+    }
 }
 
 function onresize() {
     for (const [elem, proxy] of elementsToProxies) {
-        if (proxy) updateGeometry(elem, proxy)
+        if (proxy) {
+            updateGeometry(elem, proxy)
+            if (proxy === mouseOverElem && autoUpdateSurrounders)
+                updateSurrounders()
+        }
     }
 }
 

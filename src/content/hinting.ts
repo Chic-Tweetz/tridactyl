@@ -815,7 +815,7 @@ class Hint {
         let offsetLeft = 0
         const pad = 4
         if (target.ownerDocument !== document) {
-            const iframe = DOM.getAllDocumentFrames().find(
+            const iframe = DOM.getAllDocumentFrames(document, true).find(
                 frame => frame.contentDocument === target.ownerDocument,
             )
             const rect = iframe.getClientRects()[0]
