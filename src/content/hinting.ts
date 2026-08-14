@@ -711,7 +711,7 @@ export function hintPage(
     modeState.hudTranslate.appendChild(modeState.hintHost)
     modeState.hud.appendChild(modeState.hudTranslate)
 
-    HUD.addElement(modeState.hud)
+    HUD.addElement(modeState.hud, { popover: true })
 
     // document.documentElement.appendChild(modeState.hud)
     // const hud = modeState.hud as any
@@ -719,6 +719,7 @@ export function hintPage(
     //     hud.setAttribute("popover", "manual")
     //     hud.showPopover()
     // }
+
     modeState.deOverlap()
     window.removeEventListener("scroll", updateHudOffset)
     window.addEventListener("scroll", updateHudOffset)

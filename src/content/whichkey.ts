@@ -114,7 +114,9 @@ async function attachIframe() {
         hud.addElement(
             whichkeyIframe, {
                 mouseable: true,
-                beforeElement: `[src="${browser.runtime.getURL("static/commandline.html")}"]`
+                beforeElement: `[src="${browser.runtime.getURL("static/commandline.html")}"]`,
+                startHidden: level !== "all",
+                popover: true,
             }
         )
     })
@@ -706,7 +708,8 @@ async function onStateChanged(property?, _oldMode?, _oldValue?, _newValue?) {
 
         replaceTableChildren(frag)
 
-        whichkeyIframe.style.display = ""
+        // whichkeyIframe.style.display = ""
+        hud.show(whichkeyIframe)
         return
     }
 
@@ -753,7 +756,8 @@ async function onStateChanged(property?, _oldMode?, _oldValue?, _newValue?) {
     const pressed = contentState.suffix || ""
 
     if (pressed === "" && level !== "all") {
-        whichkeyIframe.style.display = "none"
+        // whichkeyIframe.style.display = "none"
+        hud.hide(whichkeyIframe)
         return
     }
 
@@ -840,7 +844,8 @@ async function onStateChanged(property?, _oldMode?, _oldValue?, _newValue?) {
         }
     })
 
-    whichkeyIframe.style.display = ""
+    // whichkeyIframe.style.display = ""
+    hud.show(whichkeyIframe)
     replaceTableChildren(frag)
 }
 
@@ -866,10 +871,12 @@ function setLevel(newLevel, overrideConfig = false) {
         level = newLevel
     }
     if (whichkeyIframe) {
-        if (level === "none") whichkeyIframe.style.display = "none"
+        // if (level === "none") whichkeyIframe.style.display = "none"
+        if (level === "none") hud.hide(whichkeyIframe)
         if (level === "all") {
             attachIframe()
-            whichkeyIframe.style.display = ""
+            // whichkeyIframe.style.display = ""
+            hud.show(whichkeyIframe)
         }
     } else if (level !== "none") {
         init()

@@ -132,7 +132,7 @@ async function init(onDemand = false) {
     }
 
     if ((noiframe === "false" || (onDemand && noiframe === "lazy")) && notridactyl !== "true" && !enabled) {
-        hud.addElement(cmdline_iframe, { mouseable: true, afterElement: "#whichkey" })
+        hud.addElement(cmdline_iframe, { mouseable: true, popover: true, startHidden: true })
         enabled = true
 
         // Fix #5050: reinsert iframe after React throws a tantrum
@@ -172,7 +172,7 @@ export async function reactIsCrap() {
     while (true) {
         if (cmdline_iframe.contentWindow == null) {
             makeIframe()
-            hud.addElement(cmdline_iframe, { mouseable: true, afterElement: "#whichkey" })
+            hud.addElement(cmdline_iframe, { mouseable: true, popover: true, startHidden: true })
         }
         await new Promise(resolve => setTimeout(resolve, 500))
     }
@@ -194,7 +194,7 @@ init().catch(() => {
 export function ensureIframeExists() {
     if (enabled && !cmdline_iframe.isConnected) {
         makeIframe()
-        hud.addElement(cmdline_iframe, { mouseable: true, afterElement: "#whichkey" })
+        hud.addElement(cmdline_iframe, { mouseable: true, popover: true, startHidden: true })
     }
 }
 
@@ -388,8 +388,9 @@ export async function show(hidehover = false, deadline = Date.now() + 5000) {
 
         cmdline_iframe.inert = false
 
-        cmdline_iframe.setAttribute("popover", "manual")
-        ;(cmdline_iframe as any).showPopover()
+        // cmdline_iframe.setAttribute("popover", "manual")
+        // ;(cmdline_iframe as any).showPopover()
+        hud.show(cmdline_iframe)
 
         cmdline_iframe.classList.remove("hidden")
         cmdline_iframe.style.removeProperty("display")
@@ -404,7 +405,9 @@ export async function show(hidehover = false, deadline = Date.now() + 5000) {
 
 export function hide() {
     try {
-        cmdline_iframe.removeAttribute("popover")
+        if (!cmdline_iframe.isConnected) return
+        // cmdline_iframe.removeAttribute("popover")
+        hud.hide(cmdline_iframe)
         cmdline_iframe.inert = true
         cmdline_iframe.classList.add("hidden")
         cmdline_iframe.style.setProperty("display", "none", "important")

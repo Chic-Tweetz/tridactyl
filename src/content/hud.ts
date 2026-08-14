@@ -1,6 +1,69 @@
+/**
+ * Intention: keep all Tridactyl UI contained.
+ * When possible, also keep it in an iframe so we can be happy that nothing sensitive leaks to the page.
+ *
+ * Because they're added to a fullscreen iframe, we can't use mouse events directly because it'd block the page.
+ * Instead, when UI elements are "mouseable", we add "proxy" elements over the top of them, outside of the iframe.
+ * Mouse over proxy -> enable mouse for iframe + mouseable element
+ * The proxy mouse events are disabled and four new elements surround it. Mousing over them returns all back to normal.
+ * For the mode indicator, mousing over hides the element instead. Similar process though.
+ *
+ * Tridactyl UI includes: cmdline, status indicator, hint flags
+ * also previously :find highlights but they now use the highlight API
+ *
+ * I also want to make it simple to inject any old element.
+ *
+ * For instance, a simple "hint to choose" display like my big old hint-to-select-tab :js script I made that one time
+ *
+ * That'll need its own module though. We'll just handle adding/removing UI elements here.
+ */
 import * as styling from "@src/content/styling"
 import * as hinting from "@src/content/hinting"
 import * as config from "@src/lib/config"
+
+/* TODO:
+
+- we could make a HUD element class that we could return when attaching them
+because currently i'm passing elements to some exported functions
+
+somethin like
+
+class HUDElement {
+    element,
+    proxy?,
+
+    resize() // for proxies
+    remove()
+    show()
+    hide()
+    popover()
+
+    moveToTop()
+    moveToBack()
+    moveAfter(other)
+    moveBefore(other)
+}
+
+- on that note of moving elements in a stack
+might be nice to deliberately keep track of layers
+and perhaps make them groupable
+
+so stuff like the status indicator/whichkey could be in a less important group
+then the commandline could just always be ahead of them when it is shown
+
+
+class HUDElement {
+    element: Element
+    mouseProxy?: Element
+
+    resize() {
+        if (this.mouseProxy)
+            updateGeometry(this.element, this.mouseProxy)
+    }
+}
+
+*/
+
 
 let failed = false
 let initQueue: (() => any)[] = []
@@ -12,7 +75,10 @@ const hud = document.createElement("div")
 const shadow = hud.attachShadow({mode:"closed"})
 let initPromise
 
-const allowNoIframeWorkaround = true // config setting I suppose
+// Automatically call showPopover() or removeAttribute("popover") depending on whether at least 1 popover element is visible
+const visiblePopovers: Set<Element> = new Set()
+
+// const allowNoIframeWorkaround = true // config setting I suppose? Also I've added it as an option for individual elements now
 const autoFail = false // for testing
 
 const elementsToProxies = new Map()
@@ -25,11 +91,57 @@ const elementsToProxies = new Map()
 // however, I want to make a "hintable" option selector (similar to/enabling a version of that crazy :js tab picker i made)
 // i also like the idea of adding input elements to the page that the page can't see, which i have felt may be uesful on some occasions
 interface UIElementOptions {
-    mouseable?: true | false | "hide",
-    hintable?: true | false,
-    allowNoIframeFallback?: true | false,
+    mouseable?: boolean | "hide",
+    hintable?: boolean,
+    abortIfNoIframe?: boolean,
     beforeElement?: string | Element,
     afterElement?: string | Element,
+    popover?: boolean,
+    name?: string,
+    startHidden?: boolean,
+}
+
+export function popover(pop = true) {
+    if (pop && typeof hud.showPopover === "function") {
+        hud.setAttribute("popover", "manual")
+        hud.showPopover()
+    } else if (!pop) {
+        hud.removeAttribute("popover")
+    }
+}
+
+export function show(element) {
+    if (elementsToProxies.has(element)) {
+        elementsToProxies.get(element).style.display = ""
+    }
+    element.style.display = ""
+    element.removeAttribute("hidden")
+
+    if (element.hasAttribute("hudautopopover")) {
+        visiblePopovers.add(element)
+        popover()
+    }
+}
+
+export function hide(element) {
+    if (elementsToProxies.has(element)) {
+        elementsToProxies.get(element).style.display = "none"
+    }
+    element.style.display = "none"
+    element.setAttribute("hidden", true)
+
+    if (element.hasAttribute("hudautopopover")) {
+        visiblePopovers.delete(element)
+        if (visiblePopovers.size === 0) {
+            popover(false)
+        }
+    }
+}
+
+// Going to use this on the mode indicator which doesn't always match its proxy
+export function resize(element) {
+    if (elementsToProxies.has(element))
+        updateGeometry(element, elementsToProxies.get(element))
 }
 
 export function addElement(element, options: UIElementOptions = {}) {
@@ -38,7 +150,36 @@ export function addElement(element, options: UIElementOptions = {}) {
         init()
         return
     }
-    if (failed && !allowNoIframeWorkaround) return
+    if (failed && !options.abortIfNoIframe) {
+        console.error("Did not add element to hud: iframe is blocked and abortIfNoIframe option is set")
+        return
+    }
+
+    if (!hud.isConnected) document.documentElement.appendChild(hud)
+
+    // We may be trying to alter the element's HUD properties or something?
+    // Currently, we're just sometimes adding the status indicator twice and ending up with two proxies
+    elementsToProxies.get(element)?.remove?.()
+
+    element.setAttribute("hudname", options.name || element.id || Math.random().toString())
+
+    if (options.hintable) {
+        // hintables.add(element)
+        // what if what if what if...
+        // I'm using attributes elsewhere so will probably do so for this istead of a classs
+        // element.classList.add("TridactylHUDHintable")
+        element.setAttribute("hudhintable", true)
+    }
+
+    if (options.popover) {
+        element.setAttribute("hudautopopover", true)
+    }
+
+    if (options.startHidden) {
+        hide(element)
+    } else {
+        show(element)
+    }
 
     let adjacentElement
     let adjacentPosition
@@ -66,16 +207,13 @@ export function addElement(element, options: UIElementOptions = {}) {
         elementHost.appendChild(element)
     }
 
-    if (options.hintable) {
-        // hintables.add(element)
-        // what if what if what if...
-        element.classList.add("TridactylHUDHintable")
-    }
     switch (options.mouseable) {
-        case true: return addMousableElement(element)
-        case "hide": return addMouseHidesElement(element)
-        default: return addMouselessElement(element)
+        case true: addMousableElement(element); break
+        case "hide": addMouseHidesElement(element) ;break
+        default: addMouselessElement(element)
     }
+
+    observeElement(element)
 }
 
 export function getHudIframe() {
@@ -91,7 +229,7 @@ export function getHintableElements(selectors = "*", filters: ((ele: HTMLElement
     // return Array.from(hintables)
     return (Array.from(elementHost.querySelectorAll(selectors)))
         .filter(
-            el => (el as HTMLElement).matches(".TridactylHUDHintable,.TridactylHUDHintable *") &&
+            el => (el as HTMLElement).matches("[hudhintable],[hudhintable] *") &&
             filters.every(filter => filter(el as HTMLElement))
         ) as Element[]
 }
@@ -132,9 +270,7 @@ function makeHudIframe(): Promise<HTMLIFrameElement> {
             } else {
                 console.error("Could not access HUD iframe's content")
                 failed = true
-                if (allowNoIframeWorkaround) {
-                    makeNoIframeBackupHost()
-                }
+                makeNoIframeBackupHost()
                 iframe.remove()
                 reject()
             }
@@ -146,10 +282,10 @@ function makeHudIframe(): Promise<HTMLIFrameElement> {
 function makeHud() {
     hud.className = "TridactylHud"
     document.documentElement.appendChild(hud)
-    if (typeof hud.showPopover === "function") {
-        hud.setAttribute("popover", "manual")
-        hud.showPopover()
-    }
+    // if (typeof hud.showPopover === "function") {
+    //     hud.setAttribute("popover", "manual")
+    //     hud.showPopover()
+    // }
 }
 
 // If you have no iframe and still want to allow elements to be added
@@ -261,8 +397,19 @@ function mouseout() {
     surrounderelems.forEach(elem => elem.remove())
 }
 
+function createProxyOverlay(element) {
+    const proxy = document.createElement("div")
+    proxy.setAttribute("hudname", element.getAttribute("hudname"))
+    updateGeometry(element, proxy)
+    elementsToProxies.get(element)?.remove?.()
+    elementsToProxies.set(element, proxy)
+    overlayHost.appendChild(proxy)
+    return proxy
+}
+
 function updateGeometry(element, proxy) {
     const r = element.getBoundingClientRect()
+
     proxy.style.position = "fixed"
     proxy.style.top = r.y + "px"
     proxy.style.left = r.x + "px"
@@ -277,13 +424,8 @@ function updateGeometry(element, proxy) {
 function addMouseHidesElement(element: HTMLElement) {
     element.style.pointerEvents = "none"
 
-    const proxy = document.createElement("div")
+    const proxy = createProxyOverlay(element)
     proxy.style.pointerEvents = "all"
-    updateGeometry(element, proxy)
-    overlayHost.appendChild(proxy)
-
-    observeElement(element)
-    elementsToProxies.set(element, proxy)
 
     proxy.addEventListener("mouseenter", () => {
         proxy.style.pointerEvents = "none"
@@ -301,13 +443,8 @@ function addMousableElement(element: HTMLElement) {
     element.style.pointerEvents = "all"
     if (failed) return
 
-    const proxy = document.createElement("div")
+    const proxy = createProxyOverlay(element)
     proxy.style.pointerEvents = "all"
-    updateGeometry(element, proxy)
-    overlayHost.appendChild(proxy)
-
-    observeElement(element)
-    elementsToProxies.set(element, proxy)
 
     proxy.addEventListener("mouseenter", () => {
         proxy.style.pointerEvents = "none"
@@ -333,8 +470,6 @@ function addMouselessElement(element: HTMLElement) {
         return
     }
 
-    observeElement(element)
-    if (failed && !allowNoIframeWorkaround) return
     if (failed) {
         element.style.pointerEvents = "none"
     }
@@ -346,6 +481,12 @@ export function removeElement(element) {
     elementsToProxies.get(element)?.remove()
     elementsToProxies.delete(element)
     // hintables.delete(element)
+    if (element.hasAttribute("hudautopopover")) {
+        visiblePopovers.delete(element)
+        if (visiblePopovers.size === 0)
+            popover(false)
+    }
+
     element.remove()
     if (mouseOverElem === element) {
         mouseOverElem = null
@@ -359,20 +500,6 @@ const observer = new MutationObserver((mutationList) => {
     const toUpdate = new Set()
     for (const mutation of mutationList) {
         toUpdate.add(mutation.target)
-        // // Think I might go a different direction with this
-        // // and use (element).querySelctorAll("...")
-        // // on the root hintable element to get stuff
-        // if (mutation.type === "childList" && hintables.has(mutation.target as Element)) {
-        //     for (const node of mutation.removedNodes) {
-        //         hintables.delete(node as Element)
-        //     }
-        //     for (const node of mutation.addedNodes) {
-        //         if (node.nodeType === Node.ELEMENT_NODE) {
-        //             console.log("new hintable node:", node)
-        //             hintables.add(node as Element)
-        //         }
-        //     }
-        // }
     }
     for (const elem of toUpdate) {
         const targetProxy = elementsToProxies.get(elem)
@@ -382,7 +509,6 @@ const observer = new MutationObserver((mutationList) => {
                 updateSurrounders()
             }
         }
-
     }
 })
 

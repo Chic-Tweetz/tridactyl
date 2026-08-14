@@ -596,6 +596,7 @@ function addStatusIndicator() {
         )
 
         statusIndicatorText.textContent = result
+        hud.resize(statusIndicator)
     }
 
     const refreshStatusIndicator = () =>
