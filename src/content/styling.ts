@@ -5,8 +5,6 @@ import { browserBg, ownTabId, ownTabContainer } from "@src/lib/webext"
 
 const logger = new Logging.Logger("styling")
 
-// const isMozExtension = window.location.protocol === "moz-extension:"
-
 export const THEMES = staticThemes
 
 function capitalise(str) {
@@ -24,6 +22,73 @@ function removeThemeClasses(element: Element) {
             element.classList.remove(className)
         }
     }
+}
+
+function isShadowRoot(target: any): target is ShadowRoot {
+    return (
+        target &&
+        target.nodeType === Node.DOCUMENT_FRAGMENT_NODE &&
+        typeof (target as ShadowRoot).host === "object"
+    )
+}
+
+function getRootDocument(target: Element | Document | ShadowRoot): Document {
+    if (isShadowRoot(target)) {
+        return target.host.ownerDocument
+    }
+    // Can't do instanceof Document if target is an iframe document
+    // return target instanceof Document ? target : target.ownerDocument
+
+    // But Document.ownerDocument will just be null anyway so
+    return target.ownerDocument || target as Document
+}
+
+function getStyleRoot(target: Element | Document | ShadowRoot) {
+    if (isShadowRoot(target)) {
+        return target
+    }
+    const rootNode = target.nodeType === Node.DOCUMENT_NODE
+        ? target
+        : target.getRootNode()
+    return isShadowRoot(rootNode) ? rootNode : getRootDocument(target)
+}
+
+function getStyleElementById(target: Document | ShadowRoot, id: string) {
+    return isShadowRoot(target)
+        ? target.querySelector(`#${id}`)
+        : target.getElementById(id)
+}
+
+const SHADOW_ROOT_BASE_STYLE_ID = "tridactyl-base-theme-style"
+const SHADOW_ROOT_BASE_STYLE_IMPORTS = [
+    "static/css/content.css",
+    "static/css/hint.css",
+    "static/themes/default/default.css",
+]
+
+function appendStyle(target: Document | ShadowRoot, id: string, code: string) {
+    const style = getRootDocument(target).createElement("style")
+    style.id = id
+    style.textContent = code
+    if (isShadowRoot(target)) {
+        (target.querySelector("#tridactyl-styles") || target).appendChild(style)
+    } else {
+        target.head.appendChild(style)
+    }
+}
+
+function appendBaseShadowStyle(root: ShadowRoot) {
+    const oldBaseStyle = root.querySelector(`#${SHADOW_ROOT_BASE_STYLE_ID}`)
+    if (oldBaseStyle) oldBaseStyle.remove()
+
+    const code = SHADOW_ROOT_BASE_STYLE_IMPORTS
+        .map(
+            source =>
+                `@import url('${browser.runtime.getURL(source)}');`,
+        )
+        .join("\n")
+
+    appendStyle(root, SHADOW_ROOT_BASE_STYLE_ID, code)
 }
 
 // At the moment elements are only ever `:root` and so this array and stuff is all a bit overdesigned.
@@ -77,9 +142,16 @@ export function getThemedCssText() {
     return cssText
 }
 
-export async function theme(element) {
-    const doc = element.ownerDocument
-    const isMozExtension = element.ownerDocument.defaultView.location.protocol === "moz-extension:"
+export async function theme(element: Element | Document | ShadowRoot) {
+    const root = getStyleRoot(element)
+    const doc = getRootDocument(root)
+    const isShadow = isShadowRoot(root)
+    const isMozExtension = doc.defaultView.location.protocol === "moz-extension:"
+    const classTarget = isShadow
+        ? root.host
+        : element.nodeType === Node.DOCUMENT_NODE
+        ? doc.documentElement
+        : element
     lastCombinedText = null
     lastSheet = null
     // Remove any old theme
@@ -91,19 +163,31 @@ export async function theme(element) {
      *
      * Retained for backwards compatibility.
      **/
-    removeThemeClasses(element)
+    if (classTarget.nodeType === Node.ELEMENT_NODE) {
+        removeThemeClasses(classTarget as Element)
+    }
     // DEPRECATION ENDS
 
     if (
-        element === document.documentElement &&
-        !THEMED_ELEMENTS.includes(element)
+        classTarget.nodeType === Node.ELEMENT_NODE &&
+        classTarget === doc.documentElement &&
+        !THEMED_ELEMENTS.includes(classTarget)
     ) {
-        THEMED_ELEMENTS.push(element)
+        THEMED_ELEMENTS.push(classTarget)
+    } else if (
+        isShadow &&
+        !THEMED_ELEMENTS.includes(root)
+    ) {
+        THEMED_ELEMENTS.push(root)
+    }
+
+    if (isShadow) {
+        appendBaseShadowStyle(root)
     }
 
     // Insert hint CSS rules according to config - copying how themes are inserted
-    if (isMozExtension) {
-        const oldHintStyle = doc.getElementById("tridactyl-hint-style")
+    if (isMozExtension || isShadow) {
+        const oldHintStyle = getStyleElementById(root, "tridactyl-hint-style")
         if (oldHintStyle) oldHintStyle.remove()
     } else if (insertedHintElemCSS) {
         await browserBg.tabs.removeCSS(await ownTabId(), hintElemCss)
@@ -168,20 +252,24 @@ export async function theme(element) {
             largeActiveElemBgRules +
             activeOverlayRules
 
-    if (isMozExtension) {
+    if (isMozExtension || isShadow) {
         if (hintElemCss.code !== "") {
-            const style = doc.createElement("style")
+            const style = getRootDocument(root).createElement("style")
             style.id = "tridactyl-hint-style"
             style.textContent = hintElemCss.code
-            doc.head.appendChild(style)
+            if (isShadow) {
+                (root.querySelector("#tridactyl-styles") || root).appendChild(style)
+            } else {
+                doc.head.appendChild(style)
+            }
         }
     } else if (hintElemCss.code !== "") {
         await browserBg.tabs.insertCSS(await ownTabId(), hintElemCss)
         insertedHintElemCSS = true
     }
 
-    if (isMozExtension) {
-        const oldThemeStyle = doc.getElementById("tridactyl-theme-style")
+    if (isMozExtension || isShadow) {
+        const oldThemeStyle = getStyleElementById(root, "tridactyl-theme-style")
         if (oldThemeStyle) oldThemeStyle.remove()
     } else if (insertedCSS) {
         // Typescript doesn't seem to be aware than remove/insertCSS's tabid
@@ -199,8 +287,8 @@ export async function theme(element) {
      *
      * Retained for backwards compatibility.
      **/
-    if (config.get("themeprivacy") !== "true") {
-        element.classList.add(prefixTheme(newTheme))
+    if (config.get("themeprivacy") !== "true" && classTarget.nodeType === Node.ELEMENT_NODE) {
+        (classTarget as Element).classList.add(prefixTheme(newTheme))
     }
     // DEPRECATION ENDS
 
@@ -214,11 +302,15 @@ export async function theme(element) {
               "');"
             : await config.getAsync("customthemes", newTheme)
         if (customCss.code) {
-            if (isMozExtension) {
-                const style = doc.createElement("style")
+            if (isMozExtension || isShadow) {
+                const style = getRootDocument(root).createElement("style")
                 style.id = "tridactyl-theme-style"
                 style.textContent = customCss.code
-                doc.head.appendChild(style)
+                if (isShadow) {
+                    (root.querySelector("#tridactyl-styles") || root).appendChild(style)
+                } else {
+                    doc.head.appendChild(style)
+                }
             } else {
                 await browserBg.tabs.insertCSS(await ownTabId(), customCss)
                 insertedCSS = true
@@ -232,12 +324,12 @@ export async function theme(element) {
     // considering only elements :root (page and cmdline_iframe)
     // TODO:
     //     - Find ways to check if element is already pushed
-    if (
-        THEMED_ELEMENTS.length < 2 &&
-        element.tagName.toUpperCase() === "HTML"
-    ) {
-        THEMED_ELEMENTS.push(element)
-    }
+    // if (
+    //     THEMED_ELEMENTS.length < 2 &&
+    //     element.tagName.toUpperCase() === "HTML"
+    // ) {
+    //     THEMED_ELEMENTS.push(element)
+    // }
 
     // Add/overwrite a --tridactyl-container-color var that can be used for the status indicator (or whatever else)
     // As usual, slightly more complicated than anticipated!
@@ -284,6 +376,7 @@ export async function theme(element) {
 }
 
 function retheme() {
+    console.log("retheme:", THEMED_ELEMENTS)
     THEMED_ELEMENTS.forEach(element => {
         theme(element).catch(e => {
             logger.warning(

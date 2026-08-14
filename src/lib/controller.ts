@@ -107,16 +107,22 @@ export async function acceptExCmd(
                     func !== stored_excmds[""].updatecheck &&
                     exstr.search("winopen -private") < 0
                 )
-                    State.getAsync("last_ex_str").then(last_ex_str => {
+                    lastExUpdate = State.getAsync("last_ex_str")
+                    .then(last_ex_str => {
                         if (
-                            programSource(last_ex_str) !== exstr ||
-                            isExProgram(last_ex_str) !== isV2
-                        )
-                            lastExUpdate = State.getAsync("last_ex_str").then(last_ex_str => {
-                                if (last_ex_str != recordedExcmd)
+                            (programSource(last_ex_str) !== exstr ||
+                                isExProgram(last_ex_str) !== isV2
+                            ) && last_ex_str != recordedExcmd
+                        ) {
+                            return State.getAsync("last_ex_str").then(last_ex_str => {
+                                if (last_ex_str != recordedExcmd) {
                                     return State.setAsync("last_ex_str", recordedExcmd)
+                                }
                             })
+                        }
                     })
+                    // This seems more reliable
+                    lastExUpdate.then(() => exCmdListener?.(), () => exCmdListener?.())
             }
             const commandArgs = program ? [...args, program] : args
             if (piped && !consumed) commandArgs.push(value)
@@ -137,6 +143,7 @@ export async function acceptExCmd(
         if (isV2) throw e
     } finally {
         currentExCmdSource = previousExCmdSource
+
         void lastExUpdate.then(
             () => exCmdListener?.(),
             () => exCmdListener?.(),

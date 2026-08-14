@@ -10,6 +10,7 @@ import * as tri_editor from "@src/lib/editor"
 import { contentState } from "@src/content/state_content"
 // import { canceller } from "@src/content/controller_content"
 
+import * as hud from "@src/content/hud"
 const logger = new Logger("messaging")
 const cmdline_logger = new Logger("cmdline")
 
@@ -88,6 +89,7 @@ export function makeIframe() {
                 // The key canceller was keeping KeyUp events from binds like ":" which focus the commandline
                 // canceller.clearQueue()
             })
+            // HUD stuff broke blur listening apparently
             win.addEventListener("blur", () => {
                 if (contentState.pseudo_mode === "ex")
                     contentState.pseudo_mode = ""
@@ -110,6 +112,7 @@ export function resize_iframe() {
 }
 
 makeIframe()
+
 Messaging.addListener("commandline_frame_ready_to_receive_messages", message => message.command === iframeGeneration && ((cmdline_iframe as any).ready = true) && resolveIframeReady())
 theme(window.document.querySelector(":root"))
 
@@ -129,7 +132,7 @@ async function init(onDemand = false) {
     }
 
     if ((noiframe === "false" || (onDemand && noiframe === "lazy")) && notridactyl !== "true" && !enabled) {
-        document.documentElement.appendChild(cmdline_iframe)
+        hud.addElement(cmdline_iframe, { mouseable: true, afterElement: "#whichkey" })
         enabled = true
 
         // Fix #5050: reinsert iframe after React throws a tantrum
@@ -169,7 +172,7 @@ export async function reactIsCrap() {
     while (true) {
         if (cmdline_iframe.contentWindow == null) {
             makeIframe()
-            document.documentElement.appendChild(cmdline_iframe)
+            hud.addElement(cmdline_iframe, { mouseable: true, afterElement: "#whichkey" })
         }
         await new Promise(resolve => setTimeout(resolve, 500))
     }
@@ -191,7 +194,7 @@ init().catch(() => {
 export function ensureIframeExists() {
     if (enabled && !cmdline_iframe.isConnected) {
         makeIframe()
-        document.documentElement.appendChild(cmdline_iframe)
+        hud.addElement(cmdline_iframe, { mouseable: true, afterElement: "#whichkey" })
     }
 }
 
@@ -407,6 +410,9 @@ export function hide() {
         cmdline_iframe.style.setProperty("display", "none", "important")
         // cmdline_iframe.setAttribute("style", "height: 0px !important;")
         customCompletions.hide()
+
+        if (contentState.pseudo_mode === "ex")
+            contentState.pseudo_mode = ""
     } catch (e) {
         // Using cmdline_logger here is OK because cmdline_logger won't try to
         // call hide(), thus we avoid the recursion that happens for show() and
@@ -429,6 +435,8 @@ export function hide_and_blur() {
     blur()
 }
 
+// TODO: HUD-ify executeWithoutCommandLine
+// (which may be fine actually, haven't checked!    )
 export function executeWithoutCommandLine(fn) {
     let parent
     if (cmdline_iframe && cmdline_iframe.isConnected) {

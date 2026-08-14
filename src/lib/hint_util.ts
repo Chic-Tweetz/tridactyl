@@ -4,6 +4,7 @@
 
 import Logger from "@src/lib/logging"
 import * as DOM from "@src/lib/dom"
+import * as HUD from "@src/content/hud"
 import * as hinting from "@src/content/hinting"
 import * as config from "@src/lib/config"
 
@@ -53,6 +54,7 @@ export interface HintOptions {
     selectorsExclude: string[]
     warnings: string[]
     elemFilter?: string
+    includeHUD: boolean | "only"
 }
 
 /**
@@ -74,6 +76,7 @@ export class HintConfig implements HintOptions {
     public includeDefaultHintables = true
     public warnings = []
     public elemFilter?: string
+    public includeHUD: boolean | "only" = false
 
     public static parse(args: string[]): HintConfig {
         // Argument parser state
@@ -95,7 +98,7 @@ export class HintConfig implements HintOptions {
 
         const result = new HintConfig()
         result.jshints = config.get("hintselectorsincludejs") === "true"
-        const multiLetterFlags = ["fr", "wp", "br", "pipe", "filter", "Qd"]
+        const multiLetterFlags = ["fr", "wp", "br", "pipe", "filter", "Qd", "hud", "+hud"]
         let cOrPipeFlagPresent = false
         let CFlagPresent = false
         let filterDelim
@@ -257,6 +260,12 @@ export class HintConfig implements HintOptions {
                                     break
                                 case "p":
                                     newOpenMode = OpenMode.YankText
+                                    break
+                                case "hud":
+                                    result.includeHUD = "only"
+                                    break
+                                case "+hud":
+                                    result.includeHUD = true
                                     break
                                 default:
                                     result.warnings.push(
@@ -478,18 +487,34 @@ export class HintConfig implements HintOptions {
     }
 
     public async hintables() {
-        let hintables = this.includeDefaultHintables
-            ? await this.defaultHintables()
-            : []
-        if (this.selectors.length > 0) {
-            hintables = hintables.concat(
-                await hinting.hintables(
-                    this.selectors.join(" "),
-                    this.jshints,
-                    this.includeInvisible,
-                ),
+        let hintables = this.includeHUD
+            ? hinting.toHintablesArray(
+                HUD.getHintableElements(
+                    this.selectors.length > 0
+                        ? this.selectors.join(" ")
+                        : "*",
+                    this.includeInvisible
+                        ? [DOM.isVisible]
+                        : [],
+                )
             )
+            : []
+
+        if (this.includeHUD !== "only") {
+            if (this.includeDefaultHintables)
+                hintables = hintables.concat(await this.defaultHintables())
+
+            if (this.selectors.length > 0) {
+                hintables = hintables.concat(
+                    await hinting.hintables(
+                        this.selectors.join(" "),
+                        this.jshints,
+                        this.includeInvisible,
+                    ),
+                )
+            }
         }
+
         const textFilter = this.textFilter
         const exclude = this.selectorsExclude.join(" ")
         for (const elements of hintables) {

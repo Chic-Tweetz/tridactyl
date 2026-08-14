@@ -207,7 +207,6 @@ function* ParserController() {
                 if (preParseUpdateStateAndShouldSkip(keyevent)) continue
 
                 if (!(keyevent instanceof MinimalKey)) {
-
                     const deepTarget = activeElement(keyevent.target as HTMLElement) || keyevent.target as HTMLElement
                     textEditable = isTextEditable(deepTarget)
                     keyEvents.push(minimalKeyFromKeyboardEvent(keyevent))

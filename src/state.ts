@@ -125,7 +125,7 @@ const state = new Proxy(overlay, {
 export async function setAsync<K extends keyof State>(
     property: K,
     value: State[K],
-): Promise<void> {
+): Promise<any> {
     if (notBackground()) {
         // If trying to set a property inIncognitoContext throws an error,
         // why do we bother sending the message? I've added this else
@@ -133,7 +133,7 @@ export async function setAsync<K extends keyof State>(
         const inIncognitoContext = browser.extension.inIncognitoContext
         if (inIncognitoContext)
             setLocal(property, value)
-        else await browser.runtime.sendMessage({
+        else return await browser.runtime.sendMessage({
             type: "state",
             command: "stateUpdate",
             args: { property, value, inIncognitoContext },
@@ -197,6 +197,9 @@ if (notBackground && !notBackground()) {
 
             const oldValue = state[property]
             state[property] = value
+
+            // This might make that await work actually
+            sendResponse(value)
 
             // Property listener change callbacks (message tabs listening for property changes)
             for (const [tabId, once] of propertyListeners.get(property) || []) {

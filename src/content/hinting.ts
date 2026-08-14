@@ -42,6 +42,7 @@ import * as R from "ramda"
 /** @hidden */
 const logger = new Logger("hinting")
 import * as keyseq from "@src/lib/keyseq"
+import * as HUD from "@src/content/hud"
 
 /** Calclate the distance between two segments.
  * @hidden
@@ -132,7 +133,7 @@ class HintState {
     cleanUpHints() {
         if (this.filteredHints.length === 0) return
         // Remove all hints from the DOM.
-        this.hud.remove()
+        HUD.removeElement(this.hud)
 
         // Undo any alterations of the hinted elements
         for (const hint of this.hints) {
@@ -709,12 +710,15 @@ export function hintPage(
         modeState.hudTranslate.appendChild(modeState.outlineHost)
     modeState.hudTranslate.appendChild(modeState.hintHost)
     modeState.hud.appendChild(modeState.hudTranslate)
-    document.documentElement.appendChild(modeState.hud)
-    const hud = modeState.hud as any
-    if (typeof hud.showPopover === "function") {
-        hud.setAttribute("popover", "manual")
-        hud.showPopover()
-    }
+
+    HUD.addMouselessElement(modeState.hud)
+
+    // document.documentElement.appendChild(modeState.hud)
+    // const hud = modeState.hud as any
+    // if (typeof hud.showPopover === "function") {
+    //     hud.setAttribute("popover", "manual")
+    //     hud.showPopover()
+    // }
     modeState.deOverlap()
     window.removeEventListener("scroll", updateHudOffset)
     window.addEventListener("scroll", updateHudOffset)
@@ -963,7 +967,6 @@ class Hint {
     ) {
         this.target = new WeakRef(target)
         this.unfilteredName = name
-
         this.calculateGeometry(clientRects)
 
         // A span for each char so typed chars can be styled differently
@@ -1120,6 +1123,7 @@ class Hint {
     }
 
     public calculateGeometry(cachedRects?: DOMRectList) {
+
         const target = this.target.deref()
         if (!target) {
             this.noRects = true
@@ -1130,7 +1134,7 @@ class Hint {
         let offsetLeft = 0
         const pad = 4
         if (target.ownerDocument !== document) {
-            const iframe = DOM.getAllDocumentFrames().find(
+            const iframe = DOM.getAllDocumentFrames(document, true).find(
                 frame => frame.contentDocument === target.ownerDocument,
             )
             const rect = iframe.getClientRects()[0]

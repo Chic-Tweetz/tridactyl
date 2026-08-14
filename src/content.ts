@@ -72,6 +72,7 @@ const visual = await import("@src/lib/visual")
 const metadata = await import("@src/.metadata.generated")
 const { tabTgroup } = await import("@src/lib/tab_groups")
 const completion_providers = await import("@src/completions/providers")
+const hud = await import("@src/content/hud")
 
 controller.setExCmds({
     "": excmds_content,
@@ -165,7 +166,7 @@ const iframeObserver = new MutationObserver(mutations => {
 function listenInIframe(frame: FrameElement) {
     frame.addEventListener("load", onIframeLoad)
     try {
-        if (frame.src.startsWith("moz-extension:")) return
+        if (frame.src.startsWith("moz-extension:") && frame !== hud.getHudIframe()) return
         const doc = frame.contentDocument
         if (!doc?.defaultView || observedIframeRoots.has(doc)) return
         listen(doc.defaultView)
@@ -275,6 +276,7 @@ window["tri"] = Object.assign(Object.create(null), {
     excmds,
     finding_content,
     hinting_content,
+    hud,
     itertools,
     logger,
     metadata,
@@ -331,6 +333,7 @@ const hijackDocumentDestroyingFunctions = () => {
 
         // Re-register listeners and add cmdline & status indicator back
         const restore = () => {
+            // TODO: HUD-ify
             if (cmdln) document.documentElement.appendChild(cmdln)
             if (indicator) document.body.appendChild(indicator)
             listen(window)
@@ -408,9 +411,10 @@ if (
 // Really bad status indicator
 let statusIndicator
 function mountStatusIndicator() {
-    if (statusIndicator.parentNode === document.documentElement) return
-    if (config.get("modeindicator") === "true")
-        document.documentElement.appendChild(statusIndicator)
+    hud.addElement(statusIndicator, { mouseable: "hide" })
+    // if (statusIndicator.parentNode === document.documentElement) return
+    // if (config.get("modeindicator") === "true")
+    //     document.documentElement.appendChild(statusIndicator)
 }
 
 function addStatusIndicator() {
@@ -504,6 +508,7 @@ function addStatusIndicator() {
 
     statusIndicatorText.textContent = contentState.mode || "normal"
     dom.afterPageLoad(() => {
+        // TODO: HUD-ify print-only style
         document.head?.appendChild(style)
         mountStatusIndicator()
     })
@@ -583,6 +588,7 @@ function addStatusIndicator() {
             "config",
             modeindicatorshowkeys,
         )
+
         statusIndicatorText.textContent = result
     }
 

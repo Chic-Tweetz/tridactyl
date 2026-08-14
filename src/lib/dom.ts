@@ -9,6 +9,7 @@ import {
     activeTabContainerId,
     inContentScript,
 } from "@src/lib/webext"
+import * as HUD from "@src/content/hud"
 const logger = new Logging.Logger("dom")
 import { hintElemStyles } from "@src/content/styling"
 import {
@@ -500,6 +501,7 @@ export async function getVisibleElemsBySelector(selector: string | null = "*", f
         intersectingElems
             .flat()
             .filter(el => isPainted(el as HTMLElement) &&
+                !HUD.isHUDElement(el) &&
                 (!hideObscured || isUnobscured(el as Element)) &&
                 !(
                     // Sick of hinting the whichkey iframe!
@@ -554,7 +556,7 @@ export function isPainted(elem: HTMLElement) {
  *
  * @param doc   The document the frames should be fetched from
  */
-export function getAllDocumentFrames(doc = document) {
+export function getAllDocumentFrames(doc = document, includeHud = false) {
     const win = doc?.defaultView as any
     if (!win || !(doc instanceof win.HTMLDocument)) return []
     const frames = (
@@ -563,6 +565,7 @@ export function getAllDocumentFrames(doc = document) {
     )
         .concat(Array.from(doc.getElementsByTagName("frame")))
         .filter(frame => !frame.src.startsWith("moz-extension://"))
+    if (includeHud) frames.push(HUD.getHudIframe())
     return frames.concat(
         frames.reduce((acc, f) => {
             // Errors could be thrown because of CSP
@@ -724,7 +727,7 @@ function getShadowElementsBySelector(selector: string, within: Document | Shadow
  *                    items, or [] for all
  */
 export function getElemsBySelector(selector: string, filters: ElementFilter[]) {
-    let elems = Array.from(document.querySelectorAll(selector))
+    let elems = HUD.getHintableElements().concat(Array.from(document.querySelectorAll(selector)))
     elems = elems.concat(...getShadowElementsBySelector(selector))
     const frameElems = getAllDocumentFrames().reduce((acc, frame) => {
         let newElems = []
@@ -742,7 +745,7 @@ export function getElemsBySelector(selector: string, filters: ElementFilter[]) {
         elems = elems.filter(filter)
     }
 
-    return elems
+    return elems.filter(elem => !HUD.isHUDElement(elem))
 }
 
 /** Get the nth input element on a page

@@ -18,6 +18,7 @@ import { getAsync, removeChangeListener } from "@src/lib/config"
 import * as config from "@src/lib/config"
 import { theme } from "./styling"
 import Logger from "@src/lib/logging"
+import * as hud from "@src/content/hud"
 
 const logger = new Logger("whichkey")
 let whichkeyIframe: HTMLIFrameElement
@@ -62,6 +63,7 @@ function createIframe() {
     iframe.style.zIndex = "2147483647"
     ;(iframe.style as any).colorScheme = "light dark" // Allow transparency
     iframe.style.display = level === "all" ? "" : "none"
+    iframe.id = "whichkey"
 
     // Made blank.html with the idea that it could be used for anything
     iframe.src = browser.runtime.getURL("static/blank.html")
@@ -109,14 +111,12 @@ async function attachIframe() {
             }
         }
         // Inserting before the cmdline so the cmdline should appear on top
-        const cmdlineIframe: HTMLIFrameElement | null = document.querySelector(
-            `[src="${browser.runtime.getURL("static/commandline.html")}"]`,
+        hud.addElement(
+            whichkeyIframe, {
+                mouseable: true,
+                beforeElement: `[src="${browser.runtime.getURL("static/commandline.html")}"]`
+            }
         )
-        if (cmdlineIframe) {
-            document.documentElement.insertBefore(whichkeyIframe, cmdlineIframe)
-        } else {
-            document.documentElement.appendChild(whichkeyIframe)
-        }
     })
 }
 
