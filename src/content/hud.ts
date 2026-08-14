@@ -1,5 +1,6 @@
 import * as styling from "@src/content/styling"
 import * as hinting from "@src/content/hinting"
+import * as config from "@src/lib/config"
 
 let failed = false
 let initQueue: (() => any)[] = []
@@ -86,13 +87,13 @@ export function isHUDElement(element) {
     return shadow.contains(element) || element === hud
 }
 
-export function getHintableElements(selectors = "*", filters: ((elem) => boolean)[] = []): Element[] {
+export function getHintableElements(selectors = "*", filters: ((ele: HTMLElement) => boolean)[] = []) {
     // return Array.from(hintables)
     return (Array.from(elementHost.querySelectorAll(selectors)))
         .filter(
-            el => el.matches(".TridactylHUDHintable,.TridactylHUDHintable *") &&
-            filters.every(filter => filter(el))
-        )
+            el => (el as HTMLElement).matches(".TridactylHUDHintable,.TridactylHUDHintable *") &&
+            filters.every(filter => filter(el as HTMLElement))
+        ) as Element[]
 }
 
 export function hint() {
@@ -216,8 +217,11 @@ function mouseOver(elem, onmouseout, followElement = false) {
             surrounder.addEventListener("mouseover", mouseout)
 
             surrounder.style.position = "fixed"
-            // surrounder.style.background = "rgba(0,0,200,0.5)"
             surrounder.style.pointerEvents = "all"
+
+            config.getAsync("huddebug").then(c => {
+                if (c === "true") surrounder.style.background = "rgba(0,0,200,0.5)"
+            })
         }
 
         surrounderelems[0].style.left = "0"
@@ -264,7 +268,10 @@ function updateGeometry(element, proxy) {
     proxy.style.left = r.x + "px"
     proxy.style.width = r.width + "px"
     proxy.style.height = r.height + "px"
-    // proxy.style.border = "1px solid red"
+
+    config.getAsync("huddebug").then(c => {
+        if (c === "true") proxy.style.border = "1px solid red"
+    })
 }
 
 function addMouseHidesElement(element: HTMLElement) {

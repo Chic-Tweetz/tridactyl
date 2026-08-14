@@ -1873,6 +1873,11 @@ export class default_config {
      */
     inputsblacklistselectors = ""
 
+    /**
+     * Show outlines on element proxies & blue backgrounds on the "unfocus" elements.
+     */
+    huddebug: "true"  | "false" = "false"
+
 }
 
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */

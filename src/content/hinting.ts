@@ -711,7 +711,7 @@ export function hintPage(
     modeState.hudTranslate.appendChild(modeState.hintHost)
     modeState.hud.appendChild(modeState.hudTranslate)
 
-    HUD.addMouselessElement(modeState.hud)
+    HUD.addElement(modeState.hud)
 
     // document.documentElement.appendChild(modeState.hud)
     // const hud = modeState.hud as any

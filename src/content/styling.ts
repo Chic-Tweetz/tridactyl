@@ -376,7 +376,6 @@ export async function theme(element: Element | Document | ShadowRoot) {
 }
 
 function retheme() {
-    console.log("retheme:", THEMED_ELEMENTS)
     THEMED_ELEMENTS.forEach(element => {
         theme(element).catch(e => {
             logger.warning(

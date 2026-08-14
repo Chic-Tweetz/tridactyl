@@ -411,6 +411,7 @@ if (
 // Really bad status indicator
 let statusIndicator
 function mountStatusIndicator() {
+    if (statusIndicator.isConnected) return
     hud.addElement(statusIndicator, { mouseable: "hide" })
     // if (statusIndicator.parentNode === document.documentElement) return
     // if (config.get("modeindicator") === "true")
