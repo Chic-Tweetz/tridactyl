@@ -326,16 +326,22 @@ const hijackDocumentDestroyingFunctions = () => {
 
     const documentDestroyedHandler = () => {
         // Get references to Tridactyl elems so they can be readded after document.close is called
-        const cmdln = document.querySelector("#cmdline_iframe")
-        const indicator = document.querySelector(
-            ".TridactylStatusIndicator",
-        )
+        // const cmdln = document.querySelector("#cmdline_iframe")
+        // const indicator = document.querySelector(
+        //     ".TridactylStatusIndicator",
+        // )
+        hud.salvageElements()
 
         // Re-register listeners and add cmdline & status indicator back
         const restore = () => {
             // TODO: HUD-ify
-            if (cmdln) document.documentElement.appendChild(cmdln)
-            if (indicator) document.body.appendChild(indicator)
+            // Due to our hud iframe being detached, elements die
+            // So, I guess we need to... rescue all attached elements and put them in a new iframe?
+            // hud.attachHud()
+            hud.reattachElements()
+
+            // if (cmdln) document.documentElement.appendChild(cmdln)
+            // if (indicator) document.body.appendChild(indicator)
             listen(window)
 
             // All styles are lost so can be reinserted here

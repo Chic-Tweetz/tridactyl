@@ -694,8 +694,8 @@ export function hintPage(
         // There is just a single link or all the links point to the same
         // place. Select it unless `hintautoselect` is set to `false`.
         const state = modeState
-        state.cleanUpHints()
         state.hints[0].select()
+        state.cleanUpHints()
         if (modeState === state) reset()
         return
     }

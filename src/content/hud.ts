@@ -279,13 +279,35 @@ function makeHudIframe(): Promise<HTMLIFrameElement> {
     })
 }
 
-function makeHud() {
-    hud.className = "TridactylHud"
+// If iframe is detached, we'll lose anything in it (dead elements)
+// if we know it's going to happen we can take everything out first
+// e.g. if document.write is called we can do this first and reattachElements after
+let salvagedDocFrag
+let salvagedOverlayFrag
+export function salvageElements() {
+    if (!elementHost) return
+    salvagedDocFrag = document.createDocumentFragment()
+    while (elementHost.firstElementChild) {
+        const child = elementHost.firstElementChild
+        if (child.tagName !== "BODY" && child.tagName !== "HEAD") {
+            salvagedDocFrag.appendChild(child)
+        } else {
+            child.remove()
+        }
+    }
+    overlayHost.remove()
+    salvagedOverlayFrag = document.createDocumentFragment()
+    while (overlayHost.firstElementChild)
+        salvagedOverlayFrag.appendChild(overlayHost.firstElementChild)
+}
+
+export function reattachElements() {
     document.documentElement.appendChild(hud)
-    // if (typeof hud.showPopover === "function") {
-    //     hud.setAttribute("popover", "manual")
-    //     hud.showPopover()
-    // }
+    makeHudIframe()
+    .then(() => {
+        elementHost.appendChild(salvagedDocFrag)
+        overlayHost.appendChild(salvagedOverlayFrag)
+    })
 }
 
 // If you have no iframe and still want to allow elements to be added
@@ -319,7 +341,7 @@ function makeHudProxiesOverlay() {
 
 async function init() {
     if (initPromise) return initPromise
-    makeHud()
+    attachHud()
     try {
         initPromise = makeHudIframe()
         hudIframe = await initPromise
@@ -495,6 +517,13 @@ export function removeElement(element) {
     }
 }
 
+export function attachHud() {
+    hud.className = "TridactylHud"
+    document.documentElement.appendChild(hud)
+    window.removeEventListener("resize", onresizeDebounced)
+    window.addEventListener("resize", onresizeDebounced)
+}
+
 // Create an observer instance linked to the callback function
 const observer = new MutationObserver((mutationList) => {
     const toUpdate = new Set()
@@ -543,5 +572,3 @@ function onresize() {
         }
     }
 }
-
-window.addEventListener("resize", onresizeDebounced)
