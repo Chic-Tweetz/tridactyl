@@ -579,7 +579,12 @@ function addStatusIndicator() {
         result = result + tabGroupText
 
         if (config.get("modeindicatorshowlastex") === "true") {
-            result = result + " | " + (await State.getAsync("last_ex_str"))
+            const lastEx = (await State.getAsync("last_ex_str"))
+            if (typeof lastEx === "string") {
+                result = result + " | " + lastEx
+            } else if (lastEx.source) {
+                result = result + " | " + lastEx.source
+            }
         }
 
         logger.debug(
