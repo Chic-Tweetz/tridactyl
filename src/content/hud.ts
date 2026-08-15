@@ -101,6 +101,14 @@ interface UIElementOptions {
     startHidden?: boolean,
 }
 
+export function query(selector) {
+    return elementHost.querySelector(selector) || elementHost.querySelector(`[hudname=${selector}]`)
+}
+
+export function queryAll(selector) {
+    return Array.from(elementHost.querySelectorAll(selector))
+}
+
 export function popover(pop = true) {
     if (pop && typeof hud.showPopover === "function") {
         hud.setAttribute("popover", "manual")
@@ -110,7 +118,16 @@ export function popover(pop = true) {
     }
 }
 
-export function show(element) {
+export function show(elementOrSelector: Element | string) {
+    let element
+    if (typeof elementOrSelector === "string") {
+        element = query(elementOrSelector)
+        if (!element) return
+    } else {
+        element = elementOrSelector
+        if (!elementHost.contains(element)) return
+    }
+
     if (elementsToProxies.has(element)) {
         elementsToProxies.get(element).style.display = ""
     }
@@ -123,11 +140,20 @@ export function show(element) {
     }
 }
 
-export function hide(element) {
+export function hide(elementOrSelector: Element | string) {
+    let element
+    if (typeof elementOrSelector === "string") {
+        element = query(elementOrSelector)
+        if (!element) return
+    } else {
+        element = elementOrSelector
+        if (!elementHost.contains(element)) return
+    }
+
     if (elementsToProxies.has(element)) {
         elementsToProxies.get(element).style.display = "none"
     }
-    element.style.display = "none"
+    element.style.setProperty("display", "none", "important")
     element.setAttribute("hidden", true)
 
     if (element.hasAttribute("hudautopopover")) {
@@ -136,6 +162,20 @@ export function hide(element) {
             popover(false)
         }
     }
+}
+
+export function toggleHidden(elementOrSelector: Element | string) {
+    let element
+    if (typeof elementOrSelector === "string") {
+        element = query(elementOrSelector)
+        if (!element) return
+    } else {
+        element = elementOrSelector
+        if (!elementHost.contains(element)) return
+    }
+
+    if (element.hasAttribute("hidden")) show(element)
+    else hide(element)
 }
 
 // Going to use this on the mode indicator which doesn't always match its proxy
