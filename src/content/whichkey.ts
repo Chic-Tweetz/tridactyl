@@ -735,6 +735,7 @@ async function onStateChanged(property?, _oldMode?, _oldValue?, _newValue?) {
                 ),
         )
         replaceTableChildren(frag)
+        hud.show(whichkeyIframe)
         return
     }
 
@@ -771,7 +772,10 @@ async function onStateChanged(property?, _oldMode?, _oldValue?, _newValue?) {
         km => km.binds.length > 0 || km.urlBinds.length > 0,
     )
 
-    if (!firstBind) return
+    if (!firstBind) {
+        hud.hide(whichkeyIframe)
+        return
+    }
 
     const firstBindKeystrs =
         firstBind.binds.length > 0

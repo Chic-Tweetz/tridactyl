@@ -426,7 +426,8 @@ export function hide() {
 
 export function blur() {
     try {
-        cmdline_iframe.blur()
+        hud.blur(cmdline_iframe)
+        // cmdline_iframe.blur()
     } catch (e) {
         // Same as with hide(), it's ok to use cmdline_logger here
         cmdline_logger.error(e)

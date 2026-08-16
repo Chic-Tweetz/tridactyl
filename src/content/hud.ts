@@ -62,13 +62,17 @@ class HUDElement {
     }
 }
 
+i've added "salvage" functions for if document.write et al are called
+i wonder if we could have another mechanism for handling a lost hud iframe
+anything added by addElement would be "dead" and unusable (I THINK)
+... just make sure on that please? I'm not actually sure which elements were dead
+
 */
 
 
 let failed = false
 let initQueue: (() => any)[] = []
 let hudIframe = null
-let hudDoc = null
 let elementHost = null
 let overlayHost = null
 const hud = document.createElement("div")
@@ -128,15 +132,17 @@ export function show(elementOrSelector: Element | string) {
         if (!elementHost.contains(element)) return
     }
 
-    if (elementsToProxies.has(element)) {
-        elementsToProxies.get(element).style.display = ""
-    }
     element.style.display = ""
     element.removeAttribute("hidden")
 
     if (element.hasAttribute("hudautopopover")) {
         visiblePopovers.add(element)
         popover()
+    }
+
+    if (elementsToProxies.has(element)) {
+        resize(element)
+        elementsToProxies.get(element).style.removeProperty("display")
     }
 }
 
@@ -162,6 +168,11 @@ export function hide(elementOrSelector: Element | string) {
             popover(false)
         }
     }
+}
+
+export function blur(element) {
+    element.blur()
+    hudIframe?.blur?.()
 }
 
 export function toggleHidden(elementOrSelector: Element | string) {
@@ -299,19 +310,49 @@ function makeHudIframe(): Promise<HTMLIFrameElement> {
     return new Promise((resolve, reject) => {
         iframe.addEventListener("load", () => {
             if (iframe.contentDocument && !autoFail) {
-                iframe.contentDocument.body.style.margin = "0"
-                iframe.contentDocument.body.style.padding = "0"
+                // const win = iframe.contentWindow
+                const doc = iframe.contentDocument
 
-                hudDoc = iframe.contentDocument
-                elementHost = hudDoc.documentElement
+                // Was originally appending to the body
+                // But you never know when style rules will be like :root>thing { ... }
+                // So going to the documentElement instead now
+                // (these rules can go then yes?)
+                // doc.body.style.margin = "0"
+                // doc.body.style.padding = "0"
+
+                // Weird focus behaviour when e.g. closing commandline
+                // Focus being given to the hud iframe
+                // I'm going to say that if we ever focus the iframe body, that's a mistake
+                // But initially the active element will be the cmdline iframe (or whatever else)
+                // So setTimeout it is
+
+                // setTimeout doesn't work, sometimes it's still focusing the commandline next frame >:|
+                // body focus event doesn't fire so that won't work
+                // win.addEventListener("focus", (e) => {
+                //     if (doc.activeElement === doc.body) {
+                //         console.log("hud iframe stole focus but we put a stop to that")
+                //         iframe.blur()
+                //     } else {
+                //         setTimeout(() => {
+                //             if (doc.activeElement === doc.body) {
+                //                 console.log("hud iframe stole focus but we put a stop to that... after a timeout")
+                //                 iframe.blur()
+                //             }
+                //         })
+                //     }
+                // })
+
+                elementHost = doc.documentElement
                 overlayHost = makeHudProxiesOverlay()
                 styling.theme(iframe.contentDocument.documentElement)
+                hudIframe = iframe
                 resolve(iframe)
             } else {
                 console.error("Could not access HUD iframe's content")
                 failed = true
                 makeNoIframeBackupHost()
                 iframe.remove()
+                hudIframe = null
                 reject()
             }
         })
@@ -339,14 +380,17 @@ export function salvageElements() {
     salvagedOverlayFrag = document.createDocumentFragment()
     while (overlayHost.firstElementChild)
         salvagedOverlayFrag.appendChild(overlayHost.firstElementChild)
+    shadow.replaceChildren()
 }
 
+// seems the frags can be undefined at this point
+// that would suggest document.write (or whatever) is called before we have an elementHost ready
 export function reattachElements() {
     document.documentElement.appendChild(hud)
     makeHudIframe()
     .then(() => {
-        elementHost.appendChild(salvagedDocFrag)
-        overlayHost.appendChild(salvagedOverlayFrag)
+        if (salvagedDocFrag) elementHost.appendChild(salvagedDocFrag)
+        if (salvagedOverlayFrag) overlayHost.appendChild(salvagedOverlayFrag)
     })
 }
 
@@ -384,7 +428,7 @@ async function init() {
     attachHud()
     try {
         initPromise = makeHudIframe()
-        hudIframe = await initPromise
+        await initPromise
     } catch(_) {}
     for (const fn of initQueue) {
         fn()
@@ -565,15 +609,28 @@ export function attachHud() {
 }
 
 // Create an observer instance linked to the callback function
-const observer = new MutationObserver((mutationList) => {
-    const toUpdate = new Set()
-    for (const mutation of mutationList) {
-        toUpdate.add(mutation.target)
-    }
-    for (const elem of toUpdate) {
-        const targetProxy = elementsToProxies.get(elem)
+// const observer = new MutationObserver((mutationList) => {
+//     const toUpdate = new Set()
+//     for (const mutation of mutationList) {
+//         toUpdate.add(mutation.target)
+//     }
+//     for (const elem of toUpdate) {
+//         console.log("mutation observer resize")
+//         const targetProxy = elementsToProxies.get(elem)
+//         if (targetProxy) {
+//             updateGeometry(elem, targetProxy)
+//             if (targetProxy === mouseOverElem && autoUpdateSurrounders) {
+//                 updateSurrounders()
+//             }
+//         }
+//     }
+// })
+
+const resizeObserver = new ResizeObserver((entries) => {
+  for (const { target } of entries) {
+        const targetProxy = elementsToProxies.get(target)
         if (targetProxy) {
-            updateGeometry(elem, targetProxy)
+            updateGeometry(target, targetProxy)
             if (targetProxy === mouseOverElem && autoUpdateSurrounders) {
                 updateSurrounders()
             }
@@ -582,8 +639,9 @@ const observer = new MutationObserver((mutationList) => {
 })
 
 function observeElement(element) {
-    const config = { attributes: true, childList: true, subtree: true }
-    observer.observe(element, config)
+    // const config = { attributes: true, childList: true, subtree: true }
+    // observer.observe(element, config)
+    resizeObserver.observe(element)
 }
 
 let lastResize = 0
