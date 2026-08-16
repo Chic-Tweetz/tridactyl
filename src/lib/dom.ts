@@ -814,7 +814,7 @@ export function pruneHintworthyJSElems() {
         }
     }
     while (hintworthy_js_elems_map.size > MAX_HINTWORTHY_JS_ELEMS) {
-        hintworthy_js_elems_map.delete(hintworthy_js_elems_map.values().next().value)
+        hintworthy_js_elems_map.delete(hintworthy_js_elems_map.keys().next().value)
     }
     hintworthy_js_elems_additions = 0
 }
