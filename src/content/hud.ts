@@ -69,9 +69,17 @@ anything added by addElement would be "dead" and unusable (I THINK)
 
 */
 
+// Perhaps what i'd want is to map elements to their options/proxies?
+// that's so i can call addElement with the original options to reattach them
+// i realise this is an array so elements would be reinserted in the same order
+let uiElements: UIElement[] = []
+class UIElement {
+    public proxy?: Element
+    constructor(readonly element: Element, readonly options: UIElementOptions) {}
+}
 
 let failed = false
-let initQueue: (() => any)[] = []
+let initQueue: ([Element, UIElementOptions])[] = []
 let hudIframe = null
 let elementHost = null
 let overlayHost = null
@@ -85,7 +93,7 @@ const visiblePopovers: Set<Element> = new Set()
 // const allowNoIframeWorkaround = true // config setting I suppose? Also I've added it as an option for individual elements now
 const autoFail = false // for testing
 
-const elementsToProxies = new Map()
+let elementsToProxies = new Map()
 // const hintables: Set<Element> = new Set()
 // on allowNoIframeFallback, consider:
 // cmdline - in its own iframe anyway (so allow!)
@@ -105,6 +113,8 @@ interface UIElementOptions {
     startHidden?: boolean,
 }
 
+// This should return a UIElement from which you can call its show/hide/whatever members
+// It's just a bit cobbled together atm
 export function query(selector) {
     return elementHost.querySelector(selector) || elementHost.querySelector(`[hudname=${selector}]`)
 }
@@ -120,6 +130,19 @@ export function popover(pop = true) {
     } else if (!pop) {
         hud.removeAttribute("popover")
     }
+}
+
+export function isConnected(elementOrSelector: Element | string) {
+    if (typeof elementOrSelector === "string") {
+        return query(elementOrSelector) ||
+            initQueue.find(([queuedEl]) =>
+                queuedEl.matches(elementOrSelector) ||
+                queuedEl.matches(`[hudname=${elementOrSelector}]`)
+            )
+    }
+
+    return elementOrSelector.isConnected ||
+        initQueue.find(([queuedEl]) => elementOrSelector === queuedEl)
 }
 
 export function show(elementOrSelector: Element | string) {
@@ -197,14 +220,29 @@ export function resize(element) {
 
 export function addElement(element, options: UIElementOptions = {}) {
     if (!hudIframe && !failed) {
-        initQueue.push(() => addElement(element, options))
+        initQueue.push([element, options])
         init()
         return
     }
     if (failed && !options.abortIfNoIframe) {
-        console.error("Did not add element to hud: iframe is blocked and abortIfNoIframe option is set")
         return
     }
+
+    const hudName = options.name || element.id || Math.random().toString()
+
+    // I intend to move away from all these functions that are passed an element
+    // and instead create UIElements and return those
+    // so you'd use someUiElement.hide() instead of HUD.hide(someElement) for instance
+    // for now i'm just using this as a way of remembering what's been attached and with what options
+    const uiElement = new UIElement(element, options)
+    // if the element has been attached before, should I also be removing it/its proxies here
+    // I've already forgotten quite why I needed to add the uiElements array
+    // But i think it was to do with the document.write protection stuff
+    // Why isn't this just a set of elements then
+    // Or you can just use elementsToProxies with null for the proxies or something
+    // ... yeah, dunno what's going on
+    uiElements = uiElements.filter((uiEl) => (uiEl.element !== element))
+    uiElements.push(uiElement)
 
     if (!hud.isConnected) document.documentElement.appendChild(hud)
 
@@ -212,7 +250,7 @@ export function addElement(element, options: UIElementOptions = {}) {
     // Currently, we're just sometimes adding the status indicator twice and ending up with two proxies
     elementsToProxies.get(element)?.remove?.()
 
-    element.setAttribute("hudname", options.name || element.id || Math.random().toString())
+    element.setAttribute("hudname", hudName)
 
     if (options.hintable) {
         // hintables.add(element)
@@ -260,10 +298,11 @@ export function addElement(element, options: UIElementOptions = {}) {
 
     switch (options.mouseable) {
         case true: addMousableElement(element); break
-        case "hide": addMouseHidesElement(element) ;break
+        case "hide": addMouseHidesElement(element); break
         default: addMouselessElement(element)
     }
 
+    setTimeout(() => resize(element))
     observeElement(element)
 }
 
@@ -363,35 +402,48 @@ function makeHudIframe(): Promise<HTMLIFrameElement> {
 // If iframe is detached, we'll lose anything in it (dead elements)
 // if we know it's going to happen we can take everything out first
 // e.g. if document.write is called we can do this first and reattachElements after
-let salvagedDocFrag
-let salvagedOverlayFrag
+
+let salvagedQueue = []
+
 export function salvageElements() {
-    if (!elementHost) return
-    salvagedDocFrag = document.createDocumentFragment()
-    while (elementHost.firstElementChild) {
-        const child = elementHost.firstElementChild
-        if (child.tagName !== "BODY" && child.tagName !== "HEAD") {
-            salvagedDocFrag.appendChild(child)
-        } else {
-            child.remove()
-        }
+    console.warn("HUD: salvaging elements after document.write/writeln/open call")
+    if (uiElements.length) {
+        salvagedQueue = salvagedQueue.concat(uiElements.map(uiEl => [uiEl.element, uiEl.options]))
+        uiElements = []
     }
-    overlayHost.remove()
-    salvagedOverlayFrag = document.createDocumentFragment()
-    while (overlayHost.firstElementChild)
-        salvagedOverlayFrag.appendChild(overlayHost.firstElementChild)
+    if (initQueue.length) {
+        salvagedQueue = salvagedQueue.concat(initQueue)
+        initQueue = []
+    }
+    initPromise = null
+    hudIframe = null
+    overlayHost = null
+    elementHost = null
+
+    elementsToProxies = new Map()
+
     shadow.replaceChildren()
+    hud.remove()
 }
 
+let reattachDebounceTimer = null
 // seems the frags can be undefined at this point
 // that would suggest document.write (or whatever) is called before we have an elementHost ready
 export function reattachElements() {
-    document.documentElement.appendChild(hud)
-    makeHudIframe()
-    .then(() => {
-        if (salvagedDocFrag) elementHost.appendChild(salvagedDocFrag)
-        if (salvagedOverlayFrag) overlayHost.appendChild(salvagedOverlayFrag)
-    })
+    clearTimeout(reattachDebounceTimer)
+    reattachDebounceTimer = setTimeout(() => {
+        if (initPromise) {
+            return
+        }
+        init()
+        .then(() => {
+            console.warn("HUD: reattaching elements")
+            for (const [element, options] of salvagedQueue) {
+                addElement(element, options)
+            }
+            salvagedQueue = []
+        })
+    }, 200)
 }
 
 // If you have no iframe and still want to allow elements to be added
@@ -423,21 +475,26 @@ function makeHudProxiesOverlay() {
     return proxyOverlay
 }
 
-async function init() {
+function init() {
     if (initPromise) return initPromise
     attachHud()
-    try {
-        initPromise = makeHudIframe()
-        await initPromise
-    } catch(_) {}
-    for (const fn of initQueue) {
-        fn()
-    }
-    initQueue = []
+
+    initPromise = makeHudIframe()
+
+    initPromise.then(() => {
+        for (const [element, options] of initQueue) {
+            addElement(element, options)
+        }
+        initQueue = []
+    }, () => {
+        initPromise = null
+        hudIframe = null
+    })
+
     // Let's just brute-force make sure the elements have their proxies in the right place
-    setTimeout(onresize, 50)
-    setTimeout(onresize, 500)
-    setTimeout(onresize, 1000)
+    // setTimeout(onresize, 50)
+    // setTimeout(onresize, 500)
+    // setTimeout(onresize, 1000)
     return initPromise
 }
 
@@ -570,15 +627,7 @@ function addMousableElement(element: HTMLElement) {
 }
 
 function addMouselessElement(element: HTMLElement) {
-    if (!hudIframe && !failed) {
-        initQueue.push(() => addMouselessElement(element))
-        init()
-        return
-    }
-
-    if (failed) {
-        element.style.pointerEvents = "none"
-    }
+    if (failed) element.style.pointerEvents = "none"
     elementsToProxies.set(element, null)
     elementHost.appendChild(element)
 }
@@ -586,6 +635,10 @@ function addMouselessElement(element: HTMLElement) {
 export function removeElement(element) {
     elementsToProxies.get(element)?.remove()
     elementsToProxies.delete(element)
+
+    // seriously what did i make this array for
+    uiElements = uiElements.filter((uiEl) => (uiEl.element !== element))
+
     // hintables.delete(element)
     if (element.hasAttribute("hudautopopover")) {
         visiblePopovers.delete(element)

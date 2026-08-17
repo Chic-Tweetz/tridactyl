@@ -14,7 +14,6 @@ import * as hud from "@src/content/hud"
 const logger = new Logger("messaging")
 const cmdline_logger = new Logger("cmdline")
 
-
 /* TODO:
     CSS
     Friendliest-to-webpage way of injecting commandline bar?
@@ -36,6 +35,7 @@ let iframeGeneration = ""
 export function makeIframe() {
     resolveIframeReady?.()
     iframeGeneration = Math.random().toString()
+
     cmdline_iframe = window.document.createElementNS(
         "http://www.w3.org/1999/xhtml",
         "iframe",
@@ -192,7 +192,7 @@ init().catch(() => {
 })
 
 export function ensureIframeExists() {
-    if (enabled && !cmdline_iframe.isConnected) {
+    if (enabled && !hud.isConnected(cmdline_iframe)) {
         makeIframe()
         hud.addElement(cmdline_iframe, { mouseable: true, popover: true, startHidden: true })
     }
