@@ -76,7 +76,7 @@
 
 // Shared
 import * as Messaging from "@src/lib/messaging"
-import { ownWinTriIndex, getTriVersion, getTriVersionName, browserBg, activeTab, activeTabOnWindow, activeTabId, activeTabContainerId, openInNewTab, openInNewWindow, openInTab, queryAndURLwrangler, goToTab, getSortedTabs, prevActiveTab, getLastAudibleTab } from "@src/lib/webext"
+import { ownWinTriIndex, getTriVersion, getTriVersionName, browserBg, activeTab, activeTabOnWindow, activeTabId, activeTabContainerId, openInNewTab, openInNewWindow, openInTab, queryAndURLwrangler, goToTab, getSortedTabs, prevActiveTab, getLastAudibleTab, getContext } from "@src/lib/webext"
 import * as Container from "@src/lib/containers"
 import state from "@src/state"
 import * as State from "@src/state"
@@ -4433,13 +4433,49 @@ export async function yankimage(url: string): Promise<void> {
  */
 //#background
 export async function tab(...id: string[]) {
+    if (id.length === 0) id = ["#"]
     return tab_helper(true, false, ...id)
+}
+
+let currWindow
+let prevWindow
+if (getContext() === "background") {
+    (async () => {
+        currWindow = (await browser.windows.getCurrent()).id
+        prevWindow = currWindow
+        const updateWindows = async () => {
+            const curr = (await browser.windows.getCurrent()).id
+            if (curr !== currWindow) {
+                prevWindow = currWindow
+                currWindow = curr
+            }
+        }
+        browser.tabs.onActivated.addListener(() => updateWindows())
+        browser.windows.onFocusChanged.addListener(windowId => {
+            if (windowId === browser.windows.WINDOW_ID_NONE) return
+            updateWindows()
+        })
+    })()
 }
 
 /** Wrapper for [[tab]] with multi-window completions
  */
 //#background
 export async function taball(...id: string[]) {
+    if (id.length === 0) {
+        if (prevWindow !== currWindow) {
+            const changedWindow = await browser.windows.update(prevWindow, { focused: true })
+            .then(
+                () => true,
+                () => {
+                    prevWindow = currWindow
+                    return false
+                }
+            )
+            if (changedWindow) return
+        }
+        return tab_helper(true, false, "#")
+    }
     return tab_helper(true, true, ...id)
 }
 
