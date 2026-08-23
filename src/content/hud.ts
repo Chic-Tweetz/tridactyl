@@ -163,8 +163,9 @@ export function show(elementOrSelector: Element | string) {
         popover()
     }
 
-    if (elementsToProxies.has(element)) {
-        resize(element)
+    const proxy = elementsToProxies.get(element)
+    if (proxy) {
+        updateGeometry(element, proxy)
         elementsToProxies.get(element).style.removeProperty("display")
     }
 }
@@ -179,9 +180,9 @@ export function hide(elementOrSelector: Element | string) {
         if (!elementHost.contains(element)) return
     }
 
-    if (elementsToProxies.has(element)) {
-        elementsToProxies.get(element).style.display = "none"
-    }
+    const proxy = elementsToProxies.get(element)
+    if (proxy) proxy.style.display = "none"
+
     element.style.setProperty("display", "none", "important")
     element.setAttribute("hidden", true)
 
@@ -214,8 +215,9 @@ export function toggleHidden(elementOrSelector: Element | string) {
 
 // Going to use this on the mode indicator which doesn't always match its proxy
 export function resize(element) {
-    if (elementsToProxies.has(element))
-        updateGeometry(element, elementsToProxies.get(element))
+    const proxy = elementsToProxies.get(element)
+    if (proxy)
+        updateGeometry(element, proxy)
 }
 
 export function addElement(element, options: UIElementOptions = {}) {
