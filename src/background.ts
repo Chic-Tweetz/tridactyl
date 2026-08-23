@@ -221,7 +221,6 @@ for (const requestEvent of webrequests.requestEvents) {
     })
 }
 
-
 // }}}
 
 // {{{ AUTOCONTAINERS
@@ -230,16 +229,27 @@ let curWin: null | number = null
 browser.windows.onFocusChanged.addListener((windowId) => {
     // Not clear whether curTab will update when changing windows, doesn't look like it
     if (curWin) {
-        browser.tabs.query({ windowId: curWin,  active:true }).then(tabs => {
+        browser.tabs.query({ windowId: curWin, active: true }).then(tabs => {
             const t = tabs[0]
-            if (t) {
-                messaging.messageTab(t.id, "tab_changes", "tab_left", [])
-                    .catch()
-            }
+            if (t)
+                messaging
+                    .messageTab(t.id, "tab_changes", "tab_left", [])
+                    .catch(_ => _)
         })
     }
     curWin = windowId
-});
+
+    // Why on earth is this firing so many times
+    setTimeout(() => {
+        browser.tabs.query({ windowId, active: true }).then(tabs => {
+            const t = tabs[0]
+            if (t)
+                messaging
+                    .messageTab(t.id, "tab_changes", "tab_entered", [])
+                    .catch(_ => _)
+        })
+    })
+})
 
 
 extension_info.init()

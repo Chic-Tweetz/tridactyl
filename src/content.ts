@@ -615,6 +615,11 @@ function addStatusIndicator() {
     config.addChangeListener("modeindicatorshowlastex", () =>
         void refreshStatusIndicator(),
     )
+
+    messaging.addListener("tab_changes", ({ _type, command, _args }) => {
+        if (command === "tab_entered") refreshStatusIndicator()
+    })
+
     void refreshStatusIndicator()
 }
 
