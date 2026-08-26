@@ -111,6 +111,7 @@ interface UIElementOptions {
     popover?: boolean,
     name?: string,
     startHidden?: boolean,
+    afterAttachedCallback?: () => void,
 }
 
 // This should return a UIElement from which you can call its show/hide/whatever members
@@ -304,12 +305,21 @@ export function addElement(element, options: UIElementOptions = {}) {
         default: addMouselessElement(element)
     }
 
-    setTimeout(() => resize(element))
+    options.afterAttachedCallback?.()
+
+    setTimeout(() => {
+        resize(element)
+    })
+
     observeElement(element)
 }
 
 export function getHudIframe() {
     return hudIframe
+}
+
+export function getHudShadowHost() {
+    return hud
 }
 
 // Stop hinting proxies and stuff
@@ -319,6 +329,7 @@ export function isHUDElement(element) {
 
 export function getHintableElements(selectors = "*", filters: ((ele: HTMLElement) => boolean)[] = []) {
     // return Array.from(hintables)
+    if (!elementHost) return []
     return (Array.from(elementHost.querySelectorAll(selectors)))
         .filter(
             el => (el as HTMLElement).matches("[hudhintable],[hudhintable] *") &&

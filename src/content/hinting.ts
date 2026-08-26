@@ -711,7 +711,18 @@ export function hintPage(
     modeState.hudTranslate.appendChild(modeState.hintHost)
     modeState.hud.appendChild(modeState.hudTranslate)
 
-    HUD.addElement(modeState.hud, { popover: true })
+    const thisModeState = modeState
+    HUD.addElement(modeState.hud, {
+        popover: true,
+        afterAttachedCallback: () => {
+            requestAnimationFrame(() => {
+                if (modeState === thisModeState) {
+                    console.log("deoverlapping as a callback?")
+                    modeState.deOverlap()
+                }
+            })
+        }
+    })
 
     // document.documentElement.appendChild(modeState.hud)
     // const hud = modeState.hud as any
