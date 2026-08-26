@@ -4704,6 +4704,29 @@ export async function taball(...id: string[]) {
             )
             if (changedWindow) return
         }
+
+        // Closing/combining windows gives a dud prevWindow id so check if there are multiple windows
+        // if there are, switch to a different window otherwise switch to the last tab in the same window
+        const allWindows = await browser.windows.getAll()
+        if (allWindows.length > 1) {
+            const thisWindow = allWindows.find(w => w.focused) || allWindows[0]
+            const allTabs = await getSortedTabs("mru", true)
+            const newFocus = allTabs.find(tab => tab.windowId !== thisWindow.id) || allTabs[1] || allTabs[0]
+
+            currWindow = thisWindow.id
+            prevWindow = newFocus.windowId
+
+            const changedWindow = await browser.windows.update(newFocus.windowId, { focused: true })
+            .then(
+                () => true,
+                () => {
+                    prevWindow = currWindow
+                    return false
+                }
+            )
+            if (changedWindow) return
+        }
+
         return tab_helper(true, false, "#")
     }
     return tab_helper(true, true, ...id)

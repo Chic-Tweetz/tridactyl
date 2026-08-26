@@ -716,10 +716,8 @@ export function hintPage(
         popover: true,
         afterAttachedCallback: () => {
             requestAnimationFrame(() => {
-                if (modeState === thisModeState) {
-                    console.log("deoverlapping as a callback?")
+                if (modeState === thisModeState)
                     modeState.deOverlap()
-                }
             })
         }
     })
