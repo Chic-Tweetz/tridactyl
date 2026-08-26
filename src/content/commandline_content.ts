@@ -152,7 +152,7 @@ async function init(onDemand = false) {
                             }
                         }
                     }),
-                ).observe(cmdline_iframe.parentNode, {
+                ).observe(hud.getHudShadowHost().parentNode || document.documentElement, {
                     childList: true,
                     subtree: true,
                 })
