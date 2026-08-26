@@ -11,37 +11,26 @@ class NModeState {
     public curCommands = 0
     public mode = "normal"
     public endCommand = ""
-    public ignoreInitialKeyup = true
 }
 
 let modeState: NModeState
 
 /** Init n [mode] mode. After parsing the defined number of commands, execute
 `endCmd`. `Escape` cancels the mode and executes `endCmd`. */
-export function init(
-    endCommand: string,
-    mode = "normal",
-    numCommands = 1,
-    strict = false,
-) {
+export function init(endCommand: string, mode = "normal", numCommands = 1) {
     contentState.mode = "nmode"
     modeState = new NModeState()
     modeState.endCommand = endCommand
     modeState.numCommands = numCommands
     modeState.mode = mode
-    modeState.ignoreInitialKeyup = !strict
 }
 
 /** Receive keypress. If applicable, execute a command. */
 export function parser(keys: keyseq.MinimalKey[]) {
-    if (modeState.ignoreInitialKeyup) {
-        modeState.ignoreInitialKeyup = false
-        if (keys[0]?.keyup) keys = keys.slice(1)
-    }
     keys = keyseq.stripOnlyModifiers(keys)
     if (keys.length === 0) return { keys: [], isMatch: false }
     const conf = mode2maps.get(modeState.mode) || modeState.mode + "maps"
-    // const maps = keyseq.keyMap(conf)
+
     const trie = keyseq.keyTrie(conf)
     const key = keys[0].key
 
@@ -50,20 +39,15 @@ export function parser(keys: keyseq.MinimalKey[]) {
         modeState = undefined
         return { keys: [], exstr }
     }
-    // const response = keyseq.parse(keys, maps)
+
     const response = keyseq.parse(keys, trie)
 
-    // What if the nmode bind also has corresponding a keyup bind in the temporary mode?
-    // Like :bind b nmode...  :bind --mode=whatever <U-b>  ...
-    // We'd want to ignore that entirely wouldn't we
-    // Would quite like to "capture" keypresses entirely in situations like this, cancelling the keyup/repeats completely
-    let inc = 1
-    if (!response.isMatch && keys[0].keyup) {
-        inc = 0
-    }
+    if (
+        (response.isMatch && response.exstr !== undefined) ||
+        (!response.isMatch && !keys[0].keyup)
+    )
+        modeState.curCommands++
 
-    if ((response.exstr !== undefined && response.isMatch) || !response.isMatch)
-        modeState.curCommands += inc
     if (modeState.curCommands >= modeState.numCommands) {
         // KeyTrie change: response.exstr only executed if response.match === true
         // But if response.match === true, we cancel the key (which makes no sense for :nmode ignore ...)

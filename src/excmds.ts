@@ -6265,12 +6265,9 @@ export async function goto(...selector: string[]) {
  * Use `:nmode --strict ...` to accept it.
  */
 //#content
-export async function nmode(...args: string[]) {
-    const strict = args[0] === "--strict"
-    const [mode, count, ...endexArr] = args.slice(strict ? 1 : 0)
+export async function nmode(mode: string, n: number, ...endexArr: string[]) {
     const endex = endexArr.join(" ") || "mode ignore"
-    const n = count === undefined ? undefined : Number(count)
-    return nMode.init(endex, mode, n, strict)
+    return nMode.init(endex, mode, n)
 }
 
 // {{{TEXT TO SPEECH
