@@ -1078,6 +1078,11 @@ export class default_config {
     modeindicator: "true" | "false" = "true"
 
     /**
+     * Delay in ms before adding the mode indicator to the page. Perhaps helps on sites which don't like Tridactyl adding elements on load.
+     */
+    modeindicatorattachdelay = 0
+
+    /**
      * Whether to display the mode indicator in various modes. Ignored if modeindicator set to false.
      */
     modeindicatormodes: { [key: string]: "true" | "false" } = {

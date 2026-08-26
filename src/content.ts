@@ -417,7 +417,7 @@ if (
 // Really bad status indicator
 let statusIndicator
 function mountStatusIndicator() {
-    if (statusIndicator.isConnected) return
+    if (statusIndicator.isConnected || config.get("modeindicator") !== "true") return
     hud.addElement(statusIndicator, { mouseable: "hide", name: "modeindicator" })
     // if (statusIndicator.parentNode === document.documentElement) return
     // if (config.get("modeindicator") === "true")
@@ -624,7 +624,11 @@ function addStatusIndicator() {
 }
 
 config.getAsync("modeindicator").then(mode => {
-    if (mode === "true") addStatusIndicator()
+    if (mode === "true") {
+        setTimeout(() => {
+            addStatusIndicator()
+        }, Number(config.get("modeindicatorattachdelay")) || 0)
+    }
 })
 config.addChangeListener("modeindicator", (_, newValue) => {
     if (newValue === "true") addStatusIndicator()
@@ -700,7 +704,11 @@ const checkElemsSurvived = () => {
     if (document.readyState === "complete") {
         commandline_content.ensureIframeExists()
 
-        if (config.get("modeindicator") === "true") addStatusIndicator()
+        if (config.get("modeindicator") === "true") {
+            setTimeout(() => {
+                addStatusIndicator()
+            }, Number(config.get("modeindicatorattachdelay")) || 0)
+        }
 
         // We only want to check the iframe survived between "interactive" and "complete"
         document.removeEventListener("readystatechange", checkElemsSurvived)
