@@ -157,8 +157,9 @@ class HintState {
     // move overlapping hints around
     deOverlap() {
         this.hints.sort((a, b) => a.y - b.y)
+
         const visited: Hint[] = []
-        for (const h of this.hints) {
+        for (const h of this.hints.filter(hint => !hint.hidden && hint.rect)) {
             for (const vh of visited) {
                 if (h.overlapsWith(vh)) {
                     if (vh.x + vh.width < h.rect.right) h.x = vh.x + vh.width
@@ -493,7 +494,7 @@ function render() {
             modeState?.highlightHost?.replaceChildren()
             modeState?.outlineHost?.replaceChildren()
 
-            for (const hint of modeState.activeHints) {
+            for (const hint of modeState.hints.filter(h => h.active)) {
                 hint.calculateGeometry()
             }
 
@@ -729,7 +730,7 @@ export function hintPage(
     //     hud.showPopover()
     // }
 
-    modeState.deOverlap()
+    // modeState.deOverlap()
     window.removeEventListener("scroll", updateHudOffset)
     window.addEventListener("scroll", updateHudOffset)
     window.removeEventListener("resize", repositionDebounced)
@@ -1133,7 +1134,6 @@ class Hint {
     }
 
     public calculateGeometry(cachedRects?: DOMRectList) {
-
         const target = this.target.deref()
         if (!target) {
             this.noRects = true
@@ -1159,13 +1159,27 @@ class Hint {
             this.noRects = true
             return
         }
-        this.noRects = false
+
+        let onscreen = false
         for (const recti of clientRects) {
-            if (recti.bottom + offsetTop > 0 && recti.right + offsetLeft > 0) {
+            if (
+                recti.bottom + offsetTop > 0 &&
+                recti.right + offsetLeft > 0 &&
+                recti.left + offsetLeft < window.innerWidth &&
+                recti.top + offsetTop < window.innerHeight
+            ) {
                 rect = recti
+                onscreen = true
                 break
             }
         }
+
+        if (!onscreen) {
+            this.noRects = true
+            return
+        }
+
+        this.noRects = false
 
         this.rect = {
             top: rect.top + offsetTop,
@@ -1491,6 +1505,7 @@ function filterHintsSimple(fstr) {
             active.push(h)
         }
     }
+
     if (active.length === 1 && config.get("hintautoselect") === "true") {
         selectFocusedHint()
     }
