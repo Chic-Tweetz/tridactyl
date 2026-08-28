@@ -78,7 +78,7 @@ class UIElement {
     constructor(readonly element: Element, readonly options: UIElementOptions) {}
 }
 
-let failed = false
+let noiframe = false
 let initQueue: ([Element, UIElementOptions])[] = []
 let hudIframe = null
 let elementHost = null
@@ -222,12 +222,12 @@ export function resize(element) {
 }
 
 export function addElement(element, options: UIElementOptions = {}) {
-    if (!hudIframe && !failed) {
+    if (!hudIframe && !noiframe) {
         initQueue.push([element, options])
         init()
         return
     }
-    if (failed && !options.abortIfNoIframe) {
+    if (noiframe && !options.abortIfNoIframe && !(config.get("hudnoiframe") === "true")) {
         return
     }
 
@@ -345,6 +345,13 @@ export function hint() {
 }
 
 function makeHudIframe(): Promise<HTMLIFrameElement> {
+    if (config.get("hudnoiframe") === "true") {
+        hudIframe = null
+        noiframe = true
+        makeNoIframeBackupHost()
+        return Promise.reject()
+    }
+
     const iframe = document.createElement("iframe")
     iframe.setAttribute(
         "src",
@@ -365,35 +372,6 @@ function makeHudIframe(): Promise<HTMLIFrameElement> {
                 // const win = iframe.contentWindow
                 const doc = iframe.contentDocument
 
-                // Was originally appending to the body
-                // But you never know when style rules will be like :root>thing { ... }
-                // So going to the documentElement instead now
-                // (these rules can go then yes?)
-                // doc.body.style.margin = "0"
-                // doc.body.style.padding = "0"
-
-                // Weird focus behaviour when e.g. closing commandline
-                // Focus being given to the hud iframe
-                // I'm going to say that if we ever focus the iframe body, that's a mistake
-                // But initially the active element will be the cmdline iframe (or whatever else)
-                // So setTimeout it is
-
-                // setTimeout doesn't work, sometimes it's still focusing the commandline next frame >:|
-                // body focus event doesn't fire so that won't work
-                // win.addEventListener("focus", (e) => {
-                //     if (doc.activeElement === doc.body) {
-                //         console.log("hud iframe stole focus but we put a stop to that")
-                //         iframe.blur()
-                //     } else {
-                //         setTimeout(() => {
-                //             if (doc.activeElement === doc.body) {
-                //                 console.log("hud iframe stole focus but we put a stop to that... after a timeout")
-                //                 iframe.blur()
-                //             }
-                //         })
-                //     }
-                // })
-
                 elementHost = doc.documentElement
                 overlayHost = makeHudProxiesOverlay()
                 styling.theme(iframe.contentDocument.documentElement)
@@ -401,10 +379,10 @@ function makeHudIframe(): Promise<HTMLIFrameElement> {
                 resolve(iframe)
             } else {
                 console.error("Could not access HUD iframe's content")
-                failed = true
-                makeNoIframeBackupHost()
                 iframe.remove()
                 hudIframe = null
+                noiframe = true
+                makeNoIframeBackupHost()
                 reject()
             }
         })
@@ -448,8 +426,12 @@ export function reattachElements() {
         if (initPromise) {
             return
         }
+
         init()
-        .then(() => {
+        .catch(() => {
+            hudIframe = null
+        })
+        .finally(() => {
             console.warn("HUD: reattaching elements")
             for (const [element, options] of salvagedQueue) {
                 addElement(element, options)
@@ -494,15 +476,27 @@ function init() {
 
     initPromise = makeHudIframe()
 
-    initPromise.then(() => {
+    initPromise
+    .catch(() => {
+        initPromise = null // Why do I do this?
+        hudIframe = null
+    })
+    .finally(() => {
         for (const [element, options] of initQueue) {
             addElement(element, options)
         }
         initQueue = []
-    }, () => {
-        initPromise = null
-        hudIframe = null
     })
+
+    // initPromise.then(() => {
+    //     for (const [element, options] of initQueue) {
+    //         addElement(element, options)
+    //     }
+    //     initQueue = []
+    // }, () => {
+    //     initPromise = null
+    //     hudIframe = null
+    // })
 
     // Let's just brute-force make sure the elements have their proxies in the right place
     // setTimeout(onresize, 50)
@@ -617,7 +611,7 @@ function addMouseHidesElement(element: HTMLElement) {
 
 function addMousableElement(element: HTMLElement) {
     element.style.pointerEvents = "all"
-    if (failed) return
+    if (noiframe) return
 
     const proxy = createProxyOverlay(element)
     proxy.style.pointerEvents = "all"
@@ -625,13 +619,13 @@ function addMousableElement(element: HTMLElement) {
     proxy.addEventListener("mouseenter", () => {
         proxy.style.pointerEvents = "none"
 
-        if (!failed)
+        if (!noiframe)
             hudIframe.style.pointerEvents = "all"
 
         mouseOver(proxy, () => {
             proxy.style.pointerEvents = "all"
 
-            if (!failed)
+            if (!noiframe)
                 hudIframe.style.pointerEvents = "none"
             },
             true,
@@ -640,7 +634,7 @@ function addMousableElement(element: HTMLElement) {
 }
 
 function addMouselessElement(element: HTMLElement) {
-    if (failed) element.style.pointerEvents = "none"
+    if (noiframe) element.style.pointerEvents = "none"
     elementsToProxies.set(element, null)
     elementHost.appendChild(element)
 }
@@ -673,24 +667,6 @@ export function attachHud() {
     window.removeEventListener("resize", onresizeDebounced)
     window.addEventListener("resize", onresizeDebounced)
 }
-
-// Create an observer instance linked to the callback function
-// const observer = new MutationObserver((mutationList) => {
-//     const toUpdate = new Set()
-//     for (const mutation of mutationList) {
-//         toUpdate.add(mutation.target)
-//     }
-//     for (const elem of toUpdate) {
-//         console.log("mutation observer resize")
-//         const targetProxy = elementsToProxies.get(elem)
-//         if (targetProxy) {
-//             updateGeometry(elem, targetProxy)
-//             if (targetProxy === mouseOverElem && autoUpdateSurrounders) {
-//                 updateSurrounders()
-//             }
-//         }
-//     }
-// })
 
 const resizeObserver = new ResizeObserver((entries) => {
   for (const { target } of entries) {

@@ -1883,6 +1883,13 @@ export class default_config {
      */
     huddebug: "true"  | "false" = "false"
 
+    /**
+     * Attach hud elements to a div in a shadow DOM instead of inside an iframe.
+     *
+     * May be more leaky (e.g. modeindicator with modeindicatorshowlastex).
+     * Use with `:seturl` on trusted sites or keep false if that is a concern.
+     */
+    hudnoiframe: "true" | "false" = "false"
 }
 
 /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
