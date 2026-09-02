@@ -288,6 +288,8 @@ browser.tabs.onRemoved.addListener(aucon.tabRemovedListener)
 
 // {{{ PERFORMANCE LOGGING
 
+const jsCache = new Map<string, string>()
+
 // An object to collect all of our statistics in one place.
 const statsLogger: perf.StatsLogger = new perf.StatsLogger()
 const messages = {
@@ -312,6 +314,10 @@ const messages = {
     },
     browser_proxy_background: { shim: proxy_background.shim },
     omniscient_background: omniscient_controller,
+    js_cache_background: {
+        get: source => jsCache.get(source),
+        set: (source, content) => jsCache.set(source, content),
+    }
 }
 export type Messages = typeof messages
 

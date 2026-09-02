@@ -6,11 +6,11 @@ class FileSystemCompletionOption
     implements Completions.CompletionOptionFuse {
     public fuseKeys = []
 
-    constructor(public value: string) {
+    constructor(public value: string, display?: string) {
         super()
         this.fuseKeys = [value]
         this.html = html`<tr class="FileSystemCompletionOption option">
-            <td class="value">${value}</td>
+            <td class="value">${display || value}</td>
         </tr>`
     }
 }
@@ -20,7 +20,7 @@ export class FileSystemCompletionSource extends Completions.CompletionSourceFuse
 
     constructor(private _parent) {
         super(
-            ["saveas", "source", "js -s", "jsb -s"],
+            ["saveas", "source", "js -s", "js -sc", "js -sbc", "jsb -s", "jsb -sc", "js -r", "js -rc", "js -rbc", "jsb -r", "jsb -rc"],
             "FileSystemCompletionSource",
             "FileSystem",
         )
@@ -47,6 +47,15 @@ export class FileSystemCompletionSource extends Completions.CompletionSourceFuse
             return
         }
 
+        let pathPrefix = ""
+        const fromRC = cmd.startsWith("js") && cmd.includes("-r") && !path.startsWith("/") && !path.startsWith("~")
+        if (fromRC) {
+            const sep = "/"
+            const rcPath = (await Native.getrcpath("unix")).split(sep).slice(0, -1)
+            pathPrefix = [...rcPath].join(sep) + sep
+            path = [...rcPath, path].join(sep)
+        }
+
         if (!path) path = "."
 
         if (!["/", "$", "~", "."].find(s => path.startsWith(s))) {
@@ -56,7 +65,7 @@ export class FileSystemCompletionSource extends Completions.CompletionSourceFuse
         }
 
         // Update lastExstr because we modified the path and scoreOptions uses that in order to assign scores
-        this.lastExstr = [cmd, path].join(" ")
+        this.lastExstr = [cmd, path.slice(pathPrefix.length)].join(" ")
 
         let req
         try {
@@ -73,9 +82,15 @@ export class FileSystemCompletionSource extends Completions.CompletionSourceFuse
             path = path.substring(0, path.lastIndexOf("/") + 1)
         }
 
-        this.options = req.files.map(
-            p => new FileSystemCompletionOption(path + p),
-        )
+        if (fromRC) {
+            this.options = req.files.map(
+                p => new FileSystemCompletionOption((path.slice(pathPrefix.length) + p), path + p),
+            )
+        } else {
+            this.options = req.files.map(
+                p => new FileSystemCompletionOption(path + p),
+            )
+        }
 
         this.state = "normal"
         return this.updateChain()

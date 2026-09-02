@@ -6541,6 +6541,7 @@ async function js_helper(str: string[]) {
     let doSource = false
     let fromRC = false
     let cacheSource = false
+    let cacheSourceBg = false
     let separator = null
 
     while (true) {
@@ -6555,16 +6556,25 @@ async function js_helper(str: string[]) {
             continue
         }
 
-        if (flag == "-s") {
+        // Caching was only added for -r (relative to RC)
+        // which is why there's all this repetetion now I've added it for -s
+        // I added the -bc flags to cache in the background context
+        // to only read from disk once per session, not once per page load
+        // May want to add a way to override the cache
+        // because currently you'd have to restart the browser to update a cached source
+        if (flag == "-s" || flag == "-sc" || flag == "-sbc") {
             doSource = true
+            cacheSource ||= flag == "-sc" || flag == "-sbc"
+            cacheSourceBg ||= flag == "-sbc"
             str.shift()
             continue
         }
 
-        if (flag == "-r" || flag == "-rc") {
+        if (flag == "-r" || flag == "-rc" || flag == "-rbc") {
             doSource = true
             fromRC = true
-            cacheSource ||= flag == "-rc"
+            cacheSource ||= flag == "-rc" || flag == "-rbc"
+            cacheSourceBg ||= flag == "-rbc"
             str.shift()
             continue
         }
@@ -6598,11 +6608,22 @@ async function js_helper(str: string[]) {
             const rcPath = (await Native.getrcpath("unix")).split(sep).slice(0, -1)
             sourcePath = [...rcPath, sourcePath].join(sep)
         }
-        let source = cacheSource ? jsRcCache.get(sourcePath) : undefined
+        cacheSourceBg = getContext() !== "background" && cacheSourceBg
+
+        // Cache locally for tab & background
+        // just for a bit less async (probably not worth bothering but it's fine)
+        let source
+        if (cacheSource)
+            source = jsRcCache.get(sourcePath)
+        if (cacheSourceBg && source === undefined)
+            source = await Messaging.message("js_cache_background", "get", sourcePath)
+
         if (source === undefined) {
             const file = await Native.read(sourcePath)
             if (file.code !== 0) throw new Error("Couldn't read js file " + sourcePath)
             source = file.content
+            if (cacheSourceBg)
+                Messaging.message("js_cache_background", "set", sourcePath, source)
             if (cacheSource) jsRcCache.set(sourcePath, source)
         }
         jsContent = source

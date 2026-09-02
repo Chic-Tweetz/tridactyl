@@ -28,6 +28,8 @@ export type NonTabMessageType =
     | "browser_proxy_background"
     | "download_background"
     | "performance_background"
+    | "js_cache_background"
+
 export type MessageType = TabMessageType | NonTabMessageType
 
 export interface Message {
