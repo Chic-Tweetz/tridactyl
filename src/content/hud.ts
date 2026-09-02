@@ -81,8 +81,11 @@ class UIElement {
 let noiframe = false
 let initQueue: ([Element, UIElementOptions])[] = []
 let hudIframe = null
-let elementHost = null
-let overlayHost = null
+
+const elementHost = document.createElement("div")
+maximiseElement(elementHost)
+
+const overlayHost = makeHudProxiesOverlay()
 const hud = document.createElement("div")
 const shadow = hud.attachShadow({mode:"closed"})
 let initPromise
@@ -93,7 +96,7 @@ const visiblePopovers: Set<Element> = new Set()
 // const allowNoIframeWorkaround = true // config setting I suppose? Also I've added it as an option for individual elements now
 const autoFail = false // for testing
 
-let elementsToProxies = new Map()
+const elementsToProxies = new Map()
 // const hintables: Set<Element> = new Set()
 // on allowNoIframeFallback, consider:
 // cmdline - in its own iframe anyway (so allow!)
@@ -112,6 +115,14 @@ interface UIElementOptions {
     name?: string,
     startHidden?: boolean,
     afterAttachedCallback?: () => void,
+}
+
+function maximiseElement(element) {
+    element.style.setProperty("position", "fixed", "important")
+    element.style.setProperty("top", "0", "important")
+    element.style.setProperty("left", "0", "important")
+    element.style.setProperty("width", "100%", "important")
+    element.style.setProperty("height", "100%", "important")
 }
 
 // This should return a UIElement from which you can call its show/hide/whatever members
@@ -334,7 +345,7 @@ export function getHintableElements(selectors = "*", filters: ((ele: HTMLElement
         .filter(
             el => (el as HTMLElement).matches("[hudhintable],[hudhintable] *") &&
             filters.every(filter => filter(el as HTMLElement))
-        ) as Element[]
+        )
 }
 
 export function hint() {
@@ -357,11 +368,8 @@ function makeHudIframe(): Promise<HTMLIFrameElement> {
         "src",
         browser.runtime.getURL("static/blank.html"),
     )
-    iframe.style.position = "fixed"
-    iframe.style.top = "0"
-    iframe.style.left = "0"
-    iframe.style.width = "100%"
-    iframe.style.height = "100%"
+
+    maximiseElement(iframe)
     iframe.style.pointerEvents = "none"
     iframe.style.border = "none"
     iframe.style.colorScheme = "light dark"
@@ -372,8 +380,10 @@ function makeHudIframe(): Promise<HTMLIFrameElement> {
                 // const win = iframe.contentWindow
                 const doc = iframe.contentDocument
 
-                elementHost = doc.documentElement
-                overlayHost = makeHudProxiesOverlay()
+                doc.documentElement.appendChild(elementHost)
+
+                // elementHost = doc.documentElement
+                // overlayHost = makeHudProxiesOverlay()
                 styling.theme(iframe.contentDocument.documentElement)
                 hudIframe = iframe
                 resolve(iframe)
@@ -398,28 +408,27 @@ let salvagedQueue = []
 
 export function salvageElements() {
     console.warn("HUD: salvaging elements after document.write/writeln/open call")
-    if (uiElements.length) {
-        salvagedQueue = salvagedQueue.concat(uiElements.map(uiEl => [uiEl.element, uiEl.options]))
-        uiElements = []
-    }
+    // if (uiElements.length) {
+    //     salvagedQueue = salvagedQueue.concat(uiElements.map(uiEl => [uiEl.element, uiEl.options]))
+    //     uiElements = []
+    // }
     if (initQueue.length) {
         salvagedQueue = salvagedQueue.concat(initQueue)
         initQueue = []
     }
     initPromise = null
     hudIframe = null
-    overlayHost = null
-    elementHost = null
+    // overlayHost = null
+    // elementHost = null
 
-    elementsToProxies = new Map()
+    // elementsToProxies = new Map()
 
+    elementHost.remove()
     shadow.replaceChildren()
     hud.remove()
 }
 
 let reattachDebounceTimer = null
-// seems the frags can be undefined at this point
-// that would suggest document.write (or whatever) is called before we have an elementHost ready
 export function reattachElements() {
     clearTimeout(reattachDebounceTimer)
     reattachDebounceTimer = setTimeout(() => {
@@ -448,15 +457,16 @@ function makeNoIframeBackupHost() {
     const styleHolder = document.createElement("div")
     styleHolder.style.display = "none"
     styleHolder.id = "tridactyl-styles"
+    shadow.prepend(styleHolder)
     styling.theme(shadow)
-    elementHost = document.createElement("div")
-    elementHost.style.position = "fixed"
-    elementHost.style.top = "0"
-    elementHost.style.left = "0"
-    elementHost.style.width = "100%"
-    elementHost.style.height = "100%"
+    // elementHost = document.createElement("div")
+    // elementHost.style.position = "fixed"
+    // elementHost.style.top = "0"
+    // elementHost.style.left = "0"
+    // elementHost.style.width = "100%"
+    // elementHost.style.height = "100%"
     shadow.appendChild(elementHost)
-    overlayHost = makeHudProxiesOverlay()
+    // overlayHost = makeHudProxiesOverlay()
 }
 
 function makeHudProxiesOverlay() {
@@ -466,7 +476,7 @@ function makeHudProxiesOverlay() {
     proxyOverlay.style.left = "0"
     proxyOverlay.style.width = "0"
     proxyOverlay.style.height = "0"
-    shadow.appendChild(proxyOverlay)
+    // shadow.appendChild(proxyOverlay)
     return proxyOverlay
 }
 
@@ -482,6 +492,7 @@ function init() {
         hudIframe = null
     })
     .finally(() => {
+        shadow.appendChild(overlayHost)
         for (const [element, options] of initQueue) {
             addElement(element, options)
         }

@@ -1261,15 +1261,19 @@ function buildHintsSimple(
     // maybe reduces layout thrashing
     // but no probably not because everything's added to a DocumentFragment first I remember now
     // might still be nice to cache rects (maybe before this even - we get them in DOM.isVisible too)
-    const hintablesfiltered = hintablesArray.map(h => ({
-        elements: h.elements
-            .map(el => ({
-                el,
-                rects: el.getClientRects(),
-            }))
-            .filter(({ rects }) => rects.length > 0),
-        hintclasses: h.hintclasses,
-    }))
+    // const hintablesfiltered = hintablesArray.map(h => ({
+    //     elements: h.elements
+    //         .map(el => ({
+    //             el,
+    //             rects: el.getClientRects(),
+    //         }))
+    //         .filter(({ rects }) => rects.length > 0),
+    //     hintclasses: h.hintclasses,
+    // }))
+
+    // I've added that "no rects" stuff in the Hint class
+    // which means I might not need to filter them out beforehand ... i think
+    const hintablesfiltered = hintablesArray
     const totalhints = hintablesfiltered.reduce(
         (n, h) => n + h.elements.length,
         0,
@@ -1282,7 +1286,8 @@ function buildHintsSimple(
 
     for (const hintables of hintablesfiltered) {
         const names = allnames.slice(modeState.hints.length)
-        for (const [{ el, rects }, name] of izip(hintables.elements, names)) {
+        // for (const [{ el, rects }, name] of izip(hintables.elements, names)) {
+        for (const [el, name] of izip(hintables.elements, names)) {
             logger.debug({ el, name })
             modeState.hintchars += name
             modeState.hints.push(
@@ -1292,7 +1297,7 @@ function buildHintsSimple(
                     null,
                     onSelect,
                     hintables.hintclasses,
-                    rects,
+                    // rects,
                 ),
             )
         }
