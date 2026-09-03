@@ -11,7 +11,7 @@ export const EditorCmds = new Proxy(_EditorCmds, {
         if (target[property]) {
             return (...args) => {
                 if (
-                    (DOM.activeElement() as HTMLIFrameElement).src ===
+                    (DOM.activeElement())?.ownerDocument?.defaultView?.location?.href ===
                     browser.runtime.getURL("static/commandline.html")
                 ) {
                     return messageOwnTab(
