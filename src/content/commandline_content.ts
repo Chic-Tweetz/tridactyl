@@ -32,6 +32,7 @@ let cmdline_iframe: HTMLIFrameElement
 let iframeReady: Promise<void>
 let resolveIframeReady: () => void
 let iframeGeneration = ""
+let iframeWaiters: ((iframe: HTMLIFrameElement, cli: HTMLTextAreaElement) => void)[] = []
 export function makeIframe() {
     resolveIframeReady?.()
     iframeGeneration = Math.random().toString()
@@ -96,6 +97,9 @@ export function makeIframe() {
             })
             const resizeObserver = new ResizeObserver(resize_iframe)
             resizeObserver.observe(cmdline_iframe.contentDocument.body)
+
+            iframeWaiters.forEach(waiter => waiter(cmdline_iframe, cmdline_iframe.contentDocument.querySelector("#tridactyl-input")))
+            iframeWaiters = []
         }
     })
     cmdline_iframe.name = iframeGeneration
@@ -160,6 +164,41 @@ async function init(onDemand = false) {
         })
     }
     return enabled
+}
+
+/**
+ *  Get the most recently created cmdline iframe.
+ *  It may not yet be attached to the page.
+ *  We may create a new one so this should not be considered reliable.
+ *  Always call this function instead of storing the result in a variable.
+ *  May be undefined. Use onIframeReady to ensure the iframe is available.
+ */
+export function getIframe() {
+    return cmdline_iframe
+}
+
+/**
+ * In case you ever want to grab the current value or something.
+ * Adding this because I have used the input in :js scripts in the past.
+ */
+export function getCli() {
+    if (!cmdline_iframe?.isConnected || !cmdline_iframe.contentDocument) return null
+    return cmdline_iframe.contentDocument.querySelector("#tridactyl-input")
+}
+
+/**
+ * Some :js scripts may only work with the cmdline/iframe already in place.
+ * This should (mostly) let you queue up anything you want to run once it's available.
+ * If cmdline_iframe is connected and loaded, callback will run immediately.
+ * If the iframe is removed and recreated, the callback will not be called again.
+ * TODO: Perhaps an optional failure callback would help in such cases.
+ */
+export function onIframeReady(callback: (iframe: HTMLIFrameElement, cli: HTMLTextAreaElement) => void) {
+    if (cmdline_iframe.isConnected && cmdline_iframe.contentDocument) {
+        callback(cmdline_iframe, cmdline_iframe.contentDocument.querySelector("#tridactyl-input"))
+        return
+    }
+    iframeWaiters.push(callback)
 }
 
 let hammering_react = false
