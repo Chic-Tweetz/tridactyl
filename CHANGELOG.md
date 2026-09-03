@@ -1,6 +1,6 @@
 # Tridactyl changelog
 
-# Release 1.25.0 / Unreleased
+# Release 1.25.0 / 2026-08-28
 
 Codename "Carpenter"
 
@@ -56,7 +56,7 @@ Codename "Carpenter"
     - `:set hinthideobscured true` hides hints for elements obscured by other elements ([#4746](https://github.com/tridactyl/tridactyl/issues/4746))
     - `countaware` can now enable or disable counts per URL or mode with `:seturl` and `:setmode` ([#4993](https://github.com/tridactyl/tridactyl/issues/4993))
     - `:urlmodify --safe` prevents repeated navigation to the same URL within one second, avoiding redirect loops in `:autocmd`s ([#516](https://github.com/tridactyl/tridactyl/issues/516))
-    - `:set hintmames words` uses random short words for hints ([#5482](https://github.com/tridactyl/tridactyl/issues/5482))
+    - `:set hintnames words` uses random short words for hints ([#5482](https://github.com/tridactyl/tridactyl/issues/5482))
     - `superignore` can now be toggled globally from the toolbar popup ([#822](https://github.com/tridactyl/tridactyl/issues/822))
     - `:colourscheme --url` reuses downloaded themes unless given `--update` to ease use in RC files
     - `:ttscontrol` now supports `play`, `pause`, `playpause`, and `stop` ([#217](https://github.com/tridactyl/tridactyl/issues/217))
@@ -115,7 +115,6 @@ Codename "Carpenter"
     - `:tabmove +1` and `:tabmove -1` now work correctly with hidden and pinned tabs ([#5441](https://github.com/tridactyl/tridactyl/issues/5441))
     - configuration changes no longer get lost when made in quick succession ([#5431](https://github.com/tridactyl/tridactyl/issues/5431))
     - `:hint` no longer shows hints for hidden or off-screen elements ([#5434](https://github.com/tridactyl/tridactyl/issues/5434))
-    - Tab completions no longer accumulate listeners and tab objects after closing the commandline ([#5424](https://github.com/tridactyl/tridactyl/issues/5424))
     - Page keypresses should no longer be swallowed after cancelling a keybinding ([#4958](https://github.com/tridactyl/tridactyl/issues/4958))
     - `:autocontain` no longer loops when multiple containers share a name ([#2293](https://github.com/tridactyl/tridactyl/issues/2293))
     - Command-line messages and update checks no longer replace the command used by `:repeat`
@@ -151,7 +150,7 @@ Codename "Carpenter"
     - `gg` and `G` now scroll smoothly when `:set smoothscroll true` is enabled ([#3639](https://github.com/tridactyl/tridactyl/issues/3639))
     - `:gobble` now accepts `Tab` as part of the key sequence
     - `:bindwizard` now includes `<Tab>` in the generated key sequence ([#4772](https://github.com/tridactyl/tridactyl/issues/4772))
-    - `set modeindicatormodes.normal false` now hides the mode indicator immediately on page load ([#5085](https://github.com/tridactyl/tridactyl/issues/5085))
+    - `:set modeindicatormodes.normal false` now hides the mode indicator immediately on page load ([#5085](https://github.com/tridactyl/tridactyl/issues/5085))
     - `:setnull` now offers setting completions ([#3673](https://github.com/tridactyl/tridactyl/issues/3673))
     - `<S-Space>` bindings now work ([#4175](https://github.com/tridactyl/tridactyl/issues/4175))
     - Vimperator hints now prefer exact matches over longer hints with the same prefix ([#2935](https://github.com/tridactyl/tridactyl/issues/2935))
@@ -170,7 +169,7 @@ Codename "Carpenter"
     - hints no longer make animated elements disappear ([#3548](https://github.com/tridactyl/tridactyl/issues/3548))
     - `modeindicator` now updates without reloading the page ([#4738](https://github.com/tridactyl/tridactyl/issues/4738))
     - `<C-o>yy` now closes the command line after copying a completion ([#3256](https://github.com/tridactyl/tridactyl/issues/3256))
-    - `:back` branches are now sorted by newest members (#5492)
+    - `:back` branches are now sorted by newest members ([#5492](https://github.com/tridactyl/tridactyl/issues/5492))
     - `modeindicator` now works on pages without a `<body>` ([#1163](https://github.com/tridactyl/tridactyl/issues/1163))
     - dark theme hint highlights now remain readable on light pages ([#4420](https://github.com/tridactyl/tridactyl/issues/4420))
     - mode indicator text no longer appears in Firefox's find results ([#2089](https://github.com/tridactyl/tridactyl/issues/2089))
@@ -198,7 +197,7 @@ Codename "Carpenter"
     - beta builds now use the next release's version number rather than claiming to be pre-releases of the previous version
     - `HistoryState` autocmds now trigger reliably on same-document navigation ([#4329](https://github.com/tridactyl/tridactyl/issues/4329))
     - `:q` can no longer report “Message manager disconnected” when closing tabs ([#1528](https://github.com/tridactyl/tridactyl/issues/1528))
-    - `:set newtab about:blank` no longer shows `New Tab` as the tab title ([#5021](https://github.com/tridactyl/tridactyl/issues/5021))
+    - `:set newtab about:blank` now shows `&centerdot;` rather than `New Tab` as the tab title ([#5021](https://github.com/tridactyl/tridactyl/issues/5021))
     - macOS Firefox profile detection now finds profiles three directories deep ([#1627](https://github.com/tridactyl/tridactyl/issues/1627))
     - Missing `tridactylrc` errors now point to `:help source` and include native error details ([#4088](https://github.com/tridactyl/tridactyl/issues/4088))
     - `xclip` processes now exit after setting the clipboard ([#4822](https://github.com/tridactyl/tridactyl/issues/4822))
@@ -258,7 +257,7 @@ Codename "Carpenter"
     - `proxy` now documents that `none` disables the proxy and works with `:autocontain` ([#4226](https://github.com/tridactyl/tridactyl/issues/4226))
     - `:updatenag` now gives the correct steps for checking Tridactyl updates in Firefox ([#5415](https://github.com/tridactyl/tridactyl/issues/5415))
     - `:rssexec` e2e test is less flaky ([#5426](https://github.com/tridactyl/tridactyl/issues/5426))
-    - on windows `:nativeinstall` now suggests running cmd.exe as Administrator if installation fails ([#4512](https://github.com/tridactyl/tridactyl/issues/4512))
+    - on Windows `:nativeinstall` now suggests running cmd.exe as Administrator if installation fails ([#4512](https://github.com/tridactyl/tridactyl/issues/4512))
     - AMO credentials are now hidden from `scripts/sign` logs ([#3633](https://github.com/tridactyl/tridactyl/issues/3633))
     - `:guiset` help now explains how to find and set `profiledir` on Windows ([#4462](https://github.com/tridactyl/tridactyl/issues/4462))
     - `:bind` and `:gobble` docs now explain dynamic keybindings and the `:command` alias workaround ([#1985](https://github.com/tridactyl/tridactyl/issues/1985))
@@ -274,7 +273,11 @@ Codename "Carpenter"
     - `:js` help now correctly displays examples for custom ex-commands
     - `searchurls.julia` has been removed from the example RC
 
+Thanks to all of our contributors for this release: Oliver Blanthorn, Chic-Tweetz, mmustafasenoglu, gholk, glacambre, paris and wskozel.
 
+Extra special thanks go to mmustafasenoglu and wskozel who both contributed for the first time.
+
+Last, but not least - thank you to everyone who reported the issues we closed in this release: bovine3dom, glacambre, people who have since deleted their GitHub accounts, notJerl, cmcaine, GHolk, Rummskartoffel, indeedwatson, Monirzadeh, mozbugbox, alerque, antonva, avalonv, Chic-Tweetz, eboth, ELLIOTTCABLE, guy-who-googles, hejops, jkavalec, laur89, MoltenMonster, ok-nick, pataquets, rodrigo-morales-1, saulrh, utsekaj42, wavexx, a7u8, aavogt, abo-abo, adamency, alanoliveira, albert-ying, Alice-Null, allanwind, anmolmathias, antran22, Artikool5, asteroidcow, azatoth, bambams, basbebe, Betelgeuse1, bew, b-jazz, bodograumann, booxter, borazan, boriselec, bpmcl, braham-snyder, caputchinefrobles, cheonhyangzhang, codesoverhill, CoelacanthusHex, Corallus-Caninus, cprn, davidsierradz, dioobspm, dmpetroff, dotancohen, dwawlyn, dwolf42, e00E, farnoy, Flimm, frenchbeard, gcmurray1990, Geobert, glm4610, glyh, groundstation1, gsbabil, henk84, henkworks, herrsimon, heyzec, HiPhish, hnorkowski, hpfr, IceAsteroid, In-line, j-a-m-l, jcrowgey, jimrs, jjeffrey, j-lakeman, Jonta, jumper047, KAGEYAM4, kartynnik, kpeejp, kwstannard, lyterk, madduck, make-github-pseudonymous-again, Massimo-B, Mercvre80, mesaprotector, mightyiam, MilanV, minhduc0711, mist, mocamp3, mornfall, Nampuk, natefabian18, newbould5, nicksavoie, nkitsaini, noctuid, noib3, nullpointseven, numirias, nvkrishna77, otterlover24, OwenAR, oxysoft, pengowen123, pickfire, pmaziere, pnelson, pufferfish-connoisseur, pzzxqj, quisquama, Qwyntex, radgeRayden, raffaelemancuso, ricardoseriani, robertgzr, russsharek, rutgersc, scottjad, silmeth, solna86, stagnation, StarTroop, stef, synaps13, Terx37, ThinkChaos, timokau, timss, tom-mi, user471, Utopiah, vaibhav423, Vftdan, vulns-are-features-too, waterbear5, whnr, winchendonsprings, WloHu, Wolfbeta, WolodiaM, x-ji, xNyfPtx, ybc37, yegle and zsugabubus!
 
 # Release 1.24.6 / 2026-05-17
 

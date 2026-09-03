@@ -347,9 +347,20 @@ export async function write(file: string, content: string) {
 }
 
 export async function writerc(file: string, force: boolean, content: string) {
-    return sendNativeMsg("writerc", { file, force, content }).catch(e => {
-        throw new Error(`Failed to write '${content}' to '${file}'. ${e}`)
-    })
+    const response = await sendNativeMsg("writerc", { file, force, content })
+    if (response.code === 1)
+        throw new Error(
+            `RC file '${file}' already exists. Use :mktridactylrc -f to overwrite it.`,
+        )
+    if (response.error || (response.code != null && response.code !== 0)) {
+        const error =
+            response.error ||
+            (response.code === 2
+                ? "check that its parent directory exists and is writable"
+                : `native messenger returned code ${response.code}`)
+        throw new Error(`Failed to write RC file '${file}': ${error}.`)
+    }
+    return response
 }
 
 export async function mkdir(dir: string, exist_ok: boolean) {

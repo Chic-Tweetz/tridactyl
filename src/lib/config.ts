@@ -91,7 +91,7 @@ function mutateInBackground(command, args) {
     return browser.runtime.sendMessage({ type: "config_background", command, args })
 }
 
-/** @hidden
+/** @internal
  * Ideally, LoggingLevel should be in logging.ts and imported from there. However this would cause a circular dependency, which webpack can't deal with
  */
 export type LoggingLevel = "never" | "error" | "warning" | "info" | "debug"
@@ -1825,47 +1825,72 @@ export class default_config {
     blockpagekeypressesmodes: { [key: string]: "true" | "false" } = {}
 
     /**
-     *  Override CSS selectors for all :hint modes that use them. Will be respected by :hint -C.
+     *  Override CSS selectors for all `:hint` categories that use them.
      *
-     *  Alternative to multiple `:bindurl`s with different hint flags (`hint`, `hint -t`, `hint -b`...) with custom CSS selectors.
-     *
-     *  Default selectors will be overriden unless the matching `hintselectorsbehaviour` category is set to "extend".
-     *
-     *  Hint categories: clickable, filterbytext, img, saveable, killable, anchor
+     *  `:set hintselectors.[category] [CSS selectors]`
      *
      *  Suggested usage is with `:seturl`:
-     *  `:seturl [URL] hintselectors.[category] [comma-separated CSS selectors]`
+     *  `:seturl [URL] hintselectors.[clickable | filterbytext | img | saveable | killable | anchor] [CSS selectors]`
      *
-     *  To also include default selectors:
-     *  `:seturl [URL] hintselectorsbehaviour.[category] extend`
+     *  These selectors Will be respected by `:hint -C [extra selectors]`.
+     *
+     *  The special value "default" means a predefined set of selectors will be used.
+     *  Any other string will be treated as a CSS selector.
+     *
+     *  There are several categories of selectors which are used depending hint flags.
+     *  The usual `f` hint uses the `clickable` category of selectors.
+     *
+     *  These are all of the hint selector categories:
+     *  `clickable | filterbytext | img | saveable | killable | anchor`
+     *
+     *  This is an alternative to binding to `:hint -c ...` or `:hint -C ...`.
+     *  This is useful because for instance `:seturl [url] hintselectors.clickable [selectors]`
+     *  will automatically set those selectors for `:hint`, `:hint -b`, `:hint -t`, etc.
+     *
+     *  Default selectors will be overriden unless the matching `hintselectorsbehaviour` category is set to "extend".
      *
      *  eg:
      *  `:seturl old.reddit.com hintselectors.clickable a,.extendo-button`
      */
-    hintselectors: { [key: string]: string } = {}
+    hintselectors: { [key: string]: string } = {
+        clickable: "default",
+        filterbytext: "default",
+        img: "default",
+        saveable: "default",
+        killable: "default",
+        anchor: "default",
+    }
 
     /**
-     *  Whether selectors set in hintselectors should override or be included with default hint selectors.
+     *  Whether custom selectors set in [[hintselectors]] will override or be included with default hint selectors.
      *
-     *  Default behaviour is to override then, include them by setting to "extend":
-     *  :seturl <URL> hintselectorsbehaviour.<category> extend
+     *  `:seturl [URL] hintselectorsbehavior.[category] extend`
      *
      *  Categories: clickable, filterbytext, img, saveable, killable, anchor
      */
-    hintselectorsbehavior: { [key: string]: "extend" | "override" } = {}
+    hintselectorsbehavior: { [key: string]: "extend" | "override" } = {
+        clickable: "override",
+        filterbytext: "override",
+        img: "override",
+        saveable: "override",
+        killable: "override",
+        anchor: "override",
+    }
 
     /**
      *  Set globally or with `:seturl` whether to include JS hints by default.
      *
-     *  If this is set to "false", they can still be hinted with ":hint -j".
-     *  Otherwise, they can be ignored using ":hint -J".
+     *  If this is set to "false", they can still be hinted with `:hint -j`.
+     *  Otherwise, they can be ignored using `:hint -J`.
+     *
+     *  Use `:hint -jj` to hint with the inverse of this setting, i.e. "false" would be treated as "true" and vice versa.
      */
     hintselectorsincludejs: "true" | "false" = "true"
 
     /**
      * Ignore "keyboard widgets" when moving to inputs or deciding whether to move to insert mode automatically.
      *
-     * `:seturl outlook.live.com/mail inputsignorewidgets true`
+     * `:seturl outlook.live.com/mail inputsblacklistwidgets true`
      */
     inputsblacklistwidgets: "true" | "false" = "false"
 

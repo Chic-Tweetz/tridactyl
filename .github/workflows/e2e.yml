@@ -68,8 +68,6 @@ jobs:
 
     - name: Build and test (Firefox)
       uses: nick-fields/retry@v3
-      env:
-        HEADLESS: 1
       with: 
         max_attempts: ${{ github.event_name == 'pull_request' && ( github.event.pull_request.draft && 1 || 5 ) || 10 }}
         timeout_minutes: 10

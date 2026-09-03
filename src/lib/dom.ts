@@ -1208,7 +1208,7 @@ const hintCategoriesToDefaultSelectors = {
  */
 export function hintSelectors(hintType: HintSelectorCategory = "clickable") {
     const configSelectors = config.get("hintselectors", hintType)
-    if (!configSelectors) return hintCategoriesToDefaultSelectors[hintType]
+    if (configSelectors === "default") return hintCategoriesToDefaultSelectors[hintType]
     return config.get("hintselectorsbehavior", hintType) === "extend"
         ? hintCategoriesToDefaultSelectors[hintType] + "," + configSelectors
         : configSelectors

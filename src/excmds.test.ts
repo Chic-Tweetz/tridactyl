@@ -5,6 +5,7 @@ import * as Native from "@src/lib/native"
 import * as Messaging from "@src/lib/messaging"
 import * as DOM from "@src/lib/dom"
 import state from "@src/state"
+import * as rc from "@src/background/config_rc"
 
 jest.mock("@src/lib/webext", () => ({
     ...jest.requireActual("@src/lib/webext"),
@@ -112,6 +113,12 @@ test("`set` preserves deep custom arrays", async () => {
     await set("custom.deep.array", "[1,2]")
 
     expect(config.getDynamic("custom", "deep", "array")).toEqual([1, 2])
+})
+
+test("`set` accepts logging levels", async () => {
+    await set("logging.native", "debug")
+
+    expect(config.get("logging", "native")).toBe("debug")
 })
 
 test("`colourscheme --url` only refetches with `--update`", async () => {
@@ -281,6 +288,32 @@ test.each(["mktridactylrc", "source"])(
         )
     },
 )
+
+test("`mktridactylrc` reports the written path", async () => {
+    jest.mocked(Native.nativegate).mockResolvedValue(true)
+    jest.mocked(rc.writeRc).mockResolvedValue("/tmp/tridactylrc")
+
+    await backgroundExcmds.mktridactylrc()
+
+    expect(Messaging.messageActiveTab).toHaveBeenCalledWith(
+        "excmd_content",
+        "fillcmdline_tmp",
+        [3000, "# RC written to /tmp/tridactylrc"],
+    )
+})
+
+test.each([
+    [1, /already exists.*-f/],
+    [2, /parent directory.*writable/],
+])("`writerc` reports native error %i", async (code, error) => {
+    jest.mocked(browser.runtime.sendNativeMessage).mockResolvedValueOnce({
+        code,
+    })
+
+    await expect(
+        Native.writerc("/tmp/tridactylrc", false, "secret config"),
+    ).rejects.toThrow(error)
+})
 
 test.each([
     ["guiset_quiet", ["gui", "none"], "0.1.1"],

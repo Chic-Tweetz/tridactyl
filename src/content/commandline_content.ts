@@ -33,6 +33,15 @@ let iframeReady: Promise<void>
 let resolveIframeReady: () => void
 let iframeGeneration = ""
 let iframeWaiters: ((iframe: HTMLIFrameElement, cli: HTMLTextAreaElement) => void)[] = []
+
+function resizeIframe() {
+    if (cmdline_iframe.inert) return
+    const height =
+        cmdline_iframe.contentWindow.document.body.offsetHeight + "px"
+    cmdline_iframe.setAttribute("style", `height: ${height} !important;`)
+}
+const resizeObserver = new ResizeObserver(resizeIframe)
+
 export function makeIframe() {
     resolveIframeReady?.()
     iframeGeneration = Math.random().toString()
@@ -95,8 +104,6 @@ export function makeIframe() {
                 if (contentState.pseudo_mode === "ex")
                     contentState.pseudo_mode = ""
             })
-            const resizeObserver = new ResizeObserver(resize_iframe)
-            resizeObserver.observe(cmdline_iframe.contentDocument.body)
 
             iframeWaiters.forEach(waiter => waiter(cmdline_iframe, cmdline_iframe.contentDocument.querySelector("#tridactyl-input")))
             iframeWaiters = []
@@ -433,6 +440,8 @@ export async function show(hidehover = false, deadline = Date.now() + 5000) {
 
         cmdline_iframe.classList.remove("hidden")
         cmdline_iframe.style.removeProperty("display")
+        resizeIframe()
+        resizeObserver.observe(cmdline_iframe.contentWindow.document.body)
         return true
     } catch (e) {
         // Note: We can't use cmdline_logger.error because it will try to log
@@ -448,6 +457,8 @@ export function hide() {
         // cmdline_iframe.removeAttribute("popover")
         hud.hide(cmdline_iframe)
         cmdline_iframe.inert = true
+        resizeObserver.disconnect()
+
         cmdline_iframe.classList.add("hidden")
         cmdline_iframe.style.setProperty("display", "none", "important")
         // cmdline_iframe.setAttribute("style", "height: 0px !important;")

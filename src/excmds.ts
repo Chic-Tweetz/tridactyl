@@ -937,7 +937,7 @@ export async function nativeinstall() {
     With no arguments supplied the excmd will try to find an appropriate
     config path and write the rc file to there. Any argument given to the
     excmd excluding the `-f` flag will be treated as a path to write the rc
-    file to relative to the native messenger's location (`~/.local/share/tridactyl/`). By default, it silently refuses to overwrite existing files.
+    file to relative to the native messenger's location (`~/.local/share/tridactyl/`). By default, it refuses to overwrite existing files.
 
     The RC file will be split into sections that will be created if a config
     property is discovered within one of them:
@@ -982,7 +982,8 @@ export async function mktridactylrc(...args: string[]) {
         return fillcmdline_tmp(3000, "# RC copied to clipboard")
     }
     if (!(await Native.nativegate("0.1.11", false))) throw new Error("`:mktridactylrc` requires the native messenger. Run `:nativeinstall` or use `:mktridactylrc --clipboard`.")
-    if (!(await rc.writeRc(conf, overwrite, file))) logger.error("Could not write RC file")
+    const path = await rc.writeRc(conf, overwrite, file)
+    await fillcmdline_tmp(3000, `# RC written to ${path}`)
 
     return conf
 }
@@ -3470,7 +3471,7 @@ export async function undo(item = "recent"): Promise<number> {
 }
 
 /**
- * Move the current tab to be just in front of the index specified.
+ * Move a tab, defaulting to the current one, to be just in front of the index specified.
  *
  * Known bug: This supports relative movement with `tabmove +pos` and `tabmove -pos`, but autocomplete doesn't know that yet and will override positive and negative indexes.
  *
@@ -3481,10 +3482,12 @@ export async function undo(item = "recent"): Promise<number> {
  * @param index New index for the current tab.
  *
  * 1,start,^ are aliases for the first index. 0,end,$ are aliases for the last index.
+ *
+ * @param tabToMove Which tab to move. Defaults to the current tab.
  */
 //#background
-export async function tabmove(index = "$") {
-    const aTab = await activeTab()
+export async function tabmove(index = "$", tabToMove?: string) {
+    const aTab = await tabFromIndex(tabToMove)
     if (index === "#") {
         const previousTab = await prevActiveTab()
         if (previousTab.index - aTab.index === 1) {
@@ -4144,13 +4147,13 @@ export function version() {
  *  **New feature:** you can add modes as simply as adding binds with `bind --mode=[newmodename]` and then enter the mode with `mode [newmodename]`.
  */
 //#content
-export function mode(mode: ModeName) {
+export function mode(mode: string) {
     // TODO: event emition on mode change.
     if (mode === undefined) throw new Error("Mode must be provided!")
     if (mode === "hint") {
         hint()
     } else {
-        contentState.mode = mode
+        contentState.mode = mode as ModeName
     }
 }
 
@@ -5825,53 +5828,70 @@ const KILL_STACK: Element[] = []
 /**
  * Hint a page.
  *
- * @param args Arguments to the `:hint` command. Multiple flags can be combined as long as they don't conflict.
+ * Multiple flags can be used in the `:hint` command and combined as long as they don't conflict.
  * Selectors can be specified either standalone (without a flag preceding them) or with the `-c` option. Arguments that
  * take callbacks (`-F` or `-W`) should be specified last, as they consume the rest of the command line.
  *
- * Hinting action flags (only one can be specified):
+ * #### Hinting action flags (only one can be specified):
  *
- * - -e return the selected live DOM element(s) without activating it. In exversion 2, use e.g. `hint -e | _.href | tabopen -b`. Escape cancels a normal element hint and skips the rest of its program; `-qe` and `-!e` return arrays.
- * - -t open in a new foreground tab
- * - -b open in background
- * - -y copy (yank) link's target to clipboard
- * - -p copy an element's text to the clipboard
- * - -h select an element (as if you click-n-dragged over it)
- * - -P copy an element's title/alt text to the clipboard
- * - -r read an element's text with text-to-speech
- * - -i view an image
- * - -I view an image in a new tab
- * - -k irreversibly deletes an element from the page (until reload)
- * - -K hides an element on the page; hidden elements can be restored using [[elementunhide]].
- * - -s save (download) the linked resource
- * - -S save the linked image
- * - -a save-as the linked resource
- * - -A save-as the linked image
- * - -; focus an element and set it as the element or the child of the element to scroll
- * - -# yank an element's anchor URL to clipboard
- * - -w open in new window
- * - -wp open in new private window
- * - -z scroll an element to the top of the viewport
- * - `-pipe selector key` e.g, `-pipe a href` returns the URL of the chosen link on a page. Only makes sense with `composite`, e.g, `composite hint -pipe .some-class>a textContent | yank`. If you don't select a hint (i.e. press `<Esc>`), will return an empty string. Most useful when used like `-c` to do things other than opening links. NB: the query selector cannot contain any spaces.
- * - `-W excmd...` pass hint href as the final argument to excmd and execute, e.g, `hint -W mpvsafe` to open YouTube videos. NB: passing it to bare [[exclaim]] is dangerous - see `get exaliases.mpvsafe` for an example of how to do it safely. The usual [[composite]] caveats for `;` and `|` in URLs apply. If you need to use a query selector, use `-pipe` instead.
- * - -F [callback] - run a custom callback on the selected hint, e.g. `hint -JF e => {tri.excmds.tabopen("-b",e.href); e.remove()}`.
+ * @flag -e return the selected live DOM element(s) without activating it. In exversion 2, use e.g. `hint -e | _.href | tabopen -b`. Escape cancels a normal element hint and skips the rest of its program; `-qe` and `-!e` return arrays.
+ * @flag -t open in a new foreground tab
+ * @flag -b open in background
+ * @flag -y copy (yank) link's target to clipboard
+ * @flag -p copy an element's text to the clipboard
+ * @flag -h select an element (as if you click-n-dragged over it)
+ * @flag -P copy an element's title/alt text to the clipboard
+ * @flag -r read an element's text with text-to-speech
+ * @flag -i view an image
+ * @flag -I view an image in a new tab
+ * @flag -k irreversibly deletes an element from the page (until reload)
+ * @flag -K hides an element on the page
+ * - Hidden elements can be restored using [[elementunhide]].
+ * @flag -s save (download) the linked resource
+ * @flag -S save the linked image
+ * @flag -a save-as the linked resource
+ * @flag -A save-as the linked image
+ * @flag -; focus an element and set it as the element or the child of the element to scroll
+ * @flag -# yank an element's anchor URL to clipboard
+ * @flag -w open in new window
+ * @flag -wp open in new private window
+ * @flag -z scroll an element to the top of the viewport
+ * @flag -pipe `selector key`, e.g, `-pipe a href` returns the URL of the chosen link on a page.
+ * - Only makes sense with `composite`, e.g, `composite hint -pipe .some-class>a textContent | yank`.
+ * - If you don't select a hint (i.e. press `<Esc>`), will return an empty string.
+ * - Most useful when used like `-c` to do things other than opening links.
+ * - NB: the query selector cannot contain any spaces.
+ * @flag -W `excmd...` pass hint href as the final argument to excmd and execute.
+ * - e.g, `hint -W mpvsafe` to open YouTube videos.
+ * - NB: passing it to bare [[exclaim]] is dangerous - see `get exaliases.mpvsafe` for an example of how to do it safely.
+ * - The usual [[composite]] caveats for `;` and `|` in URLs apply.
+ * - If you need to use a query selector, use `-pipe` instead.
+ * @flag -F [callback] - run a custom callback on the selected hint
+ * - e.g. `hint -JF e => {tri.excmds.tabopen("-b",e.href); e.remove()}`.
+ * @flag -hud hint only elements within Tridactyl's HUD.
+ * @flag -+hud include elements within Tridactyl's HUD.
  *
- * Element selection flags:
+ * #### Element selection flags
  *
- * - -c [selector] hint links that match the css selector
- *     - `bind ;c hint -c [class*="expand"],[class*="togg"]` works particularly well on reddit and HN
- *     - this works with most other hint modes, with the caveat that if other hint mode takes arguments your selector must contain no spaces, i.e. `hint -c[yourOtherFlag] [selector] [your other flag's arguments, which may contain spaces]`
- * - -C [selector] like `-c [selector]` but also hints all elements that would normally be hinted given the other options selected
- * - -x [selector] exclude the matched elements from hinting
- * - -f [text] hint links and inputs that display the given text
- *     - `bind <c-e> hint -f Edit`
- *     - Backslashes can escape spaces: `bind <c-s> hint -f Save\ as`
- * - -fr [text] use RegExp to hint the links and inputs
- * - -J* disable javascript hints. Don't generate hints related to javascript events. This is particularly useful when used with the `-c` option when you want to generate only hints for the specified css selectors. Also useful on sites with plenty of useless javascript elements such as google.com
- * - -V create hints for invisible elements. By default, elements outside the viewport when calling :hint are not hinted, this includes them anyways.
- * - -filter [delim] [elem => boolean] [delim] - filter hintable elements with a JS predicate surrounded by space-separated delimiters, e.g. `hint -filter Ω elem => elem.children.length === 0 Ω`
+ * @flag -c hint links that match the css selector
+ * - `bind ;c hint -c [class*="expand"],[class*="togg"]` works particularly well on reddit and HN.
+ * - This works with most other hint modes, with the caveat that if other hint mode takes arguments your selector must contain no spaces, i.e. `hint -c[yourOtherFlag] [selector] [your other flag's arguments, which may contain spaces]`
+ * @flag -C like -c but also hints all elements that would normally be hinted given the other options selected
+ * @flag -x exclude the matched elements from hinting
+ * @flag -f hint links and inputs that display the given text
+ * - `bind <c-e> hint -f Edit`.
+ * - Backslashes can escape spaces: `bind <c-s> hint -f Save\ as`
+ * @flag -fr use RegExp to hint the links and inputs
+ * @flag -J disable javascript hints
+ * - Don't generate hints related to javascript events. This is particularly useful when used with the `-c` option when you want to generate only hints for the specified css selectors.
+ * - Also useful on sites with plenty of useless javascript elements such as google.com
+ * @flag -j enable javascript hints if using `:set hintselectorsincludejs false`
+ * @flag -V create hints for invisible elements
+ * - By default, elements outside the viewport when calling :hint are not hinted; this includes them anyways.
+ * @flag -filter [delim] [elem => boolean] [delim]
+ * - filter hintable elements with a JS predicate surrounded by space-separated delimiters, e.g. `hint -filter Ω elem => elem.children.length === 0 Ω`
  *
- * Hinting mode selection:
+ * #### Hinting mode selection:
  *
  * - -q* quick (or rapid) hints mode. Stay in hint mode until you press `<Esc>`, e.g. `:hint -qb` to open multiple hints in the background or `:hint -qW excmd` to execute excmd once for each hint. This will return an array containing all elements or the result of executed functions (e.g. `hint -qpipe a href` will return an array of links).
  *     - For example, use `bind ;jg hint -Jc .rc > .r > a` on google.com to generate hints only for clickable search results of a given query
@@ -5880,9 +5900,11 @@ const KILL_STACK: Element[] = []
  * - -! execute all hints without waiting for a selection
  *     - For example, `hint -!bf Comments` opens in background tabs all visible links whose text matches `Comments`
  *
- * Deprecated options:
+ * #### Deprecated options:
  *
  * - -br deprecated, use `-qb` instead
+ *
+ * #### Usage:
  *
  * Excepting the custom selector mode, background hint mode and the "immediate" modifier, each of these hint modes is available by default as `;<option character>`, so e.g. `;y` to yank a link's target; `;g<option character>` starts rapid hint mode for all modes where it makes sense, and some others.
  *
@@ -5890,7 +5912,7 @@ const KILL_STACK: Element[] = []
  *
  * Ex-commands available exclusively in hint mode are listed [here](/static/docs/modules/_src_content_hinting_.html)
  *
- * Related settings:
+ * #### Related settings:
  *
  * - "hintchars": "hjklasdfgyuiopqwertnmzxcvb"
  * - "hintfiltermode": "simple" | "vimperator" | "vimperator-reflow"
@@ -5900,6 +5922,9 @@ const KILL_STACK: Element[] = []
  * - "hintdelay": 300
  * - "hintshift": "true" | "false"
  * - "hintautoselect": "true" | "false"
+ * - "hintselectors: { ["clickable" | "img" | "saveable" | "killable" | "anchor"]: string }
+ * - "hintselectorsbehaviour": { ["clickable" | "img" | "saveable" | "killable" | "anchor"]: string }
+ * - "hintselectorsincludejs": "true" | "false"
  *
  * With "short" names, Tridactyl will generate short hints that
  * are never prefixes of each other. With "uniform", Tridactyl
@@ -5915,7 +5940,7 @@ const KILL_STACK: Element[] = []
  * boilerplate each time you visit it, even if the number of
  * links in the main body changes).
  *
- * There are some extra hint "modes" that are actually just normal-mode binds. We'll list them here:
+ * #### There are some extra hint "modes" that are actually just normal-mode binds. We'll list them here:
  *
  * - `;gv` - "open link in MPV" - only available if you have [[native]] installed and `mpv` on your PATH
  * - `;m` and `;M` - do a reverse image search using Google in the current tab and a new tab
@@ -5923,6 +5948,8 @@ const KILL_STACK: Element[] = []
  * - `;d` and `;gd` - open links in discarded background tabs (defer loading until tab is switched to)
  *
  * NB: by default, hinting respects whether links say they should be opened in new tabs (i.e. `target=_blank`). If you wish to override this you can use `:hint -JW open` to force the hints to open in the current tab. JavaScript hints (grey ones) will always open wherever they want, but if you want to include these anyway you can use `:hint -W open`.
+ *
+ * @param args Arguments to the `:hint` command.
  */
 //#content
 export async function hint(...args: string[]): Promise<any> {

@@ -48,8 +48,7 @@ function rewriteWikiLinks(parts, owner, reflections) {
                     candidate =>
                         !candidate.kindOf(
                             ReflectionKind.Module | ReflectionKind.Namespace,
-                        ) &&
-                        !candidate.sources?.some(isGeneratedSource),
+                        ) && !candidate.sources?.some(isGeneratedSource),
                 ) ||
                 candidates.find(
                     candidate =>
@@ -252,7 +251,91 @@ class TridactylRouter extends KindRouter {
     }
 }
 
+function parseFlagTag(tag) {
+    const parts = tag.content || []
+    let text = ""
+    let trailing = []
+    for (let i = 0; i < parts.length; i++) {
+        const part = parts[i]
+        const match = part.kind === "text" && /\r?\n[ \t]*\r?\n/.exec(part.text)
+        if (!match) {
+            text += part.text || ""
+            continue
+        }
+        text += part.text.slice(0, match.index)
+        trailing = [
+            {
+                ...part,
+                text: part.text.slice(match.index + match[0].length),
+            },
+            ...parts.slice(i + 1),
+        ]
+        break
+    }
+    const m = /^(-\S+)[ \t]+([^\n]+)\n*([\s\S]*)$/.exec(text.trim())
+    if (!m) return undefined
+    const [, flag, short, rest] = m
+    const elaboration = rest.trim()
+    return [flag, short, elaboration, trailing]
+}
+
+function renderFlagList(context, parsed) {
+    if (parsed.length === 0) return null
+    return h(
+        "ul",
+        { class: "tsd-tag-flag tsd-parameter-list" },
+        parsed.map(([flag, short, elaboration]) =>
+            h(
+                "li",
+                null,
+                h("code", null, flag),
+                " ",
+                short,
+                elaboration &&
+                    context.displayParts([{ kind: "text", text: elaboration }]),
+            ),
+        ),
+    )
+}
+
 class TridactylTheme extends DefaultTheme {
+    getRenderContext(page) {
+        const context = super.getRenderContext(page)
+        const defaultCommentSummary = context.commentSummary
+        context.commentSummary = props => {
+            const blockTags = props.comment?.blockTags || []
+            if (!blockTags.some(tag => tag.tag === "@flag"))
+                return defaultCommentSummary(props)
+
+            const summaryHeadingCount = page.pageHeadings.length
+            const nodes = [context.displayParts(props.comment?.summary || [])]
+            page.pageHeadings.length = summaryHeadingCount
+            let flagRun = []
+            const flushFlags = () => {
+                if (flagRun.length === 0) return
+                nodes.push(renderFlagList(context, flagRun))
+                flagRun = []
+            }
+            for (const tag of blockTags) {
+                if (tag.tag === "@flag") {
+                    tag.skipRendering = true
+                    const parsed = parseFlagTag(tag)
+                    if (!parsed) continue
+                    const [flag, short, elaboration, trailing] = parsed
+                    flagRun.push([flag, short, elaboration])
+                    if (trailing.length === 0) continue
+                    flushFlags()
+                    const headingCount = page.pageHeadings.length
+                    nodes.push(context.displayParts(trailing))
+                    page.pageHeadings.length = headingCount
+                }
+            }
+            flushFlags()
+            return h(JSX.Fragment, null, ...nodes)
+        }
+        return context
+    }
+
     getReflectionClasses(reflection) {
         const kind = ReflectionKind.classString(reflection.kind)
         const parent =
@@ -335,7 +418,10 @@ class TridactylTheme extends DefaultTheme {
                             h(
                                 "ul",
                                 null,
-                                docLink("Commands", "modules/_src_excmds_.html"),
+                                docLink(
+                                    "Commands",
+                                    "modules/_src_excmds_.html",
+                                ),
                                 docLink(
                                     "Settings",
                                     "classes/_src_lib_config_.default_config.html",

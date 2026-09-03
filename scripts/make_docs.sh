@@ -12,6 +12,7 @@ fi
     --theme tridactyl --router tridactyl \
     "$@" \
     --entryPointStrategy expand --validation.notExported false \
+    --excludeInternal \
     --excludePrivate false --excludePrivateClassFields false \
     --includeHierarchySummary false \
     --exclude "src/**/?(test_utils|*.test).ts" \

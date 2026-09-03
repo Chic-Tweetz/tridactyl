@@ -42,7 +42,7 @@ export async function getDriver() {
     )
 
     const options = new Options()
-    if (env["HEADLESS"]) {
+    if (!env["HEADED"]) {
         options.addArguments("--headless")
     }
     const driver = new Builder()

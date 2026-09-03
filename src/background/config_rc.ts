@@ -55,7 +55,8 @@ export async function writeRc(conf: string, force = false, filename = "auto") {
     } else {
         path = filename
     }
-    return await Native.writerc(path, force, conf)
+    await Native.writerc(path, force, conf)
+    return path
 }
 
 export async function runRc(rc: string) {

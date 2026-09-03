@@ -98,7 +98,7 @@ export class HintConfig implements HintOptions {
 
         const result = new HintConfig()
         result.jshints = config.get("hintselectorsincludejs") === "true"
-        const multiLetterFlags = ["fr", "wp", "br", "pipe", "filter", "Qd", "hud", "+hud"]
+        const multiLetterFlags = ["fr", "wp", "br", "pipe", "filter", "Qd", "hud", "+hud", "jj"]
         let cOrPipeFlagPresent = false
         let CFlagPresent = false
         let filterDelim
@@ -167,6 +167,9 @@ export class HintConfig implements HintOptions {
                                     break
                                 case "J":
                                     result.jshints = false
+                                    break
+                                case "jj":
+                                    result.jshints = config.get("hintselectorsincludejs") !== "true"
                                     break
                                 case "!":
                                     result.immediate = true
