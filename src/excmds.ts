@@ -190,7 +190,7 @@ import { CmdlineCmds as BgCmdlineCmds } from "@src/background/commandline_cmds"
 import { EditorCmds as BgEditorCmds } from "@src/background/editor"
 import { EditorCmds } from "@src/background/editor"
 import { firefoxVersionAtLeast } from "@src/lib/webext"
-import { parse_bind_args, modeMaps } from "@src/lib/binding"
+import { parse_bind_args, getModeMaps, mode2maps, defaultModes, defaultModeMaps } from "@src/lib/binding"
 import * as rc from "@src/background/config_rc"
 import * as css_util from "@src/lib/css_util"
 import * as Updates from "@src/lib/updates"
@@ -2009,7 +2009,7 @@ export async function help(...args: string[]) {
             return ""
         },
         binding: (helpItem: string) => {
-            for (const mode of modeMaps) {
+            for (const mode of getModeMaps()) {
                 const bindings = settings[mode]
                 // If 'helpItem' matches a binding, replace 'helpItem' with
                 // the command that would be executed when pressing the key
@@ -4458,7 +4458,7 @@ export async function fillcmdline_tmp(ms: number, ...strarr: string[]) {
     const done = Messaging.messageOwnTab("commandline_frame", "fillcmdline", [strarr.join(" "), false, false])
     clearTimeout(fillcmdline_tmp_timeout)
     fillcmdline_tmp_timeout = setTimeout(() => {
-        if (document.activeElement?.id !== "cmdline_iframe") {
+        if (DOM.activeElement()?.ownerDocument?.defaultView?.location?.href !== browser.runtime.getURL("static/commandline.html")) {
             CommandLineContent.hide_and_blur()
             Messaging.messageOwnTab("commandline_frame", "clear", [true])
         }
@@ -5467,7 +5467,7 @@ export async function unbind(...args: string[]) {
     const args_obj = parse_bind_args(...(isAll ? args.filter(arg => arg !== "--all").concat("") : args))
     if (args_obj.excmd !== "" || (isAll && (args_obj.key !== "" || args_obj.isRecursive))) throw new Error("unbind syntax: `unbind [--mode=mode|*] [--recursive key|--all|key]`")
     await config.getAsync()
-    const maps = args_obj.mode === "*" ? [...new Set([...modeMaps, ...Object.keys(config.USERCONFIG).filter(map => map.endsWith("maps") && config.USERCONFIG[map] !== null && typeof config.USERCONFIG[map] === "object")])] : [args_obj.configName]
+    const maps = args_obj.mode === "*" ? [...new Set([...getModeMaps(), ...Object.keys(config.USERCONFIG).filter(map => map.endsWith("maps") && config.USERCONFIG[map] !== null && typeof config.USERCONFIG[map] === "object")])] : [args_obj.configName]
     const matches = key => isAll || (args_obj.isRecursive ? key.startsWith(args_obj.key) : key === args_obj.key)
     const inherits = "🕷🕷INHERITS🕷🕷"
     const getBindings = map => {
@@ -7305,5 +7305,61 @@ export async function totd() {
                 false,
             )
         })
+    }
+}
+
+/**
+ * Create a custom mode which inherits keybinds from an existing mode.
+ */
+//#background
+export function modeinherit(...args: string[]) {
+    let force
+    let modeName
+    let inheritFrom
+    if (args[0] === "--force" || args[0] === "-f") {
+        force = true
+        modeName = args[1]
+        inheritFrom = args[2]
+    } else {
+        force = false
+        modeName = args[0]
+        inheritFrom = args[1]
+    }
+    if (!modeName || !inheritFrom) {
+        fillcmdline_tmp(3000, "Usage: :modeinherit [--force|-f] <modeName> <inheritFrom>")
+        return
+    }
+    if (defaultModes.includes(modeName) || defaultModeMaps.includes(modeName + "maps")) {
+        fillcmdline_tmp(3000, `Not setting ${modeName} mode's inheritance as it is a default mode or ${modeName + "maps"} a default config object.`)
+        return
+    }
+    let inheritConfigName = mode2maps.get(inheritFrom)
+    if (!inheritConfigName) inheritConfigName = inheritFrom + "maps"
+
+    if (config.get(inheritConfigName as any)) {
+        if (config.get(modeName + "maps" as any)) {
+            const currentInherit = config.get(modeName + "maps" as any, "🕷🕷INHERITS🕷🕷")
+            if (currentInherit && currentInherit !== inheritConfigName) {
+                if (force === true || force === "true") {
+                    config.set(modeName + "maps" as any, "🕷🕷INHERITS🕷🕷", inheritConfigName)
+                    fillcmdline_tmp(3000, `${modeName} now inherits from ${inheritFrom} instead of ${currentInherit}`)
+                    return
+                } else {
+                    fillcmdline_tmp(3000, `${modeName} mode currently inherits from ${currentInherit}. Use :modeinherit --force ${modeName} ${inheritFrom} to override.`)
+                    return
+                }
+            }
+            if (currentInherit === inheritConfigName) {
+                fillcmdline_tmp(3000, `${modeName} mode already inherits from ${inheritFrom} mode.`)
+                return
+            }
+            config.set(modeName + "maps" as any, "🕷🕷INHERITS🕷🕷", inheritConfigName)
+            fillcmdline_tmp(3000, `${modeName} mode binds inherit from ${inheritFrom} mode.`)
+        } else {
+            config.set(modeName + "maps" as any, "🕷🕷INHERITS🕷🕷", inheritConfigName)
+            fillcmdline_tmp(3000, `New mode created: ${modeName} - binds inherit from ${inheritFrom} mode.`)
+        }
+    } else {
+        fillcmdline_tmp(3000, `Mode not found: ${inheritFrom}.`)
     }
 }

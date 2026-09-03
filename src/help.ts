@@ -2,7 +2,7 @@
 
 import * as config from "@src/lib/config"
 import { formatExProgram, programSource } from "@src/lib/excmd"
-import { modeMaps } from "@src/lib/binding"
+import { getModeMaps } from "@src/lib/binding"
 
 /** Create the element that should contain keybinding information */
 function initTridactylSettingElem(
@@ -94,7 +94,7 @@ async function onExcmdPageLoad() {
     browser.storage.onChanged.addListener((changes) => {
         if ("userconfig" in changes) {
             // JSON.stringify for comparisons like it's 2012
-            ;[...modeMaps, "exaliases"].forEach(kind => {
+            ;[...getModeMaps(), "exaliases"].forEach(kind => {
                 if (
                     JSON.stringify(changes.userconfig.newValue[kind]) !==
                     JSON.stringify(changes.userconfig.oldValue[kind])
@@ -104,7 +104,7 @@ async function onExcmdPageLoad() {
         }
     })
 
-    await Promise.all([...modeMaps, "exaliases"].map(addSetting))
+    await Promise.all([...getModeMaps(), "exaliases"].map(addSetting))
     // setCommandSetting() can change the height of nodes in the page so we need to scroll to the right place again
     if (document.location.hash) {
         /* tslint:disable:no-self-assignment */

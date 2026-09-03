@@ -912,7 +912,8 @@ export function keyTrie(conf) {
         // Prevent infinite inherit loops (just in case)
         const mapNames = new Set([conf])
 
-        const confs = [config.get(conf)];
+        const confs = [config.get(conf)]
+        if (confs[0] === undefined) confs[0] = {}
 
         while (
             confs[confs.length - 1]["🕷🕷INHERITS🕷🕷"] &&
@@ -1144,7 +1145,7 @@ browser.storage.onChanged.addListener(changes => {
     if ("userconfig" in changes) {
         KEYMAP_CACHE = {}
         KEYTRIE_CACHE = {}
-}
+    }
 })
 
 // ideally this would get called via a config.addChangeListener but they are not fired for mysterious reasons

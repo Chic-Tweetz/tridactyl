@@ -36,7 +36,7 @@ export class BindingsCompletionSource extends Completions.CompletionSourceFuse {
 
     constructor(private _parent) {
         super(
-            ["bind", "unbind", "bindurl", "unbindurl", "reset", "reseturl"],
+            ["bind", "unbind", "bindurl", "unbindurl", "reset", "reseturl", "modeinherit"],
             "BindingsCompletionSource",
             "Bindings",
         )
@@ -90,12 +90,39 @@ export class BindingsCompletionSource extends Completions.CompletionSourceFuse {
             }
         }
 
+        if (prefix.startsWith("modeinherit")) {
+            const hasForceFlag = args[0] === "--force" || args[0] === "-f"
+            const inheritArgPos = hasForceFlag ? 3 : 2
+
+            if (args.length === inheritArgPos) {
+                Binding.updateModesWithUserConfig()
+                const modeStr = args[inheritArgPos - 1].length > 1 ? args[inheritArgPos - 1] : ""
+                this.options = Binding.getModes()
+                    .filter(k => k.startsWith(modeStr))
+                    .map(
+                        name =>
+                            new BindingsCompletionOption(
+                                args[0] + " " + name,
+                                {
+                                    name,
+                                    value: modeDescriptions.get(name),
+                                    mode: "Mode Name",
+                                },
+                            ),
+                    )
+                return this.updateChain()
+            }
+            this.options = []
+            return this.updateChain()
+        }
+
         // completion maps mode
         if (args.length === 1 && args[0].startsWith("--m")) {
             const margs = args[0].split("=")
             if ("--mode".includes(margs[0])) {
+                Binding.updateModesWithUserConfig()
                 const modeStr = margs.length > 1 ? margs[1] : ""
-                this.options = Binding.modes
+                this.options = Binding.getModes()
                     .filter(k => k.startsWith(modeStr))
                     .map(
                         name =>

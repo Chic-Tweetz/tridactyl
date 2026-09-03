@@ -3132,7 +3132,7 @@ const parseConfigHelper = (pconf, parseobj, prefix = []) => {
             throw new Error("Cannot export dialect 2 program in custom setting")
         } else {
             for (const e of Object.keys(pconf[i])) {
-                if (binding.modeMaps.includes(i)) {
+                if (binding.getModeMaps().includes(i)) {
                     let cmd = "bind"
                     if (prefix[0] === "subconfigs")
                         cmd = cmd + "url " + prefix[1]
