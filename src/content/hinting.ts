@@ -1922,6 +1922,11 @@ function filterByTag() {
     modeState.showFlags()
 }
 
+function filterByTextToggle() {
+    if (modeState.filterMode === "flags") filterByText()
+    else filterByTag()
+}
+
 /** Switch from hinting by flag chars to searching text within the hints.
  *  I've added a separate textfilter, an array rather than a single string
  *  - each string in the array will be searched for in turn, so you don't have to
@@ -2226,6 +2231,7 @@ export function getHintCommands() {
         filterHints,
         filterByText,
         filterByTag,
+        filterByTextToggle,
         hideFlags,
         showFlags,
         reposition,
