@@ -70,7 +70,6 @@ class HintState {
     public filter = ""
     public textfilter = [""]
     public hintchars = ""
-    public filterMode = "flags"
     private filteredHints: Hint[] = []
 
     constructor(
@@ -79,10 +78,13 @@ class HintState {
         public reject: (x) => void,
         public rapid: boolean,
         private readonly cancelResult: unknown = "",
+        public filterMode: "flags" | "text" = "flags",
     ) {
         this.hud.classList.add("TridactylHud", "cleanslate")
         this.hudTranslate.classList.add("TridactylHudTranslation")
         this.hintHost.classList.add("TridactylHintHost")
+
+        if (filterMode === "text") this.hideFlags()
 
         const hintstyles = config.get("hintstyles")
         if (hintstyles.overlay !== "none") {
@@ -620,13 +622,17 @@ export function hintPage(
     reject: (x?) => void = () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
     rapid: boolean | "rehint" = false,
     cancelResult: unknown = "",
+    filterMode = "default",
 ) {
     reset() // Tidy up in case any previous hinting wasn't exited cleanly
-    const buildHints: HintBuilder = defaultHintBuilder()
-    const filterHints: HintFilter = defaultHintFilter()
+    const buildHints: HintBuilder = defaultHintBuilder(filterMode)
+    const filterHints: HintFilter = defaultHintFilter(filterMode)
     contentState.mode = "hint"
+
+    // "rehint" is handled in the :hint excmd
     if (rapid === "rehint") rapid = false
-    modeState = new HintState(filterHints, resolve, reject, rapid, cancelResult)
+    const flagsOrText = filterMode === "text" ? "text" : "flags"
+    modeState = new HintState(filterHints, resolve, reject, rapid, cancelResult, flagsOrText)
 
     if (!rapid) {
         buildHints(hintableElements, hint => {
@@ -642,8 +648,8 @@ export function hintPage(
             hint.result = onSelect(hint.target.deref())
             state.selectedHints.push(hint)
             state.textfilter = [""]
-            state.filterMode = "flags"
-            state.showFlags()
+            state.filterMode = flagsOrText
+            flagsOrText === "flags" ? state.showFlags() : state.hideFlags()
             if (
                 state.selectedHints.length > 1 &&
                 config.get("hintshift") === "true"
@@ -745,8 +751,10 @@ function updateHudOffset() {
 }
 
 /** @hidden */
-function defaultHintBuilder() {
-    switch (config.get("hintfiltermode")) {
+function defaultHintBuilder(override?: string) {
+    // My "text" hinting isn't its own mode so it shouldn't change anything here
+    const useConfig = !override || override === "default" || override === "text"
+    switch (useConfig ? config.get("hintfiltermode") : override) {
         case "simple":
             return buildHintsSimple
         case "vimperator":
@@ -761,8 +769,12 @@ function defaultHintBuilder() {
 }
 
 /** @hidden */
-function defaultHintFilter() {
-    switch (config.get("hintfiltermode")) {
+function defaultHintFilter(override?: string) {
+    // Same logic as defaultHintBuilder
+    // slight issue with the override param:
+    // defaultHintChars won't automatically give us alpha chars for a "words" override
+    const useConfig = !override || override === "default" || override === "text"
+    switch (useConfig ? config.get("hintfiltermode") : override) {
         case "simple":
             return filterHintsSimple
         case "vimperator":
@@ -771,6 +783,8 @@ function defaultHintFilter() {
             return fstr => filterHintsVimperator(fstr, true)
         case "words":
             return filterHintsWords
+        default:
+            return filterHintsSimple
     }
 }
 
@@ -1016,32 +1030,11 @@ class Hint {
         if (this.name !== this.unfilteredName) this.setName(this.unfilteredName)
     }
 
-    // These styles would be better with pseudo selectors. Can we do custom ones?
-    // If not, do a state machine.
     set hidden(hide: boolean) {
         if (hide === this._hidden) return
         this._hidden = hide
-        // this.flag.hidden = hide // Hide these in the render loop as well
         if (hide) this.focused = false
         renderState.pushHintsVisibility(this)
-
-        /*
-        // Dead elements (e.g. elements that were in a removed iframe) cause errors
-        // when accessing their properties.
-        // Example: bing.com image search. Click an image to bring up an iframe popup.
-        // Hint with that iframe open and select the close button.
-        // iframe is removed, but we try to clean up hints that were for elements inside it.
-        if (hide) {
-            this.focused = false
-            this.target.deref()?.classList?.remove("TridactylHintElem")
-            this.highlight?.setAttribute("hidden", "")
-            this.outline?.setAttribute("hidden", "")
-        } else {
-            this.target.deref()?.classList?.add("TridactylHintElem")
-            this.highlight?.removeAttribute("hidden")
-            this.outline?.removeAttribute("hidden")
-        }
-        */
     }
 
     get hidden() {
@@ -1049,10 +1042,8 @@ class Hint {
     }
 
     set active(active: boolean) {
-        if (this._active !== active) {
-            this._active = active
-            this.hidden = this._noRects ? true : !active
-        }
+        this._active = active
+        this.updateHidden()
     }
 
     get active() {
@@ -1060,10 +1051,12 @@ class Hint {
     }
 
     set noRects(noRects: boolean) {
-        if (this._noRects !== noRects) {
-            this._noRects = noRects
-            this.hidden = !this._active ? true : noRects
-        }
+        this._noRects = noRects
+        this.updateHidden()
+    }
+
+    private updateHidden() {
+        this.hidden = !this._active || this._noRects
     }
 
     set focused(focus: boolean) {
@@ -1121,10 +1114,12 @@ class Hint {
     }
 
     public overlapsWith(h: Hint) {
-        if (h.width == 0) h.width = h.flag.getClientRects()[0].width
-        if (h.height == 0) h.height = h.flag.getClientRects()[0].height
-        if (this.width == 0) this.width = this.flag.getClientRects()[0].width
-        if (this.height == 0) this.height = this.flag.getClientRects()[0].height
+        const otherRect = h.flag.getClientRects()[0]
+        if (!otherRect) return false
+        if (h.width == 0) h.width = otherRect.width
+        if (h.height == 0) h.height = otherRect.height
+        if (this.width == 0) this.width = otherRect.width
+        if (this.height == 0) this.height = otherRect.height
         return (
             this.x < h.x + h.width &&
             this.x + this.width > h.x &&
@@ -1148,6 +1143,14 @@ class Hint {
                 frame => frame.contentDocument === target.ownerDocument,
             )
             const rect = iframe.getClientRects()[0]
+
+            // found that rect can be undefined doing a `:hint -V *` on www.reddit.com
+            // better to say offset = 0 or just say noRects?
+            if (!rect) {
+                this.noRects = true
+                return
+            }
+
             offsetTop += rect.top
             offsetLeft += rect.left
         }

@@ -5899,6 +5899,9 @@ const KILL_STACK: Element[] = []
  * - -Qd quick "rehints" with a delay between hints in ms. Useful if selecting an element causes a non-instantaneous change on the page, like expanding/collapsing comments. E.g. `hint  -Qdb 250` to rehint 250ms after selecting each hint.
  * - -! execute all hints without waiting for a selection
  *     - For example, `hint -!bf Comments` opens in background tabs all visible links whose text matches `Comments`
+ * - -/ search for text in elements (similar to `:set hintfiltermode vimperator`) without hint flags.
+ *     - The `:hint.hintByText` and `:hint.filterByTag` commands can be used to switch between these two "modes" during hinting.
+ *     - E.g. `:bind --mode=hint / hint.filterByText`
  *
  * #### Deprecated options:
  *
@@ -6142,7 +6145,15 @@ export async function hint(...args: string[]): Promise<any> {
 
             async function repeat() {
                 const result = await new Promise((res) => {
-                    hinting.hintPage(rehintables, action, res, reject, config.rapid)
+                    hinting.hintPage(
+                        rehintables,
+                        action,
+                        res,
+                        reject,
+                        config.rapid,
+                        config.openMode === OpenMode.Element ? EX_CANCELLED : "",
+                        config.filterMode
+                    )
                 })
                 return new Promise(res => {
                     if (result === "") {
@@ -6168,6 +6179,7 @@ export async function hint(...args: string[]): Promise<any> {
                 reject,
                 config.rapid,
                 config.openMode === OpenMode.Element ? EX_CANCELLED : "",
+                config.filterMode,
             )
         }
     }).then(value => {

@@ -77,6 +77,7 @@ export class HintConfig implements HintOptions {
     public warnings = []
     public elemFilter?: string
     public includeHUD: boolean | "only" = false
+    public filterMode: "default" | "simple" | "vimperator" | "vimperator-reflow" | "text" | "words"
 
     public static parse(args: string[]): HintConfig {
         // Argument parser state
@@ -269,6 +270,9 @@ export class HintConfig implements HintOptions {
                                     break
                                 case "+hud":
                                     result.includeHUD = true
+                                    break
+                                case "/":
+                                    result.filterMode = "text"
                                     break
                                 default:
                                     result.warnings.push(

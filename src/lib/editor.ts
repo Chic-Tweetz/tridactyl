@@ -670,6 +670,14 @@ export const insert_text = wrap_input(
     ],
 )
 
+export const insert_newline = wrap_input(
+    (text, selectionStart, selectionEnd) => [
+        text.slice(0, selectionStart) + "\n" + text.slice(selectionEnd),
+        selectionStart + 1,
+        null,
+    ],
+)
+
 export const rot13 = wrap_input((text, selectionStart, selectionEnd) => [
     rot13_helper(text.slice(0, selectionStart) + text.slice(selectionEnd)),
     selectionStart,
