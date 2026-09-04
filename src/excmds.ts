@@ -5902,6 +5902,7 @@ const KILL_STACK: Element[] = []
  * - -/ search for text in elements (similar to `:set hintfiltermode vimperator`) without hint flags.
  *     - The `:hint.hintByText` and `:hint.filterByTag` commands can be used to switch between these two "modes" during hinting.
  *     - E.g. `:bind --mode=hint / hint.filterByText`
+ * - -m [simple|vimperator|vimperator-reflow|words] override current `hintfiltermode` setting. Incompatible with `-/`.
  *
  * #### Deprecated options:
  *

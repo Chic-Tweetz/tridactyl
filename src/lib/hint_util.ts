@@ -77,7 +77,7 @@ export class HintConfig implements HintOptions {
     public warnings = []
     public elemFilter?: string
     public includeHUD: boolean | "only" = false
-    public filterMode: "default" | "simple" | "vimperator" | "vimperator-reflow" | "text" | "words"
+    public filterMode: string
 
     public static parse(args: string[]): HintConfig {
         // Argument parser state
@@ -95,6 +95,7 @@ export class HintConfig implements HintOptions {
             ExpectElementFilterDelim,
             ExpectElementFilter,
             ExpectRapidRehintDelay,
+            ExpectFilterMode,
         }
 
         const result = new HintConfig()
@@ -274,6 +275,9 @@ export class HintConfig implements HintOptions {
                                 case "/":
                                     result.filterMode = "text"
                                     break
+                                case "m":
+                                    newState = State.ExpectFilterMode
+                                    break
                                 default:
                                     result.warnings.push(
                                         `unknown flag -${flag}`,
@@ -414,6 +418,10 @@ export class HintConfig implements HintOptions {
                     } else {
                         result.warnings.push(`could not parse delay as integer -${arg}`)
                     }
+                    state = State.Initial
+                    break
+                case State.ExpectFilterMode:
+                    result.filterMode = arg
                     state = State.Initial
                     break
             }
