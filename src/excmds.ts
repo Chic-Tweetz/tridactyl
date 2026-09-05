@@ -4204,7 +4204,7 @@ async function getnexttabs(tabid: number, n?: number) {
     It's difficult to execute this in the background script (`:jsb`, `:run_excmd`, `:autocmd TriStart`, `:source`), but if you do, it will re-execute the last exstr that was executed in the background script. What this may have been is unpredictable and not precisely encouraged.
 
 */
-//#background
+//#both
 export async function repeat(n: number | ExProgram = 1, ...exstr: Array<string | ExProgram>) {
     let cmd: ExCommand
     if (isExProgram(n)) {
@@ -4214,7 +4214,7 @@ export async function repeat(n: number | ExProgram = 1, ...exstr: Array<string |
         const count = parseFloat(String(n))
         if (Number.isNaN(count)) throw new Error(`Invalid repeat count: ${n}`)
         n = count
-        cmd = exstr.length ? joinExCommand(exstr) : state.last_ex_str
+        cmd = exstr.length ? joinExCommand(exstr) : await State.getAsync("last_ex_str")
     }
     logger.debug("repeating " + formatExProgram(cmd) + " " + n + " times")
     for (let i = 0; i < n; i++) {
@@ -6248,7 +6248,7 @@ export function jumble() {
  */
 //#content
 export function run_exstr(...commands: string[]) {
-    return Messaging.message("controller_background", "acceptExCmd", commands.join(""))
+    return Messaging.message("controller_background", "acceptExCmd", commands.join(" "))
 }
 
 // }}}

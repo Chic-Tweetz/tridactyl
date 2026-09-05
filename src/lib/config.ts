@@ -1497,6 +1497,9 @@ export class default_config {
     /** Names of Ex commands that do not replace the command executed by `:repeat`. */
     repeatblacklist: string[] = []
 
+    /** Like repeatblacklist but for all Ex commands in a namespace. */
+    repeatnamespaceblacklist: string[] = ["hint"]
+
     /**
      * Whether a trailing slash is appended when we get the parent of a url with
      * gu (or other means).

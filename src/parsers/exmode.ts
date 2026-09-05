@@ -249,5 +249,6 @@ export function parser(
             arg instanceof BoundArgument ? arg.value : arg,
         ),
         consumed,
+        namespce,
     ]
 }

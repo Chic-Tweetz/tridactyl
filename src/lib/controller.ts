@@ -78,7 +78,7 @@ export async function acceptExCmd(
             program?: ExProgram,
             raw?: string,
         ) => {
-            const [func, args, consumed] = exmode_parser(
+            const [func, args, consumed, ns] = exmode_parser(
                 command,
                 stored_excmds,
                 isV2 ? { piped, value } : undefined,
@@ -96,6 +96,9 @@ export async function acceptExCmd(
             if (!recorded) {
                 recorded = true
                 if (
+                    !config
+                        .get("repeatnamespaceblacklist")
+                        .some(namespc => namespc === ns) &&
                     !config
                         .get("repeatblacklist")
                         .some(excmd => func === stored_excmds[""][excmd]) &&
