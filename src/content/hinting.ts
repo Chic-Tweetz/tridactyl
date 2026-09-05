@@ -43,6 +43,7 @@ import * as R from "ramda"
 const logger = new Logger("hinting")
 import * as keyseq from "@src/lib/keyseq"
 import * as HUD from "@src/content/hud"
+import { HintConfig } from "@src/lib/hint_util"
 
 /** Calclate the distance between two segments.
  * @hidden
@@ -78,13 +79,14 @@ class HintState {
         public reject: (x) => void,
         public rapid: boolean,
         private readonly cancelResult: unknown = "",
-        public filterMode: "flags" | "text" = "flags",
+        public filterByText: boolean,
+        public options: HintConfig,
     ) {
         this.hud.classList.add("TridactylHud", "cleanslate")
         this.hudTranslate.classList.add("TridactylHudTranslation")
         this.hintHost.classList.add("TridactylHintHost")
 
-        if (filterMode === "text") this.hideFlags()
+        if (filterByText) this.hideFlags()
 
         const hintstyles = config.get("hintstyles")
         if (hintstyles.overlay !== "none") {
@@ -622,17 +624,19 @@ export function hintPage(
     reject: (x?) => void = () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
     rapid: boolean | "rehint" = false,
     cancelResult: unknown = "",
-    filterMode = "default",
+    options: any = {},
+    // filterMode = "default",
 ) {
     reset() // Tidy up in case any previous hinting wasn't exited cleanly
-    const buildHints: HintBuilder = defaultHintBuilder(filterMode)
-    const filterHints: HintFilter = defaultHintFilter(filterMode)
+    const buildHints: HintBuilder = defaultHintBuilder(options.filterMode || "default")
+    const filterHints: HintFilter = defaultHintFilter(options.filterMode || "default")
     contentState.mode = "hint"
 
-    // "rehint" is handled in the :hint excmd
-    if (rapid === "rehint") rapid = false
-    const flagsOrText = filterMode === "text" ? "text" : "flags"
-    modeState = new HintState(filterHints, resolve, reject, rapid, cancelResult, flagsOrText)
+    // "rehint" is handled in the :hint excmd so it can just be false here
+    rapid = rapid === true
+    const filterByText = options.filterMode === "text"
+
+    modeState = new HintState(filterHints, resolve, reject, rapid, cancelResult, filterByText, options)
 
     if (!rapid) {
         buildHints(hintableElements, hint => {
@@ -648,8 +652,8 @@ export function hintPage(
             hint.result = onSelect(hint.target.deref())
             state.selectedHints.push(hint)
             state.textfilter = [""]
-            state.filterMode = flagsOrText
-            flagsOrText === "flags" ? state.showFlags() : state.hideFlags()
+            state.filterByText = filterByText
+            filterByText ? state.hideFlags() : state.showFlags()
             if (
                 state.selectedHints.length > 1 &&
                 config.get("hintshift") === "true"
@@ -790,13 +794,17 @@ function defaultHintFilter(override?: string) {
 
 /** @hidden */
 function defaultHintChars() {
-    if (config.get("hintnames") === "numeric") {
+    if (modeState.options?.hintChars && !modeState.options?.hintNames)
+        return modeState.options.hintChars
+
+    const hintNames = modeState?.options?.hintNames || config.get("hintnames")
+    if (hintNames === "numeric") {
         return "1234567890"
     }
-    if (config.get("hintnames") === "words") {
+    if (hintNames === "words") {
         return "abcdefghijklmnopqrstuvwxyz" // protect users from changing hintchars and not being able to type the words
     }
-    return config.get("hintchars")
+    return modeState?.options?.hintChars || config.get("hintchars")
 }
 
 /** An infinite stream of hints
@@ -1675,7 +1683,7 @@ function popKey() {
     if (modeState.focusedHint) {
         modeState.focusedHint.focused = false
     }
-    if (modeState.filterMode === "text") {
+    if (modeState.filterByText) {
         const findex = modeState.textfilter.length - 1
         if (modeState.textfilter[findex].length > 1) {
             modeState.textfilter[findex] = modeState.textfilter[findex].slice(
@@ -1703,9 +1711,9 @@ function popKey() {
 
 /** Add key to filtstr and filter */
 function pushKey(key) {
-    if (modeState.filterMode === "text") {
+    if (modeState.filterByText) {
         const originalFilter = modeState.textfilter.map(s => s)
-        const numBefore = modeState.activeHints.length
+        // const numBefore = modeState.activeHints.length
 
         const findex = modeState.textfilter.length - 1
         modeState.textfilter[findex] += key
@@ -1713,23 +1721,27 @@ function pushKey(key) {
         filterByText(modeState.textfilter)
 
         if (
-            !modeState.activeHints.length &&
+            modeState.activeHints.length === 0 &&
             modeState.textfilter[findex].length
         ) {
             modeState.textfilter = originalFilter.concat([key])
             filterByText(modeState.textfilter)
         }
 
-        if (
-            modeState.activeHints.length === numBefore ||
-            modeState.activeHints.length === 0
-        ) {
-            modeState.textfilter = originalFilter
-            filterByText(originalFilter)
-        }
+        // if (
+        //     modeState.activeHints.length === numBefore ||
+        //     modeState.activeHints.length === 0
+        // ) {
+        //     modeState.textfilter = originalFilter
+        //     filterByText(originalFilter)
+        //     if (modeState.textfilter.length && modeState.textfilter[modeState.textfilter.length - 1] !== "") {
+        //         // Start with a new run next key press otherwise we can mistakenly filter elems out
+        //         modeState.textfilter = originalFilter.concat([""])
+        //     }
+        // }
 
         // fillcmdline_nofocus("hint/" + modeState.textfilter.join("/"))
-        contentState.suffix = modeState.textfilter.join("/")
+        contentState.suffix = "/" + modeState.textfilter.join("/")
     } else {
         // The new key can be used to filter the hints
         const originalFilter = modeState.filter
@@ -1916,14 +1928,14 @@ export function hintByText(match: string | RegExp) {
  *  should removeHiddenHints() not handle that? (and do I even care?)
  */
 function filterByTag() {
-    modeState.filterMode = "flags"
+    modeState.filterByText = false
     modeState.filter = ""
     modeState.removeHiddenHints()
     modeState.showFlags()
 }
 
 function filterByTextToggle() {
-    if (modeState.filterMode === "flags") filterByText()
+    if (modeState.filterByText) filterByText()
     else filterByTag()
 }
 
@@ -1937,9 +1949,11 @@ function filterByTextToggle() {
  *  TODO: reuse vimperator filtering
  */
 function filterByText(match?: string[]) {
-    if (modeState.filterMode !== "text") {
-        modeState.filterMode = "text"
+    if (!modeState.filterByText) {
+        modeState.filterByText = true
         modeState.textfilter = match || [""]
+
+        hideFlags()
 
         modeState.activeHints.forEach(h => {
             if (!h.target.deref() || !DOM.isVisible(h.target.deref())) h.active = false
@@ -1960,7 +1974,6 @@ function filterByText(match?: string[]) {
             modeState.focusedHint = modeState.hints[0]
             modeState.focusedHint.focused = true
         }
-        hideFlags()
 
         // fillcmdline_nofocus("hint/" + modeState.textfilter.join("/"))
         contentState.suffix = modeState.textfilter.join("/")
@@ -1982,15 +1995,15 @@ function filterByText(match?: string[]) {
         }
         let text
         if (el instanceof HTMLInputElement) {
-            text = el.value.trim()
+            text = el.value.trim().toUpperCase()
         } else {
-            text = el.textContent.trim()
+            text = el.textContent.trim().toUpperCase()
         }
 
         if (!text || text === "") {
             hint.active = false
         } else if (
-            match.every(str => text.toUpperCase().includes(str.toUpperCase()))
+            match.every(str => text.includes(str.toUpperCase()))
         ) {
             hint.active = true
             active.push(hint)
@@ -2005,6 +2018,11 @@ function filterByText(match?: string[]) {
 
     modeState.focusedHint = focus
     modeState.focusedHint.focused = true
+
+    // Might as well autoselect
+    if (active.length === 1 && config.get("hintautoselect") === "true") {
+        selectFocusedHint(true)
+    }
 }
 
 /** Return a predicate that checks whether an element matches a given text hinting filter
@@ -2066,8 +2084,9 @@ function selectFocusedHint(delay = false) {
     else selectFocusedHintInternal()
 }
 
+// Bind this to <Space> if you want to be able to search for spaces when using filterByText
 function pushSpaceOrSelectFocusedHint() {
-    if (modeState.filterMode === "text") pushSpace()
+    if (modeState.filterByText) pushSpace()
     else selectFocusedHint()
 }
 

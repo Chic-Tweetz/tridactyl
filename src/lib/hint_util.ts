@@ -78,6 +78,8 @@ export class HintConfig implements HintOptions {
     public elemFilter?: string
     public includeHUD: boolean | "only" = false
     public filterMode: string
+    public hintNames: string
+    public hintChars: string
 
     public static parse(args: string[]): HintConfig {
         // Argument parser state
@@ -96,11 +98,13 @@ export class HintConfig implements HintOptions {
             ExpectElementFilter,
             ExpectRapidRehintDelay,
             ExpectFilterMode,
+            ExpectHintNames,
+            ExpectHintChars,
         }
 
         const result = new HintConfig()
         result.jshints = config.get("hintselectorsincludejs") === "true"
-        const multiLetterFlags = ["fr", "wp", "br", "pipe", "filter", "Qd", "hud", "+hud", "jj"]
+        const multiLetterFlags = ["fr", "wp", "br", "pipe", "filter", "Qd", "hud", "+hud", "jj", "chars"]
         let cOrPipeFlagPresent = false
         let CFlagPresent = false
         let filterDelim
@@ -278,6 +282,12 @@ export class HintConfig implements HintOptions {
                                 case "m":
                                     newState = State.ExpectFilterMode
                                     break
+                                case "n":
+                                    newState = State.ExpectHintNames
+                                    break
+                                case "chars":
+                                    newState = State.ExpectHintChars
+                                    break
                                 default:
                                     result.warnings.push(
                                         `unknown flag -${flag}`,
@@ -422,6 +432,14 @@ export class HintConfig implements HintOptions {
                     break
                 case State.ExpectFilterMode:
                     result.filterMode = arg
+                    state = State.Initial
+                    break
+                case State.ExpectHintNames:
+                    result.hintNames = arg
+                    state = State.Initial
+                    break
+                case State.ExpectHintChars:
+                    result.hintChars = arg
                     state = State.Initial
                     break
             }

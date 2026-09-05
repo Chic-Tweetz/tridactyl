@@ -6229,7 +6229,7 @@ export async function hint(...args: string[]): Promise<any> {
                         reject,
                         config.rapid,
                         config.openMode === OpenMode.Element ? EX_CANCELLED : "",
-                        config.filterMode
+                        config,
                     )
                 })
                 return new Promise(res => {
@@ -6256,7 +6256,7 @@ export async function hint(...args: string[]): Promise<any> {
                 reject,
                 config.rapid,
                 config.openMode === OpenMode.Element ? EX_CANCELLED : "",
-                config.filterMode,
+                config,
             )
         }
     }).then(value => {
