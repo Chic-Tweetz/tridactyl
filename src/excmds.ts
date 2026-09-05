@@ -5104,6 +5104,82 @@ function validateSetArgs(key: string, values: string[]) {
 }
 
 /**
+ * Push a value to an array config setting.
+ *
+ * Can be used to create a new config setting as an array, but not change an existing non-array setting to an array.
+ *
+ * See also: [[setpop]]
+ */
+//#background
+export function setpush(key: string, ...values: string[]) {
+    // If key doesn't exist, create a new custom array setting
+    const pushValue = values.pop()
+    let curr = config.get(key as keyof config.default_config, ...values) || []
+
+    if (!Array.isArray(curr))
+        curr = JSON.parse(curr)
+        if (!Array.isArray(curr))
+            throw new Error("Setting is not an array.")
+
+    curr.push(pushValue)
+    fillcmdline_tmp(
+        5000,
+        "#",
+        key + (values.length ? "." + values.join(".") : ""),
+        JSON.stringify(curr),
+    )
+    return set(key, ...values, JSON.stringify(curr))
+}
+
+/**
+ * Pop the last value in an array config setting, or find a value inside an array config setting and remove it.
+ *
+ * E.g. for `:setpop key keyOrVal`
+ * Will pop if `:get key keyOrVal` is an array
+ * Will find and remove if `:get key` is an array containing `keyOrVal`
+ *
+ * See also: [[setpush]]
+ */
+//#background
+export function setpop(key: string, ...values: string[]) {
+    const removeValue = values.pop()
+    let curr = config.get(key as any, ...values)
+    curr = Array.isArray(curr) ? curr : JSON.parse(curr)
+
+    if (!Array.isArray(curr) || !removeValue) {
+        let maybePop = !removeValue ? curr : config.get(key as any, ...values, removeValue)
+        maybePop = Array.isArray(maybePop) ? maybePop : JSON.parse(maybePop)
+        if (Array.isArray(maybePop)) {
+            const popped = maybePop.pop()
+            fillcmdline_tmp(
+                5000,
+                "#",
+                "popped",
+                popped,
+                key + (values.length ? "." + values.join(".") : ""),
+                JSON.stringify(maybePop),
+            )
+            return set(key, ...values, JSON.stringify(maybePop))
+        }
+        throw new Error("Setting is not an array!")
+    }
+
+    const idx = curr.findIndex(v => v == removeValue)
+    if (idx >= 0) {
+        curr.splice(idx, 1)
+        fillcmdline_tmp(
+            5000,
+            "#",
+            "popped",
+            removeValue,
+            key + (values.length ? "." + values.join(".") : ""),
+            JSON.stringify(curr),
+        )
+        return set(key, ...values, JSON.stringify(curr))
+    }
+}
+
+/**
  * Usage: `seturl [pattern] key values`
  *
  * @param pattern The URL regex pattern the setting should be set for, e.g. `^https://en.wikipedia.org` or `/index.html`. Defaults to the current url if `values` is a single word.
