@@ -5962,6 +5962,7 @@ const KILL_STACK: Element[] = []
  * - Don't generate hints related to javascript events. This is particularly useful when used with the `-c` option when you want to generate only hints for the specified css selectors.
  * - Also useful on sites with plenty of useless javascript elements such as google.com
  * @flag -j enable javascript hints if using `:set hintselectorsincludejs false`
+ * @flag -jj invert current `hintselectorsincludejs` setting
  * @flag -V create hints for invisible elements
  * - By default, elements outside the viewport when calling :hint are not hinted; this includes them anyways.
  * @flag -filter [delim] [elem => boolean] [delim]
@@ -5978,7 +5979,9 @@ const KILL_STACK: Element[] = []
  * - -/ search for text in elements (similar to `:set hintfiltermode vimperator`) without hint flags.
  *     - The `:hint.hintByText` and `:hint.filterByTag` commands can be used to switch between these two "modes" during hinting.
  *     - E.g. `:bind --mode=hint / hint.filterByText`
- * - -m [simple|vimperator|vimperator-reflow|words] override current `hintfiltermode` setting. Incompatible with `-/`.
+ * - -m [simple|vimperator|vimperator-reflow|words] override current `hintfiltermode` setting. Incompatible with `-/`
+ * - -n [short|numeric|uniform|words] override current `hintnames` setting
+ * - -chars [chars] override current `hintchars` setting
  *
  * #### Deprecated options:
  *
