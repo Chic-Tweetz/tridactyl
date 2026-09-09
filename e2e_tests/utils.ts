@@ -3,7 +3,7 @@ import * as path from "path"
 import * as os from "os"
 import * as process from "process"
 import { Browser, Builder, By, Key, WebDriver } from "selenium-webdriver"
-import { Driver, Options } from "selenium-webdriver/firefox"
+import { Driver, Options, ServiceBuilder } from "selenium-webdriver/firefox"
 import * as Until from "selenium-webdriver/lib/until"
 const env = process.env
 const drivers = new Set<Driver>()
@@ -48,6 +48,8 @@ export async function getDriver() {
     const driver = new Builder()
         .forBrowser(Browser.FIREFOX)
         .setFirefoxOptions(options)
+        // Required to evaluate scripts in extension pages; only for test browsers.
+        .setFirefoxService(new ServiceBuilder().addArguments("--allow-system-access"))
         .build() as unknown as Driver
     drivers.add(driver)
 

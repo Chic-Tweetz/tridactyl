@@ -441,14 +441,14 @@ export function searchUrlToArgs(
  *
  * The search item is percent encoded before it is inserted.
  *
- * @param urlPattern        a URL to interpolate/append a query to
+ * @param urlPattern        a URL template to interpolate/append a query to
  * @param query             a query to interpolate/append into the URL
  *
  * @return                  the URL with the query encoded and inserted at the
  *                          relevant point
  */
-export function interpolateSearchItem(urlPattern: URL, query: string): URL {
-    const hasInterpolationPoint = urlPattern.href.includes("%s")
+export function interpolateSearchItem(urlPattern: string, query: string): URL {
+    const hasInterpolationPoint = urlPattern.includes("%s")
 
     let queryWords = query.split(" ")
 
@@ -456,10 +456,10 @@ export function interpolateSearchItem(urlPattern: URL, query: string): URL {
     query = encodeURIComponent(query)
     queryWords = queryWords.map(w => encodeURIComponent(w))
 
-    // replace or append as needed
+    // Interpolate before parsing so placeholders can appear in the hostname.
     if (hasInterpolationPoint) {
-        const resultingURL = new URL(
-            urlPattern.href
+        return new URL(
+            urlPattern
                 .replace(/%s[1-9]\d*/g, function (x) {
                     const index = parseInt(x.slice(2), 10) - 1
                     if (index >= queryWords.length) {
@@ -476,12 +476,11 @@ export function interpolateSearchItem(urlPattern: URL, query: string): URL {
                         ? queryWords.slice(start, l(parseInt(p2, 10)))
                         : queryWords.slice(start)
                     return slice.join(" ")
-                }),
+                })
+                .replace("%s", query),
         )
-
-        return new URL(resultingURL.href.replace("%s", query))
     } else {
-        return new URL(urlPattern.href + query)
+        return new URL(new URL(urlPattern).href + query)
     }
 }
 

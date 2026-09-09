@@ -348,6 +348,21 @@ function test_url_query_interpolation() {
     let cases = [
         ["http://example.com/%s000", "a/query", "http://example.com/a%2Fquery000"],
         [
+            "https://%s1.wikipedia.org/wiki/%s2",
+            "en Tridactyl",
+            "https://en.wikipedia.org/wiki/Tridactyl",
+        ],
+        [
+            "https://%s.wikipedia.org/wiki/Tridactyl",
+            "en",
+            "https://en.wikipedia.org/wiki/Tridactyl",
+        ],
+        [
+            "https://%s[1:2].wikipedia.org/wiki/%s[2:]",
+            "en Main Page",
+            "https://en.wikipedia.org/wiki/Main%20Page",
+        ],
+        [
             // appended to the path
             "http://example.com",
             "a/query",
@@ -384,7 +399,7 @@ function test_url_query_interpolation() {
     ]
 
     for (let [url, qy, exp_res] of cases) {
-        let modified = UrlUtil.interpolateSearchItem(new URL(url), qy)
+        let modified = UrlUtil.interpolateSearchItem(url, qy)
 
         test(`interpolate ${qy} into ${url} --> ${exp_res}`, () =>
             expect(modified.href).toEqual(exp_res))
@@ -396,7 +411,7 @@ test.each([
     ["wiki", "https://example.com/wiki/", "an/article"],
 ])("convert an interpolated %s URL back to arguments", (engine, pattern, query) => {
     const searchurls = { [engine]: pattern }
-    const url = UrlUtil.interpolateSearchItem(new URL(pattern), query).href
+    const url = UrlUtil.interpolateSearchItem(pattern, query).href
     expect(UrlUtil.searchUrlToArgs(url, searchurls)).toEqual(`${engine} ${query}`)
 })
 

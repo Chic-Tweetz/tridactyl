@@ -1,5 +1,29 @@
 # Tridactyl changelog
 
+# Release 1.25.1 / 2026-09-08
+
+- New features
+
+    - `:tabmove [amount] [index]` added for use primarily in ex-mode binds ([#5045](https://github.com/tridactyl/tridactyl/issues/5045))
+
+- Bug fixes
+
+    - `:mode [custom]` now works again ([#5518](https://github.com/tridactyl/tridactyl/issues/5518))
+    - `:mkt` is now noisier about paths and failure
+    - `:set logging.` works again ([#5513](https://github.com/tridactyl/tridactyl/issues/5513))
+    - `searchurls` can now have `%s` in their subdomains ([#5523](https://github.com/tridactyl/tridactyl/issues/5523))
+
+- Miscellaneous
+
+    - noreply email addresses are henceforth banned from commits ([#5517](https://github.com/tridactyl/tridactyl/issues/5517))
+    - flag documentation formalised to preserve metadata for eventual reuse ([#5511](https://github.com/tridactyl/tridactyl/issues/5511))
+
+Thanks to all of our contributors for this release: Oliver Blanthorn, Robert Hill, dependabot[bot] and Marc González Moratona.
+
+Extra special thanks go to Marc González Moratona and Robert Hill who both contributed for the first time.
+
+Last, but not least - thank you to everyone who reported the issues we closed in this release: bovine3dom, pennae, stevium, syntaxenjoyer and veivataan.
+
 # Release 1.25.0 / 2026-08-28
 
 Codename "Carpenter"
