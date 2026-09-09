@@ -3115,7 +3115,7 @@ export function parseConfig(): string {
 
 const parseConfigHelper = (pconf, parseobj, prefix = []) => {
     for (const i of Object.keys(pconf)) {
-        if (typeof pconf[i] !== "object") {
+        if (typeof pconf[i] !== "object" || Array.isArray(pconf[i])) {
             if (prefix.length === 0 && i === "exversion") continue
             const value = Array.isArray(pconf[i]) ? JSON.stringify(pconf[i]) : pconf[i]
             if (prefix[0] === "subconfigs") {
