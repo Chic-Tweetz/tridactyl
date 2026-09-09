@@ -152,6 +152,26 @@ export function getUrlParent(url, option, count = 1) {
     return gup(parent, option, count)
 }
 
+export function symbolsToURL(dotsOrSlash: string, relativeTo: any = window.location) {
+    if (dotsOrSlash === "/") return getUrlRoot(relativeTo).href
+    let allDots = true
+    let firstDot = true
+    let urlParent = relativeTo
+    for (const ch of dotsOrSlash) {
+        if (ch !== ".") {
+            allDots = false
+            break
+        } else if (!firstDot) {
+            const nextParent = getUrlParent(urlParent, {}, 1)
+            if (nextParent) urlParent = nextParent
+        } else {
+            firstDot = false
+        }
+    }
+    if (!allDots) return dotsOrSlash
+    return urlParent.href
+}
+
 /** Very incomplete lookup of extension for common mime types that might be
  * encountered when saving elements on a page. There are NPM libs for this,
  * but this should cover 99% of basic cases

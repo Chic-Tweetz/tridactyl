@@ -5198,13 +5198,33 @@ export function setpop(key: string, ...values: string[]) {
  */
 //#content
 export function seturl(pattern: string, key: string, ...values: string[]) {
-    if (values.length === 0 && key) {
-        values = [key]
-        key = pattern
-        pattern = window.location.href
+    // This usage makes it tricky to use sho setHelperBoolShorthand
+    // Two params = :seturl [pattern] [key]
+    // OR it could be :seturl [current url] [pattern] true
+    // ONE param could work
+    // :seturl [pattern] => :seturl [current url] [pattern] true
+    // But I'm going to leave it I think
+
+    // ALTERNATIVELY you could say that a pattern of . === window.location.href
+    // then you even could do .. and ... etc
+    // if (values.length === 0 && key) {
+    //     values = [key]
+    //     key = pattern
+    //     pattern = window.location.href
+    // }
+
+    if (!pattern || !key) {
+        throw new Error("seturl syntax: [pattern] key value")
     }
 
-    if (!pattern || !key || !values.length) {
+    // . = window.location
+    // .. = window.location parent
+    // ... = window.location parent parent etc.
+    pattern = UrlUtil.symbolsToURL(pattern)
+
+    ;({ key, values } = setHelperBoolShorthand(key, values, ["subconfigs", pattern]))
+
+    if (!values.length) {
         throw new Error("seturl syntax: [pattern] key value")
     }
 
@@ -5227,13 +5247,75 @@ export function seturl(pattern: string, key: string, ...values: string[]) {
  */
 //#content
 export function setmode(mode: string, key: string, ...values: string[]) {
-    if (!mode || !key || !values.length) {
+    if (!mode || !key) {
         throw new Error("seturl syntax: mode key value")
     }
     if (!["allowautofocus", "countaware"].includes(key))
         throw new Error("Setting '" + key + "' not supported with setmode")
 
+    ;({ key, values } = setHelperBoolShorthand(key, values, ["modesubconfigs", mode]))
+
+    if (!values.length) {
+        throw new Error("seturl syntax: mode key value")
+    }
+
     return config.set("modesubconfigs", mode, ...validateSetArgs(key, values))
+}
+
+/**
+ * `:set thing` === `:set thing true`
+ * `:set nothing` === `:set thing false`
+ * `:set invthing` or `:set thing!` invert existing bool settings
+ * Sets values to ["true"] or ["false"], no validation except checking for existing value when inverting
+ * Strips "no", "inv" or "!" from key if a key does not exist including them
+ */
+function setHelperBoolShorthand(key: string, values: string[], subconfPath: string[] = []) {
+    if (values[0]) return { key, values }
+    let bool
+    const path = key.split(".")
+
+    // Bool inversion with :set thing!
+    if (key.endsWith("!")) {
+        // As long as there's no key that includes the !
+        let existing = config.get(...subconfPath as any, ...path)
+        if (!existing) {
+            const altPath = path.slice(0, -1)
+            altPath.push(path[path.length - 1].slice(0, - 1))
+            existing = config.get(...subconfPath as any, ...altPath)
+            if (existing === "true") bool = "false"
+            else if (existing === "false") bool = "true"
+            if (bool) {
+                key = altPath.join(".")
+            }
+        }
+    }
+
+    if (!bool) {
+        let topLevel = config.get(...subconfPath as any, path[0])
+        if (!topLevel) {
+            if (path[0].startsWith("inv")) {
+                // Invert with "inv" prefix, `:set inva.b.c` - only works if value exists already
+                path[0] = path[0].slice("inv".length)
+                topLevel = config.get(...subconfPath as any, path[0])
+                const existing = config.get(...subconfPath as any, ...path)
+                if (existing === "true") bool = "false"
+                else if (existing === "false") bool = "true"
+            } else if (path[0].startsWith("no")) {
+                path[0] = path[0].slice(2)
+                bool = "false"
+                topLevel = config.get(...subconfPath as any, path[0])
+            } else {
+                bool = "true"
+            }
+            if (bool) key = path.join(".")
+        } else {
+            // Is there any reason not to just try for a bool setter?
+            bool = "true"
+        }
+    }
+
+    if (bool) values = [bool]
+    return { key, values }
 }
 
 /** Set a key value pair in config.
@@ -5254,9 +5336,13 @@ export function setmode(mode: string, key: string, ...values: string[]) {
 export function set(key: string, ...values: string[]) {
     if (!key) {
         throw new Error("Key must be provided!")
-    } else if (!values[0]) {
-        return get(key)
     }
+
+    ({ key, values } = setHelperBoolShorthand(key, values))
+
+    // Should now only happen if you try to invert an invalid setting
+    if (!values[0])
+        return get(key)
 
     if (key === "noiframeon") {
         const noiframes = config.get("noiframeon")
@@ -5795,7 +5881,7 @@ export function get(...keys: string[]) {
     } else {
         done = fillcmdline_notrail(`# ${keys.join(".")} ${value}`)
     }
-    return done
+    return done.then(() => value) // Might it be useful to pipe value ?
 }
 
 /**
