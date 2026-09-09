@@ -3187,7 +3187,9 @@ const parseConfigHelper = (pconf, parseobj, prefix = []) => {
                             assertV2Argument(a)
                             parseobj.v2.push(output)
                         } else {
-                            parseobj.aucmds.push(output)
+                            parseobj.aucmds.push(command === null
+                                ? `autocmddelete ${e} ${a}`
+                                : output,)
                         }
                     }
                 } else if (i === "autocontain") {
