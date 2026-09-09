@@ -37,6 +37,13 @@ export function paramTypes(fnNode: Node | undefined): Node[] {
     return fnNode?.params || []
 }
 
+export function isBoolString(n: Node | undefined): boolean {
+    return n &&
+        n.type === "union" &&
+        n.types.find(({ type, value }) => type === "literal" && value === "true") &&
+        n.types.find(({ type, value }) => type === "literal" && value === "false")
+}
+
 function intrinsicName(t) {
     switch (t.name) {
         case "string":
