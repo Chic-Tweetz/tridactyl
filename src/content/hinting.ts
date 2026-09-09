@@ -1126,8 +1126,8 @@ class Hint {
         if (!otherRect) return false
         if (h.width == 0) h.width = otherRect.width
         if (h.height == 0) h.height = otherRect.height
-        if (this.width == 0) this.width = otherRect.width
-        if (this.height == 0) this.height = otherRect.height
+        if (this.width == 0) this.width = this.flag.getClientRects()[0].width
+        if (this.height == 0) this.height = this.flag.getClientRects()[0].height
         return (
             this.x < h.x + h.width &&
             this.x + this.width > h.x &&
