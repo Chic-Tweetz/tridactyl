@@ -525,6 +525,10 @@ export function editor_function(fn_name: keyof typeof tri_editor, ...args) {
     return result
 }
 
+export function getLocation() {
+    return Messaging.messageOwnTab("excmd_content", "getlocation")
+}
+
 Messaging.addListener("commandline_frame", Messaging.attributeCaller(SELF))
 logger.debug("Added commandline_frame message listener")
 

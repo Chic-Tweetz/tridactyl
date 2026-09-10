@@ -2144,17 +2144,30 @@ export function getURL(url: string, target: string[]) {
     @hidden
  */
 export function get(target_typed?: keyof default_config, ...target: string[]) {
+    return getWithURL(undefined, target_typed, ...target)
+}
+
+/** Get the value of the key target with a URL to use with getURL.
+ *  An undefined URL will be converted to the current location.
+    @hidden
+ */
+export function getWithURL(url?: string, target_typed?: keyof default_config, ...target: string[]) {
     if (target_typed === undefined) {
         target = []
     } else {
         target = [target_typed as string].concat(target)
     }
-    // Window.tri might not be defined when called from the untrusted page context
-    let loc = window.location
-    if ((window as any).tri && (window as any).tri.contentLocation)
-        loc = (window as any).tri.contentLocation
+
+    if (url === undefined) {
+        // Window.tri might not be defined when called from the untrusted page context
+        let loc = window.location
+        if ((window as any).tri && (window as any).tri.contentLocation)
+            loc = (window as any).tri.contentLocation
+        url = loc.href
+    }
+
     // If there's a site-specifing setting, it overrides global settings
-    const site = getURL(loc.href, target)
+    const site = getURL(url, target)
     const user = getDeepProperty(USERCONFIG, target)
     const defult = getDeepProperty(DEFAULTS, target)
 
@@ -2173,6 +2186,7 @@ export function get(target_typed?: keyof default_config, ...target: string[]) {
         }
     }
 }
+
 
 /** Get the value of the key target.
 

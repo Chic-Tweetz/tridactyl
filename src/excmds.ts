@@ -4812,13 +4812,15 @@ function validateSetArgs(key: string, values: string[]) {
 /**
  * Usage: `seturl [pattern] key values`
  *
- * @param pattern The URL regex pattern the setting should be set for, e.g. `^https://en.wikipedia.org` or `/index.html`. Defaults to the current url if `values` is a single word.
+ * @param pattern The URL regex pattern the setting should be set for, e.g. `^https://en.wikipedia.org` or `/index.html`, or "." to refer to the current URL, ".." the parent URL, "..." the parent URL's parent (etc.), or "/" the root URL.
  * @param key The name of the setting you want to set, e.g. `followpagepatterns.next`
  * @param values The value you wish for, e.g. `next`
  *
  * Example:
  * - `seturl .*\.fr followpagepatterns.next suivant`
  * - `seturl website.fr followpagepatterns.next next`
+ *
+ * If using only a series of dots "." or a slash "/" in place of a URL, a URL pattern will be created relative to the current URL. Any other string will be treated as a regex pattern.
  *
  * When multiple patterns can apply to a same URL, the pattern that has the highest priority is used. You can set the priority of a pattern by using `:seturl pattern priority 10`. By default every pattern has a priority of 10.
  *
@@ -4828,31 +4830,12 @@ function validateSetArgs(key: string, values: string[]) {
  */
 //#content
 export function seturl(pattern: string, key: string, ...values: string[]) {
-    // This usage makes it tricky to use sho setHelperBoolShorthand
-    // Two params = :seturl [pattern] [key]
-    // OR it could be :seturl [current url] [pattern] true
-    // ONE param could work
-    // :seturl [pattern] => :seturl [current url] [pattern] true
-    // But I'm going to leave it I think
-
-    // ALTERNATIVELY you could say that a pattern of . === window.location.href
-    // then you even could do .. and ... etc
-    // if (values.length === 0 && key) {
-    //     values = [key]
-    //     key = pattern
-    //     pattern = window.location.href
-    // }
-
     if (!pattern || !key) {
         throw new Error("seturl syntax: [pattern] key value")
     }
 
-    // . = window.location
-    // .. = window.location parent
-    // ... = window.location parent parent etc.
-    pattern = UrlUtil.symbolsToURL(pattern)
-
-    ;({ key, values } = setHelperBoolShorthand(key, values, ["subconfigs", pattern]))
+    pattern = UrlUtil.symbolsToHref(pattern)
+    ;({ key, values } = setVimBoolHelper(key, values, ["subconfigs", pattern]))
 
     if (!values.length) {
         throw new Error("seturl syntax: [pattern] key value")
@@ -4883,7 +4866,7 @@ export function setmode(mode: string, key: string, ...values: string[]) {
     if (!["allowautofocus", "countaware"].includes(key))
         throw new Error("Setting '" + key + "' not supported with setmode")
 
-    ;({ key, values } = setHelperBoolShorthand(key, values, ["modesubconfigs", mode]))
+    ;({ key, values } = setVimBoolHelper(key, values, ["modesubconfigs", mode]))
 
     if (!values.length) {
         throw new Error("seturl syntax: mode key value")
@@ -4899,7 +4882,7 @@ export function setmode(mode: string, key: string, ...values: string[]) {
  * Sets values to ["true"] or ["false"], no validation except checking for existing value when inverting
  * Strips "no", "inv" or "!" from key if a key does not exist including them
  */
-function setHelperBoolShorthand(key: string, values: string[], subconfPath: string[] = []) {
+function setVimBoolHelper(key: string, values: string[], subconfPath: string[] = []) {
     if (values[0]) return { key, values }
     let bool
     const path = key.split(".")
@@ -4907,11 +4890,11 @@ function setHelperBoolShorthand(key: string, values: string[], subconfPath: stri
     // Bool inversion with :set thing!
     if (key.endsWith("!")) {
         // As long as there's no key that includes the !
-        let existing = config.get(...subconfPath as any, ...path)
+        let existing = config.getDynamic(...subconfPath, ...path)
         if (!existing) {
             const altPath = path.slice(0, -1)
             altPath.push(path[path.length - 1].slice(0, - 1))
-            existing = config.get(...subconfPath as any, ...altPath)
+            existing = config.getDynamic(...subconfPath, ...altPath)
             if (existing === "true") bool = "false"
             else if (existing === "false") bool = "true"
             if (bool) {
@@ -4921,19 +4904,19 @@ function setHelperBoolShorthand(key: string, values: string[], subconfPath: stri
     }
 
     if (!bool) {
-        let topLevel = config.get(...subconfPath as any, path[0])
+        let topLevel = config.getDynamic(...subconfPath, path[0])
         if (!topLevel) {
             if (path[0].startsWith("inv")) {
                 // Invert with "inv" prefix, `:set inva.b.c` - only works if value exists already
                 path[0] = path[0].slice("inv".length)
-                topLevel = config.get(...subconfPath as any, path[0])
-                const existing = config.get(...subconfPath as any, ...path)
+                topLevel = config.getDynamic(...subconfPath, path[0])
+                const existing = config.getDynamic(...subconfPath, ...path)
                 if (existing === "true") bool = "false"
                 else if (existing === "false") bool = "true"
             } else if (path[0].startsWith("no")) {
                 path[0] = path[0].slice(2)
                 bool = "false"
-                topLevel = config.get(...subconfPath as any, path[0])
+                topLevel = config.getDynamic(...subconfPath, path[0])
             } else {
                 bool = "true"
             }
@@ -4952,13 +4935,25 @@ function setHelperBoolShorthand(key: string, values: string[], subconfPath: stri
 
     Use to set any values found [here](/static/docs/classes/_src_lib_config_.default_config.html).
 
+    VIM-like bool setting is supported:
+        `:set allowautofocus` = `:set allowautofocus true`
+        `:set noallowautofocus` = `:set allowautofocus false`
+        `:set invallowautofocus` = `:set allowautofocus [inverted current bool value]`
+        `:set allowautofocus!` = `:set allowautofocus [inverted current bool value]`
+
+    VIM-like bools respect property names which clash with bool syntax:
+        `:set noiframe` = `:set noiframe true`
+        `:set nonoiframe` = `:set noiframe false`
+
     Arrays should be set using JS syntax, e.g. `:set blacklistkeys ["/",","]`.
 
     e.g.
         set searchurls.google https://www.google.com/search?q=
         set logging.messaging info
 
-    If no value is given, the value of the of the key will be displayed.
+    If no value is given, will attempt to set the value to "true", or "false" if the key begins with "no" and no matching property also begins with "no".
+
+    If attempting to invert a non-boolean value, will display the current setting.
 
     See also: [[unset]]
 */
@@ -4968,7 +4963,7 @@ export function set(key: string, ...values: string[]) {
         throw new Error("Key must be provided!")
     }
 
-    ({ key, values } = setHelperBoolShorthand(key, values))
+    ({ key, values } = setVimBoolHelper(key, values))
 
     // Should now only happen if you try to invert an invalid setting
     if (!values[0])
@@ -6936,4 +6931,16 @@ export async function scrollstart(xVelocity: string, yVelocity: string, mult?: s
 //#content
 export async function scrollstop() {
     scrolling.scrollstop()
+}
+/**
+ * Get the current window location. Pipe to other commands.
+ *
+ * Almost the same as the `get_current_url` `:js` command defined in the default config. This may deprecate that alias.
+ *
+ * Also useful internally as a way to get the content location elsewhere, e.g. from within the commandline iframe.
+ * Used for settings completions.
+ */
+//#content
+export function getlocation() {
+    return window.location.href
 }

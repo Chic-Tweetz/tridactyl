@@ -7,6 +7,8 @@ import {
     typeToString,
     isBoolString,
 } from "@src/.metadata.generated"
+import * as urlUtil from "@src/lib/url_util"
+import { getLocation } from "@src/commandline_frame"
 
 class SettingsCompletionOption extends Completions.CompletionOptionHTML implements Completions.CompletionOptionFuse {
     public fuseKeys = []
@@ -62,9 +64,18 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
         }
         prefix = this.canonicalisePrefix(prefix)
 
-        if (prefix === "unseturl" && !query.includes(" ")) {
+        let contentLocation = await getLocation()
+        let url
+        if (prefix.endsWith("url")) {
+            contentLocation = await getLocation()
+            url = urlUtil.symbolsToHref(query.split(" ")[0], contentLocation)
+        } else {
+            url = contentLocation
+        }
+
+        if (prefix.endsWith("url") && !query.includes(" ")) {
             this.options = Object.keys(config.get("subconfigs"))
-                .filter(pattern => pattern.startsWith(query))
+                .filter(pattern => pattern.startsWith(url))
                 .sort()
                 .map(
                     pattern =>
@@ -75,6 +86,17 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
                             doc: "",
                         }),
                 )
+
+            if (url !== query && !this.options.find(({ value }) => value === url)) {
+                this.options = [
+                    new SettingsCompletionOption(url, {
+                            name: url,
+                            value: "",
+                            type: "URL Pattern",
+                            doc: "",
+                        })
+                    ].concat(this.options)
+            }
             return this.updateChain()
         }
 
@@ -94,21 +116,21 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
 
         options += options ? " " : ""
 
-        const settings = config.get()
+        let settings
+        if (url) {
+            // Display completions relative to the content location (not the iframe's href)
+            settings = config.getWithURL(url)
+        } else {
+            settings = config.get()
+        }
 
         if (settings === undefined) {
             return
         }
 
-        // Ideally these would work with deepKeys like `:set noa.b.c` => `:set a.b.c false`
-        // Or `:set a.b.c!` or `:set inva.b.c`
         const vimSugarPrefix = prefix.startsWith("set") ? ["no", "inv"].find(boolPrefix => query.startsWith(boolPrefix)) : undefined
-        // const queryNoPrefix = vimSugarPrefix ? query.slice(vimSugarPrefix.length) : undefined
 
-        // Some tweaks to show completions for nested objects
-        // would be nice to get this working for keys a "." in them like autocmd urls
         const deepQuery = query.split(/[\. ]/)
-
         if (deepQuery.length > 1 && vimSugarPrefix && !settings.hasOwnProperty(deepQuery[0]))
             deepQuery[0] = deepQuery[0].slice(vimSugarPrefix.length)
 
