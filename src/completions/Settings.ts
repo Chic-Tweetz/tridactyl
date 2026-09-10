@@ -130,6 +130,7 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
         // Ideally these would work with deepKeys like `:set noa.b.c` => `:set a.b.c false`
         // Or `:set a.b.c!` or `:set inva.b.c`
         const vimSugarPrefix = prefix.startsWith("set") ? ["no", "inv"].find(boolPrefix => query.startsWith(boolPrefix)) : undefined
+        const doubleSugarPrefix = vimSugarPrefix && query.startsWith(vimSugarPrefix + vimSugarPrefix)
         // const queryNoPrefix = vimSugarPrefix ? query.slice(vimSugarPrefix.length) : undefined
 
         // Some tweaks to show completions for nested objects
@@ -179,8 +180,17 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
         this.options = matches
             .sort()
             .map((setting) => {
+                let completionPrefix = vimSugarPrefix || ""
+                // Silly edge cases like
+                // :set nonoiframe
+                // Where we want the completion to add a no sometimes but not always
+                // :set nono => :set nonoiframe
+                // :set no => :set noiframe
+                if (vimSugarPrefix && !doubleSugarPrefix && setting.startsWith(vimSugarPrefix))
+                    completionPrefix = ""
+
                 const md = defaultConfigMembers[setting]
-                return new SettingsCompletionOption(options + (vimSugarPrefix || "") + deepKeys + setting + (vimSugarPostfix || ""), {
+                return new SettingsCompletionOption(options + completionPrefix + deepKeys + setting + (vimSugarPostfix || ""), {
                     name: setting,
                     value: JSON.stringify(target[setting]),
                     doc: memberDoc(md),
