@@ -5143,11 +5143,11 @@ export function setpush(key: string, ...values: string[]) {
 //#background
 export function setpop(key: string, ...values: string[]) {
     const removeValue = values.pop()
-    let curr = config.get(key as any, ...values)
+    let curr = config.getDynamic(key, ...values)
     curr = Array.isArray(curr) ? curr : JSON.parse(curr)
 
     if (!Array.isArray(curr) || !removeValue) {
-        let maybePop = !removeValue ? curr : config.get(key as any, ...values, removeValue)
+        let maybePop = !removeValue ? curr : config.getDynamic(key, ...values, removeValue)
         maybePop = Array.isArray(maybePop) ? maybePop : JSON.parse(maybePop)
         if (Array.isArray(maybePop)) {
             const popped = maybePop.pop()
@@ -5217,10 +5217,11 @@ export function seturl(pattern: string, key: string, ...values: string[]) {
         throw new Error("seturl syntax: [pattern] key value")
     }
 
+    // / = window.location root
     // . = window.location
     // .. = window.location parent
     // ... = window.location parent parent etc.
-    pattern = UrlUtil.symbolsToURL(pattern)
+    pattern = UrlUtil.symbolsToHref(pattern)
 
     ;({ key, values } = setHelperBoolShorthand(key, values, ["subconfigs", pattern]))
 
@@ -5277,11 +5278,11 @@ function setHelperBoolShorthand(key: string, values: string[], subconfPath: stri
     // Bool inversion with :set thing!
     if (key.endsWith("!")) {
         // As long as there's no key that includes the !
-        let existing = config.get(...subconfPath as any, ...path)
+        let existing = config.getDynamic(...subconfPath, ...path)
         if (!existing) {
             const altPath = path.slice(0, -1)
             altPath.push(path[path.length - 1].slice(0, - 1))
-            existing = config.get(...subconfPath as any, ...altPath)
+            existing = config.getDynamic(...subconfPath, ...altPath)
             if (existing === "true") bool = "false"
             else if (existing === "false") bool = "true"
             if (bool) {
@@ -5291,19 +5292,19 @@ function setHelperBoolShorthand(key: string, values: string[], subconfPath: stri
     }
 
     if (!bool) {
-        let topLevel = config.get(...subconfPath as any, path[0])
+        let topLevel = config.getDynamic(...subconfPath, path[0])
         if (!topLevel) {
             if (path[0].startsWith("inv")) {
                 // Invert with "inv" prefix, `:set inva.b.c` - only works if value exists already
                 path[0] = path[0].slice("inv".length)
-                topLevel = config.get(...subconfPath as any, path[0])
-                const existing = config.get(...subconfPath as any, ...path)
+                topLevel = config.getDynamic(...subconfPath, path[0])
+                const existing = config.getDynamic(...subconfPath, ...path)
                 if (existing === "true") bool = "false"
                 else if (existing === "false") bool = "true"
             } else if (path[0].startsWith("no")) {
                 path[0] = path[0].slice(2)
                 bool = "false"
-                topLevel = config.get(...subconfPath as any, path[0])
+                topLevel = config.getDynamic(...subconfPath, path[0])
             } else {
                 bool = "true"
             }
@@ -7514,9 +7515,9 @@ export function modeinherit(...args: string[]) {
     let inheritConfigName = mode2maps.get(inheritFrom)
     if (!inheritConfigName) inheritConfigName = inheritFrom + "maps"
 
-    if (config.get(inheritConfigName as any)) {
-        if (config.get(modeName + "maps" as any)) {
-            const currentInherit = config.get(modeName + "maps" as any, "🕷🕷INHERITS🕷🕷")
+    if (config.getDynamic(inheritConfigName)) {
+        if (config.getDynamic(modeName + "maps")) {
+            const currentInherit = config.getDynamic(modeName + "maps", "🕷🕷INHERITS🕷🕷")
             if (currentInherit && currentInherit !== inheritConfigName) {
                 if (force === true || force === "true") {
                     config.set(modeName + "maps" as any, "🕷🕷INHERITS🕷🕷", inheritConfigName)
@@ -7540,4 +7541,17 @@ export function modeinherit(...args: string[]) {
     } else {
         fillcmdline_tmp(3000, `Mode not found: ${inheritFrom}.`)
     }
+}
+
+/**
+ * Get the current window location. Pipe to other commands.
+ *
+ * Almost the same as the `get_current_url` `:js` command defined in the default config. This may deprecate that alias.
+ *
+ * Also useful internally as a way to get the content location elsewhere, e.g. from within the commandline iframe.
+ * Used for settings completions.
+ */
+//#content
+export function getlocation() {
+    return window.location.href
 }

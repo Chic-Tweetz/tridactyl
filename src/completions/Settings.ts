@@ -7,6 +7,8 @@ import {
     typeToString,
     isBoolString,
 } from "@src/.metadata.generated"
+import * as urlUtil from "@src/lib/url_util"
+import { getLocation } from "@src/commandline_frame"
 
 class SettingsCompletionOption extends Completions.CompletionOptionHTML implements Completions.CompletionOptionFuse {
     public fuseKeys = []
@@ -62,9 +64,18 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
         }
         prefix = this.canonicalisePrefix(prefix)
 
-        if (prefix === "unseturl" && !query.includes(" ")) {
+        let contentLocation = await getLocation()
+        let url
+        if (prefix.endsWith("url")) {
+            contentLocation = await getLocation()
+            url = urlUtil.symbolsToHref(query.split(" ")[0], contentLocation)
+        } else {
+            url = contentLocation
+        }
+
+        if (prefix.endsWith("url") && !query.includes(" ")) {
             this.options = Object.keys(config.get("subconfigs"))
-                .filter(pattern => pattern.startsWith(query))
+                .filter(pattern => pattern.startsWith(url))
                 .sort()
                 .map(
                     pattern =>
@@ -75,6 +86,17 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
                             doc: "",
                         }),
                 )
+
+            if (url !== query && !this.options.find(({ value }) => value === url)) {
+                this.options = [
+                    new SettingsCompletionOption(url, {
+                            name: url,
+                            value: "",
+                            type: "URL Pattern",
+                            doc: "",
+                        })
+                    ].concat(this.options)
+            }
             return this.updateChain()
         }
 
@@ -94,7 +116,12 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
 
         options += options ? " " : ""
 
-        const settings = config.get()
+        let settings
+        if (url) {
+            settings = config.getWithURL(url)
+        } else {
+            settings = config.get()
+        }
 
         if (settings === undefined) {
             return

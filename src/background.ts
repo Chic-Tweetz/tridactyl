@@ -85,6 +85,7 @@ function updateContentLocation(windowId = browser.windows.WINDOW_ID_CURRENT) {
             // Ignore stale queries when focus or active tabs change quickly.
             if (contentLocationCount === myId && t[0]?.url) {
                 ;(window as any).tri.contentLocation = new URL(t[0].url)
+                // messaging.messageTab(t[0].id, "commandline_frame", "update_content_location", t[0].url)
             }
         })
         .catch(() => undefined)
@@ -317,7 +318,13 @@ const messages = {
     js_cache_background: {
         get: source => jsCache.get(source),
         set: (source, content) => jsCache.set(source, content),
-    }
+    },
+    content_location_background: {
+        get: () => {
+            console.log("get?", window.tri.contentLocation.href)
+            return window.tri.contentLocation.href
+        }
+    },
 }
 export type Messages = typeof messages
 
