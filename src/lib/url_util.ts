@@ -152,8 +152,10 @@ export function getUrlParent(url, option, count = 1) {
     return gup(parent, option, count)
 }
 
-export function symbolsToURL(dotsOrSlash: string, relativeTo: any = window.location) {
-    if (dotsOrSlash === "/") return getUrlRoot(relativeTo).href
+export function symbolsToHref(dotsOrSlash = "", relativeTo: any = window.location) {
+    if (dotsOrSlash === "/") return getUrlRoot(new URL(relativeTo)).href
+    if (dotsOrSlash === ".") return relativeTo?.href || relativeTo
+    if (dotsOrSlash[0] !== ".") return dotsOrSlash
     let allDots = true
     let firstDot = true
     let urlParent = relativeTo
@@ -169,7 +171,7 @@ export function symbolsToURL(dotsOrSlash: string, relativeTo: any = window.locat
         }
     }
     if (!allDots) return dotsOrSlash
-    return urlParent.href
+    return urlParent.href || urlParent
 }
 
 /** Very incomplete lookup of extension for common mime types that might be
