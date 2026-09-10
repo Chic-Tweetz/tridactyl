@@ -353,11 +353,7 @@ let dontEnterInsertModes = ["insert", "input", "hint", "ignore"]
 config.getAsync("noinsertmodes")
 .then((noinsert) => {
     doExitInsertModes = insertLikeModes()
-    .concat(
-        Object.entries(noinsert)
-        .filter(([_mode, value]) => value === "true")
-        .map(([mode, _value]) => mode)
-    )
+    .concat(noinsert)
     dontEnterInsertModes = doExitInsertModes.concat(["ignore", "hint"])
 })
 

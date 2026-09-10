@@ -1818,14 +1818,14 @@ export class default_config {
      * Use this syntax to inherit from insert mode:
      * :bind --mode=edit-insert 🕷🕷INHERITS🕷🕷 imaps
      */
-    noinsertmodes: { [key: string]: "true" | "false" } = {}
+    noinsertmodes: string[] = []
 
     /**
-     * Consume all keypresses when any of these modes. Space-separated.
+     * Consume all keypresses when in any of these modes.
      * The command :blockpagekeys false
      * can be used to allow keypresses through to the page in these modes.
      */
-    blockpagekeypressesmodes: { [key: string]: "true" | "false" } = {}
+    blockpagekeypressesmodes: string[] = ["hint"]
 
     /**
      *  Override CSS selectors for all `:hint` categories that use them.

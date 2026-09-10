@@ -73,9 +73,7 @@ export const contentState = new Proxy(
                 listener(property, mode, oldValue, newValue)
             }
             if (property === "mode" && oldValue !== newValue) {
-                const consumeKeyModes = Object.entries(config.get("blockpagekeypressesmodes"))
-                    .filter(([_mode, value]) => value === "true")
-                    .map(([mode, _value]) => mode)
+                const consumeKeyModes = config.get("blockpagekeypressesmodes")
                 contentState.blocking_keypresses = consumeKeyModes.includes(newValue)
             }
             return true
