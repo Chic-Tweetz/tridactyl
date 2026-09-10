@@ -207,8 +207,8 @@
 
     /* Section header */
     --tridactyl-header-first-bg: var(--tritheme-darkblue4);
-    --tridactyl-header-second-bg: var(--tritheme-darkblue4);
-    --tridactyl-header-third-bg: var(--tritheme-darkblue4);
+    --tridactyl-header-second-bg: var(--tritheme-moon-darkblue2);
+    --tridactyl-header-third-bg: var(--tritheme-moon-darkblue2);
 
     /* URL style */
 
@@ -233,7 +233,10 @@
 }
 
 #completions .sectionHeader {
-    display: none;
+/*     display: none; */
+    position: absolute;
+    bottom: 0;
+    width: 100%
 }
 
 /* cmdline to the top (probably better to set in userContent.css) */
