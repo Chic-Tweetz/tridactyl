@@ -782,6 +782,10 @@ export function compareElementArea(a: HTMLElement, b: HTMLElement): number {
     return aArea - bArea
 }
 
+// Alternative idea: keep track of iframes we have elements from
+// and associate elements with those iframes
+// so that if the iframe is lost we can just skip all elements from it
+//
 // This is stupid (this map is for dealing with dead elements btw)
 // Maybe I can just do this for iframe elements somehow
 // If only weak sets were iterable
@@ -791,6 +795,7 @@ const HINTWORTHY_JS_ELEMS_PRUNE_INTERVAL = 100
 let hintworthy_js_elems_additions = 0
 
 export function addHintworthyJSElem(elem: Element) {
+    if (hintworthy_js_elems_map.has(elem)) return
     hintworthy_js_elems_map.set(elem, new WeakRef(elem))
     hintworthy_js_elems_additions += 1
     if (
@@ -804,15 +809,18 @@ export function addHintworthyJSElem(elem: Element) {
 
 export function getPrunedHintworthyJSElems() {
     pruneHintworthyJSElems()
-    return Array.from(hintworthy_js_elems_map.values()).map(ref => ref.deref())
-}
-
-export function pruneHintworthyJSElems() {
+    const elems = []
     for (const [elem, ref] of hintworthy_js_elems_map) {
         if (!ref.deref() || !elem.isConnected) {
             hintworthy_js_elems_map.delete(elem)
+        } else {
+            elems.push(elem)
         }
     }
+    return elems
+}
+
+export function pruneHintworthyJSElems() {
     while (hintworthy_js_elems_map.size > MAX_HINTWORTHY_JS_ELEMS) {
         hintworthy_js_elems_map.delete(hintworthy_js_elems_map.keys().next().value)
     }
