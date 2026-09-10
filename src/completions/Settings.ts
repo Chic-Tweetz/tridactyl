@@ -48,6 +48,7 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
     }
 
     public async filter(exstr: string) {
+        this.trailingSpace = true
         this.lastExstr = exstr
         let [prefix, query] = this.splitOnPrefix(exstr)
         let options = ""
@@ -128,56 +129,110 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
             return
         }
 
-        const vimSugarPrefix = prefix.startsWith("set") ? ["no", "inv"].find(boolPrefix => query.startsWith(boolPrefix)) : undefined
+        const isSetCmd = prefix.startsWith("set")
+
+        const vimSugarPrefix = isSetCmd ? ["no", "inv"].find(boolPrefix => query.startsWith(boolPrefix)) : undefined
+        const doubleSugarPrefix = vimSugarPrefix && query.startsWith(vimSugarPrefix + vimSugarPrefix)
 
         const deepQuery = query.split(/[\. ]/)
         if (deepQuery.length > 1 && vimSugarPrefix && !settings.hasOwnProperty(deepQuery[0]))
             deepQuery[0] = deepQuery[0].slice(vimSugarPrefix.length)
 
-        query = deepQuery.pop()
+        query = deepQuery.pop().toLowerCase()
 
         let target = settings
-        deepQuery.every(key => {
+        for (const key of deepQuery) {
             const next = target[key]
-            if (typeof next === "object") target = next
-            else target = {}
-            return next
-        })
+            if (typeof next === "object" && !Array.isArray(next))
+                target = next
+            else {
+                target = {}
+                break
+            }
+        }
 
         const deepKeys = deepQuery.length ? deepQuery.join(".") + "." : ""
-
         const vimSugarPostfix = ["!"].find(boolPostfix => query.endsWith(boolPostfix))
 
         let matches
         if (vimSugarPrefix && deepQuery.length === 0) {
             const slicedQuery = query.slice(vimSugarPrefix.length)
             matches = Object.keys(target)
-                .filter(x => x.startsWith(query) || (
+                .filter(x => x.toLowerCase().startsWith(query) || (
                     isBoolString(defaultConfigMembers[x]?.type) &&
-                    x.startsWith(slicedQuery)
+                    x.toLowerCase().startsWith(slicedQuery)
                 ))
+            if (matches.length === 0) {
+                matches = Object.keys(target).filter(x => x.toLowerCase().startsWith(slicedQuery) || x.toLowerCase().startsWith(query))
+            }
         } else if (vimSugarPostfix) {
             const slicedQuery = query.slice(0, -vimSugarPostfix.length)
             matches = Object.keys(target)
                 .filter(x => (
                         isBoolString(defaultConfigMembers[x]?.type) &&
-                        x.startsWith(slicedQuery)
-                    ) || (x.startsWith(query)))
+                        x.toLowerCase().startsWith(slicedQuery)
+                    ) || (x.toLowerCase().startsWith(query)))
         } else {
             matches = Object.keys(target)
-               .filter(x => x.startsWith(query))
+               .filter(x => x.toLowerCase().startsWith(query))
         }
 
-        if (matches.length === 0 && query !== "")
-            matches = Object.keys(settings).filter(x => x.includes(query))
+        if (matches.length === 0) {
+            if (query !== "") {
+                matches = Object.keys(target).filter(x => x.toLowerCase().includes(query))
+            } else if (deepQuery.length && isSetCmd) {
+                query = deepQuery.pop()
+                target = settings
+                for (const key of deepQuery) {
+                    const next = target[key]
+                    if (typeof next === "object" && !Array.isArray(next))
+                        target = next
+                    else {
+                        target = {}
+                        break
+                    }
+                }
+
+                const exactMatch = target?.[query]
+
+                if (exactMatch !== undefined) {
+                    const completionValue = options + (deepQuery.length ? deepQuery.join(".") + "." : "") + query +
+                        (typeof exactMatch === "object"
+                            ? Array.isArray(exactMatch) ? " " + JSON.stringify(exactMatch) : ""
+                            : " " + exactMatch)
+
+                    const md = defaultConfigMembers[deepKeys[0] || query]
+                    this.options = [
+                        new SettingsCompletionOption(completionValue, {
+                            name: "",
+                            value: JSON.stringify(exactMatch),
+                            doc: memberDoc(md),
+                            type: md ? typeToString(memberType(md)) : ""
+                        })
+                    ]
+                    this.trailingSpace = false
+                    return this.updateChain()
+                }
+            }
+        }
 
         this.options = matches
             .sort()
             .map((setting) => {
-                const md = defaultConfigMembers[setting]
-                return new SettingsCompletionOption(options + (vimSugarPrefix || "") + deepKeys + setting + (vimSugarPostfix || ""), {
+                let completionPrefix = vimSugarPrefix || ""
+                // Silly edge cases like
+                // :set nonoiframe
+                // Where we want the completion to add a no sometimes but not always
+                // :set nono => :set nonoiframe
+                // :set no => :set noiframe
+                if (vimSugarPrefix && !doubleSugarPrefix && setting.startsWith(vimSugarPrefix))
+                    completionPrefix = ""
+
+                // const md = defaultConfigMembers[setting]
+                const md = defaultConfigMembers[deepKeys[0] || setting]
+                return new SettingsCompletionOption(options + completionPrefix + deepKeys + setting + (vimSugarPostfix || ""), {
                     name: setting,
-                    value: JSON.stringify(settings[setting]),
+                    value: JSON.stringify(target[setting]),
                     doc: memberDoc(md),
                     type: md ? typeToString(memberType(md)) : "",
                 })
