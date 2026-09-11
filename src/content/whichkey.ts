@@ -19,6 +19,7 @@ import * as config from "@src/lib/config"
 import { theme } from "./styling"
 import Logger from "@src/lib/logging"
 import * as hud from "@src/content/hud"
+import { isExProgram } from "@src/lib/excmd"
 
 const logger = new Logger("whichkey")
 let whichkeyIframe: HTMLIFrameElement
@@ -487,6 +488,8 @@ function keystrMapsToElems(
             document.createElement("wbr"),
         ])
 
+        if (!cmd) cmd = ""
+        if (isExProgram(cmd)) cmd = cmd.source
         const cmdFirstWord = (cmd as string).split(" ", 1)[0]
         const cmdRest = (cmd as string).slice(cmdFirstWord.length)
 

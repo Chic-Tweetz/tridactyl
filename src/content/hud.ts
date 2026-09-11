@@ -679,22 +679,25 @@ export function attachHud() {
     window.addEventListener("resize", onresizeDebounced)
 }
 
-const resizeObserver = new ResizeObserver((entries) => {
-  for (const { target } of entries) {
-        const targetProxy = elementsToProxies.get(target)
-        if (targetProxy) {
-            updateGeometry(target, targetProxy)
-            if (targetProxy === mouseOverElem && autoUpdateSurrounders) {
-                updateSurrounders()
+// Uninitialised because ResizeObserver makes tests fail
+let resizeObserver: ResizeObserver
+function getResizeObserver() {
+    if (resizeObserver) return resizeObserver
+    resizeObserver = new ResizeObserver((entries) => {
+    for (const { target } of entries) {
+            const targetProxy = elementsToProxies.get(target)
+            if (targetProxy) {
+                updateGeometry(target, targetProxy)
+                if (targetProxy === mouseOverElem && autoUpdateSurrounders) {
+                    updateSurrounders()
+                }
             }
         }
-    }
-})
+    })
+}
 
 function observeElement(element) {
-    // const config = { attributes: true, childList: true, subtree: true }
-    // observer.observe(element, config)
-    resizeObserver.observe(element)
+    getResizeObserver().observe(element)
 }
 
 let lastResize = 0

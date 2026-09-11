@@ -218,6 +218,14 @@ export const resizeViaMessaging = (() => {
     }
 })()
 
+function resizeInput() {
+    const input = commandline_state.clInput
+    // const previousHeight = input.style.height
+    input.style.height = "auto"
+    input.style.height = `${input.scrollHeight}px`
+    // if (resizeFrame && input.style.height !== previousHeight) resizeArea()
+}
+
 /** @hidden
  * This is a bit loosely defined at the moment.
  * Should work so long as there's only one completion source per prefix.
@@ -418,9 +426,11 @@ commandline_state.clInput.addEventListener(
         const session = commandSession
         commandline_state.keyEvents.push(minimalKeyFromKeyboardEvent(keyevent))
         const response = keyParser(commandline_state.keyEvents)
-        const [funcname, ...args] = (response.value as string)?.startsWith("ex.")
-            ? (response.value as string).slice(3).split(/\s+/)
-            : []
+        const [funcname, ...args] =
+            typeof response.value === "string" &&
+            response.value.startsWith("ex.")
+                ? response.value.slice(3).split(/\s+/)
+                : []
         const command =
             commandline_state.fns[funcname as keyof typeof commandline_state.fns]
         const nativeInsertFallback = nativeInsertFallbacks.get(command)
@@ -491,6 +501,7 @@ commandline_state.clInput.addEventListener(
 
 let refreshQueue: Promise<unknown> = Promise.resolve()
 export function refresh_completions(exstr) {
+    resizeInput()
     const session = commandSession
     const result = refreshQueue.then(() =>
         session === commandSession ? refreshCompletions(exstr) : undefined,

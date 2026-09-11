@@ -8,8 +8,8 @@ import {
 } from "@src/.metadata.generated"
 import * as aliases from "@src/lib/aliases"
 import * as config from "@src/lib/config"
-import { formatExProgram } from "@src/lib/excmd"
 import { glossaryOptions } from "@src/completions/Glossary"
+import { formatExProgram } from "@src/lib/excmd"
 
 class HelpCompletionOption extends Completions.CompletionOptionHTML implements Completions.CompletionOptionFuse {
     public fuseKeys = []

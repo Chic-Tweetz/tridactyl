@@ -484,7 +484,7 @@ export function parse(
             value: target,
             exstr: isExProgram(target)
                     ? target
-                    : target + numericPrefixStr,
+                    : String(target) + numericPrefixStr,
             isMatch,
             numericPrefix: numericPrefix.length ? Number(numericPrefixStr) : undefined,
             keys: cursor.has("noReset") ? keys : numericPrefix.concat(keys),

@@ -1,4 +1,5 @@
 import * as controller from "@src/lib/controller"
+import * as config from "@src/lib/config"
 import { ExCommand } from "@src/lib/excmd"
 import * as Native from "@src/lib/native"
 import { parseStructure } from "@src/parsers/exdsl"
@@ -67,18 +68,35 @@ export async function runRc(rc: string) {
             e => e,
         )
     if (error) throw error
+
+    // Sourced commands have already been saved to the current local config.
+    await config.update(true)
 }
 
 export function* rcFileToExCmds(rcText: string): IterableIterator<ExCommand> {
     rcText = rcText.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n")
+    const lines = rcText.split("\n")
+    let lastRecord = lines.length - 1
+    while (lastRecord >= 0 && isBlankOrComment(lines[lastRecord])) lastRecord--
     let version: "1" | "2" = "1"
     let buffer = ""
-    let continued = false
-    for (const line of rcText.split("\n")) {
+    for (let index = 0; index < lines.length; index++) {
+        const line = lines[index]
         if (version === "1") {
             if (isBlankOrComment(line)) continue
-            continued = line.endsWith("\\")
-            buffer += continued ? line.slice(0, -1) : line
+            const trailing = /\\+$/.exec(line)?.[0] || ""
+            const hasNewline = index < lastRecord || rcText.endsWith("\n")
+            if (!hasNewline) {
+                buffer += line
+                yield buffer
+                version = (commandVersion(buffer) as "1" | "2") || version
+                buffer = ""
+                continue
+            }
+            const continued = trailing.length % 2 === 1
+            buffer +=
+                line.slice(0, line.length - trailing.length) +
+                "\\".repeat(Math.floor(trailing.length / 2))
             if (continued) continue
             yield buffer
             version = (commandVersion(buffer) as "1" | "2") || version
@@ -94,7 +112,6 @@ export function* rcFileToExCmds(rcText: string): IterableIterator<ExCommand> {
             buffer = ""
         }
     }
-    if (version === "1" && (buffer || continued))
-        yield buffer + (continued ? "\\" : "")
+    if (version === "1" && buffer) yield buffer
     else if (buffer) throw new Error("incomplete ex command")
 }

@@ -14,6 +14,7 @@ import "@src/lib/html-tagged-template"
 /* import "@src/excmds_content" */
 /* import "@src/content/hinting" */
 import * as config from "@src/lib/config"
+import { formatExProgram } from "@src/lib/excmd"
 import * as Logging from "@src/lib/logging"
 const logger = new Logging.Logger("content")
 logger.debug("Tridactyl content script loaded, boss!")
@@ -108,10 +109,6 @@ messaging.addListener(
             return controller.acceptExCmd(exstr, source, exversion)
         },
     }),
-)
-messaging.addListener(
-    "omniscient_content",
-    messaging.attributeCaller(omniscient_controller),
 )
 messaging.addListener("history_state", () => {
     window.dispatchEvent(new Event("HistoryState"))
@@ -585,12 +582,8 @@ function addStatusIndicator() {
         result = result + tabGroupText
 
         if (config.get("modeindicatorshowlastex") === "true") {
-            const lastEx = (await State.getAsync("last_ex_str"))
-            if (typeof lastEx === "string") {
-                result = result + " | " + lastEx
-            } else if (lastEx.source) {
-                result = result + " | " + lastEx.source
-            }
+            result +=
+                " | " + formatExProgram(await State.getAsync("last_ex_str"))
         }
 
         logger.debug(

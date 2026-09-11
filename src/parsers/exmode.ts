@@ -157,8 +157,8 @@ export function parser(
     all_excmds: any,
     input?: PipelineInput,
 ): any[] {
-    const normalizedExstr = stripLeadingColons(exstr)
     const exaliases = config.get("exaliases")
+    const normalizedExstr = stripLeadingColons(exstr)
     const [unexpandedFunc] = normalizedExstr.trim().split(/\s+/)
     const builtinExcmds = all_excmds[""] || {}
     let expandedExstr = normalizedExstr
@@ -182,12 +182,14 @@ export function parser(
                 `Ambiguous excmd: ${unexpandedFunc}. Possible matches: ${matches.join(", ")}`,
             )
         if (matches.length === 1)
-            expandedExstr = exstr.replace(unexpandedFunc, matches[0])
+            expandedExstr = normalizedExstr.replace(
+                unexpandedFunc,
+                matches[0],
+            )
     }
 
     // Expand aliases
     expandedExstr = aliases.expandExstr(expandedExstr, exaliases)
-
     if (input && isExpression(expandedExstr)) {
         const callback = expression(expandedExstr)
         if (!input.piped)

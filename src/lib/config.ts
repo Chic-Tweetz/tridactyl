@@ -18,12 +18,24 @@
  */
 import * as R from "ramda"
 import * as binding from "@src/lib/binding"
-import { ExCommand, formatExProgram, isExProgram } from "@src/lib/excmd"
+import {
+    EX_BLOCK_CLOSE,
+    EX_BLOCK_OPEN,
+    ExCommand,
+    formatExProgram,
+    isExProgram,
+} from "@src/lib/excmd"
 import * as platform from "@src/lib/platform"
 import { DeepPartial } from "tsdef"
 
+const v2Syntax = [".|", "&&", "||", "|", ";", EX_BLOCK_OPEN, EX_BLOCK_CLOSE]
+const escapableV2Syntax = [".|", "|", ";", EX_BLOCK_OPEN, EX_BLOCK_CLOSE]
 const assertV2Argument = (value: string) => {
-    if (/[\s'"]|^(?:\.\||&&|\|\||[|;{}])$/.test(value))
+    if (
+        /[\s'"]/.test(value) ||
+        v2Syntax.includes(value) ||
+        (value[0] === "\\" && escapableV2Syntax.includes(value.slice(1)))
+    )
         throw new Error(`Cannot safely export dialect 2 argument: ${value}`)
 }
 
@@ -432,6 +444,10 @@ export class default_config {
         // These two don't strictly follow the "bind is ;g[flag]" rule but they make sense
         ";gF": "hint -qb",
         ";gf": "hint -q",
+        ";C": {
+            exversion: 2,
+            source: "hint -Je | _.href | fillcmdline tabopen _ -c"
+        },
 
         "<S-Insert>": "mode ignore",
         "<AC-Escape>": "mode ignore",
@@ -535,6 +551,12 @@ export class default_config {
      * Related ex command: `autocmd`.
      */
     autocmds: Record<string, Record<string, ExCommand>> = {
+        /** Commands that will be run when a page gains focus. */
+        DocFocus: {},
+
+        /** Commands that will be run when a page loses focus. */
+        DocBlur: {},
+
         /**
          * Commands that will be run as soon as Tridactyl loads into a page.
          *
@@ -1926,19 +1948,19 @@ const platform_defaults = {
         browsermaps: {
             "<C-6>": null,
             "<A-6>": "buffer #",
-        } as unknown, // typescript doesn't like me adding new binds like this
+        },
         nmaps: {
             "<C-6>": "buffer #",
-        } as unknown,
+        },
         imaps: {
             "<C-6>": "buffer #",
-        } as unknown,
+        },
         inputmaps: {
             "<C-6>": "buffer #",
-        } as unknown,
+        },
         ignoremaps: {
             "<C-6>": "buffer #",
-        } as unknown,
+        },
 
         nativeinstallcmd: `powershell -ExecutionPolicy Bypass -NoProfile -Command "\
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12;\
@@ -1957,10 +1979,10 @@ Remove-Item '%TEMP%/tridactyl_installnative.ps1'"`,
             ";c": 'hint -F e => { const pos = tri.dom.getAbsoluteCentre(e); tri.excmds.exclaim_quiet("xdotool mousemove --sync " + window.devicePixelRatio * pos.x + " " + window.devicePixelRatio * pos.y + "; xdotool click 3")}',
             ";:": 'hint -F e => { const pos = tri.dom.getAbsoluteCentre(e); tri.excmds.exclaim_quiet("xdotool mousemove --sync " + window.devicePixelRatio * pos.x + " " + window.devicePixelRatio * pos.y)}',
             ";X": 'hint -F e => { const pos = tri.dom.getAbsoluteCentre(e); tri.excmds.exclaim_quiet("xdotool mousemove --sync " + window.devicePixelRatio * pos.x + " " + window.devicePixelRatio * pos.y + "; xdotool keydown ctrl+shift; xdotool click 1; xdotool keyup ctrl+shift")}',
-        } as unknown,
+        },
     },
-} as Record<browser.runtime.PlatformOs, default_config>
-/* eslint-enable @typescript-eslint/no-unnecessary-type-assertion */
+} as unknown as Record<browser.runtime.PlatformOs, default_config>
+
 /**
  * Key codes for printable keys for [[keyboardlayoutforce]], lower and upper register.
  * See https://developer.mozilla.org/en-US/docs/Web/API/UI_Events/Keyboard_event_code_values
@@ -3194,6 +3216,10 @@ const parseConfigHelper = (pconf, parseobj, prefix = []) => {
                 } else if (i === "autocmds") {
                     for (const a of Object.keys(pconf[i][e])) {
                         const command = pconf[i][e][a]
+                        if (command === null) {
+                            parseobj.aucmds.push(`autocmddelete ${e} ${a}`)
+                            continue
+                        }
                         const output = `autocmd ${e} ${a} ${formatExProgram(command)}`
                         if (isExProgram(command)) {
                             if (prefix.length)
@@ -3203,9 +3229,7 @@ const parseConfigHelper = (pconf, parseobj, prefix = []) => {
                             assertV2Argument(a)
                             parseobj.v2.push(output)
                         } else {
-                            parseobj.aucmds.push(command === null
-                                ? `autocmddelete ${e} ${a}`
-                                : output,)
+                            parseobj.aucmds.push(output)
                         }
                     }
                 } else if (i === "autocontain") {
