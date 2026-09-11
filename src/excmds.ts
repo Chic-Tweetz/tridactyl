@@ -5599,7 +5599,10 @@ export async function unbind(...args: string[]) {
     const args_obj = parse_bind_args(...(isAll ? args.filter(arg => arg !== "--all").concat("") : args))
     if (args_obj.excmd !== "" || (isAll && (args_obj.key !== "" || args_obj.isRecursive))) throw new Error("unbind syntax: `unbind [--mode=mode|*] [--recursive key|--all|key]`")
     await config.getAsync()
-    const maps = args_obj.mode === "*" ? [...new Set([...getModeMaps(), ...Object.keys(config.USERCONFIG).filter(map => map.endsWith("maps") && config.USERCONFIG[map] !== null && typeof config.USERCONFIG[map] === "object")])] : [args_obj.configName]
+    // const maps = args_obj.mode === "*" ? [...new Set([...getModeMaps(), ...Object.keys(config.USERCONFIG).filter(map => map.endsWith("maps") && config.USERCONFIG[map] !== null && typeof config.USERCONFIG[map] === "object")])] : [args_obj.configName]
+    const maps = args_obj.mode === "*"
+        ? [...new Set([...getModeMaps()])]
+        : [args_obj.configName]
     const matches = key => isAll || (args_obj.isRecursive ? key.startsWith(args_obj.key) : key === args_obj.key)
     const inherits = "🕷🕷INHERITS🕷🕷"
     const getBindings = map => {

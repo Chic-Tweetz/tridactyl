@@ -722,6 +722,7 @@ export function mapstrMatchesKey(mapstr: string, key: MinimalKey): boolean {
 
 export function canonicaliseMapstr(mapstr: string): string {
     const keyseq = mapstrToKeyseq(mapstr)
+    if (!keyseq.length) return ""
 
     // No optional first or last keys (it wouldn't make sense)
     if (keyseq[0].optional) {

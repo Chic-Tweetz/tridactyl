@@ -56,6 +56,8 @@ class State {
         scrollY: number
         tabId: number
     } = undefined
+
+    registerStateListeners = registerStateListeners
 }
 
 // Store these keys in the local browser storage to persist between restarts
@@ -159,17 +161,13 @@ export async function getAsync<K extends keyof State>(
     }
 }
 
-// Skip this in mock testing - the mock doesn't like notBackground
-// Keep instances of state.ts synchronised with each other
-if (notBackground && !notBackground()) {
-    // Map of properties -> [ tabId, once] }
-    // For stateUpdate callbacks for those properties,
-    // where if once == true, the callback only triggers once
-    // currently, once will always be true so that could be skipped
-    // but in theory this could be extended to support proper state change callbacks
+// Wrapping this lot up in a function because it caused at least one test to fail otherwise
+// Specifically the call to browser.tabs.onRemoved.addListener caused the getLastAudibleTab test to fail in excmds.test.ts
+let registeredListeners = false
+function registerStateListeners() {
+    if (!notBackground || notBackground() || registeredListeners) return
+    registeredListeners = true
     const propertyListeners: Map<string, Map<number, boolean>> = new Map()
-
-    // Clean up listeners when tabs are closed
     browser.tabs.onRemoved.addListener((tabId) => {
         const emptied = []
         for (const [property, tabIdMap] of propertyListeners) {
@@ -214,7 +212,7 @@ if (notBackground && !notBackground()) {
             tabIds.set(sender.tab.id, message.args.once || false)
             propertyListeners.set(message.args.property, tabIds)
             logger.debug("State property:", property, "listener added for tab:", sender.tab.id)
-        }else
+        } else
             throw new Error(
                 "Unsupported message to state, type " + message.command,
             )

@@ -66,12 +66,12 @@ export function updateModesWithUserConfig() {
     userModesOutdated = false
     const conf = config.get()
     const newMaps = Object.keys(conf)
-        .filter(key => key.endsWith("maps") && !_maps2mode.has(key))
+        .filter(key => key.endsWith("maps") && !_maps2mode.has(key) && typeof conf[key] === "object")
 
     const deletedMaps = modeMaps.filter(key => !conf[key])
 
     newMaps.forEach(modeMap => {
-        const modeName = modeMap.replace("maps", "")
+        const modeName = modeMap.slice(0, -4)
         _mode2maps.set(modeName, modeMap)
         _maps2mode.set(modeMap, modeName)
         modes.push(modeName)
@@ -79,7 +79,7 @@ export function updateModesWithUserConfig() {
     })
 
     deletedMaps.forEach(modeMap => {
-        const modeName = modeMap.replace("maps", "")
+        const modeName = modeMap.slice(0, -4)
         _mode2maps.delete(modeName)
         _maps2mode.delete(modeMap)
         modes.splice(modes.indexOf(modeName), 1)

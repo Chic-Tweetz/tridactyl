@@ -74,6 +74,8 @@ controller.setExCmds({
     hint: HintingCmds,
 })
 
+state.registerStateListeners()
+
 // {{{ tri.contentLocation
 let contentLocationCount = 0
 function updateContentLocation(windowId = browser.windows.WINDOW_ID_CURRENT) {
