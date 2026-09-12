@@ -87,7 +87,12 @@ maximiseElement(elementHost)
 
 const overlayHost = makeHudProxiesOverlay()
 const hud = document.createElement("div")
-const shadow = hud.attachShadow({mode:"closed"})
+
+// open shadow on tridactyl pages, mainly so the cmdline iframe can be accessed in e2e testing
+const shadow = hud.attachShadow({
+    mode: window.location.href.startsWith(browser.runtime.getURL("")) ?
+    "open" : "closed"
+})
 let initPromise
 
 // Automatically call showPopover() or removeAttribute("popover") depending on whether at least 1 popover element is visible
@@ -694,6 +699,7 @@ function getResizeObserver() {
             }
         }
     })
+    return resizeObserver
 }
 
 function observeElement(element) {

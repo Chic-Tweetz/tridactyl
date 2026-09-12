@@ -7,9 +7,10 @@ import * as Until from "selenium-webdriver/lib/until"
 import {
     getDriver,
     getDriverAndProfileDirs,
-    iframeLoaded,
+    // iframeLoaded,
     quitDrivers,
     sendKeys,
+    switchToIframe,
 } from "./utils"
 
 jest.setTimeout(100000)
@@ -131,18 +132,19 @@ describe("webdriver", () => {
                 })`)
 
             // First, make sure completions are offered
-            const iframe = await iframeLoaded(driver)
+            // const iframe = await iframeLoaded(driver)
             await sendKeys(driver, ":rssexec ")
-            await driver.switchTo().frame(iframe)
+            // await driver.switchTo().frame(iframe)
+            await switchToIframe(driver)
             const elements = await driver.findElements(
                 By.className("RssCompletionOption"),
             )
             expect(elements.length).toBeGreaterThan(3)
             const url = await elements[0].getAttribute("innerText")
 
+            await driver.switchTo().defaultContent()
             // Then, make sure rsscmd is executed and has the right arguments
             await sendKeys(driver, "<Tab><CR>")
-            await (driver.switchTo() as any).parentFrame()
             const elem = await driver.wait(
                 Until.elementLocated(By.id("rsscmdExecuted")),
             )
@@ -199,8 +201,9 @@ describe("webdriver", () => {
         try {
             // Then, make sure `:guiset` is offering completions
             await sendKeys(driver, ":guiset ")
-            const iframe = await iframeLoaded(driver)
-            await driver.switchTo().frame(iframe)
+            // const iframe = await iframeLoaded(driver)
+            // await driver.switchTo().frame(iframe)
+            await switchToIframe(driver)
             const elements = await driver.findElements(
                 By.className("GuisetCompletionOption"),
             )

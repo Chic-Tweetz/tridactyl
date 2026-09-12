@@ -2,9 +2,10 @@ import { promises as fs } from "fs"
 import * as path from "path"
 import * as os from "os"
 import * as process from "process"
-import { Browser, Builder, By, Key, WebDriver } from "selenium-webdriver"
+import { Browser, Builder, By, Key, WebDriver, WebElement, WebElementPromise } from "selenium-webdriver"
 import { Driver, Options, ServiceBuilder } from "selenium-webdriver/firefox"
 import * as Until from "selenium-webdriver/lib/until"
+
 const env = process.env
 const drivers = new Set<Driver>()
 
@@ -32,8 +33,82 @@ export async function getNewestFileIn(directory: string): Promise<string> {
     }
 }
 
-export async function iframeLoaded(driver: Driver) {
-    return driver.wait(Until.elementLocated(By.id("cmdline_iframe")))
+// // Does not work now cmdline iframe is within a hud iframe
+// export async function iframeLoaded(driver: Driver) {
+//     return driver.wait(Until.elementLocated(By.id("cmdline_iframe")))
+// }
+
+/**
+ * Using HUD iframe means cmdline iframe may (should) be nested in another iframe.
+ * We can't use switchTo() straight from the top window to a nested frame,
+ * instead we switchTo to first switch to the HUD iframe, then the cmdlin iframe.
+ *
+ * Use sendColon to make sure it's on the page when `:set noiframe lazy` (default setting)
+ * and you haven't sent a ":" yet
+ */
+export async function switchToIframe(driver: Driver, sendColon = false) {
+    await driver.switchTo().defaultContent()
+    if (sendColon) await sendKeys(driver,":<Esc>")
+
+    const findIframe = () => {
+        return driver.wait<WebElementPromise>(
+        async (driver: Driver) => {
+            try {
+                return await driver.executeScript(() => {
+                    // Directly in the document
+                    const direct = document.querySelector("#cmdline_iframe")
+                    if (direct) {
+                        return direct
+                    }
+
+                    // Directly inside the HUD's open shadow root
+                    // Important note: shadow is only open on Tridactyl pages (e.g. new tab)
+                    const hud = document.querySelector(".TridactylHud")
+                    const shadowRoot = hud?.shadowRoot
+
+                    if (!shadowRoot) {
+                        return null
+                    }
+
+                    const inShadow = shadowRoot.querySelector("#cmdline_iframe")
+                    if (inShadow) {
+                        return inShadow
+                    }
+
+                    let innerFrame
+                    // Inside one of the HUD's iframe documents
+                    const containingFrame = Array.from(
+                        shadowRoot.querySelectorAll("iframe"),
+                    ).find((frame) => {
+                        try {
+                            innerFrame = frame.contentDocument?.querySelector("#cmdline_iframe")
+                            return innerFrame
+                        } catch {
+                            return null
+                        }
+                    })
+
+                    // containingFrame should be the HUD iframe, not the commandline
+                    return containingFrame || null
+                }) ?? null
+            } catch {
+                // The HUD may not exist yet, or may be recreated while loading.
+                return null
+            }
+        },
+        10_000,
+        "Could not find cmdline iframe",
+    )}
+
+    // We should have just found the HUD iframe
+    // now we'll find the cmdline iframe inside it
+    let iframe = await findIframe()
+    await driver.switchTo().frame(iframe)
+    const location: string = await driver.executeScript(`return window.location.href`)
+    if (location.endsWith("commandline.html")) return iframe
+    iframe = await findIframe()
+    await driver.switchTo().frame(iframe)
+    return iframe
 }
 
 export async function getDriver() {
