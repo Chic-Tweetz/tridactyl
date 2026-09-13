@@ -217,7 +217,7 @@ export async function getDriverAndProfileDirs() {
 
     // Tridactyl's tmp profile detection is broken on windows and OSX
     if (["win32", "darwin"].includes(os.platform())) {
-        await sendKeys(driver, `:set profiledir ${newProfiles[0]}<CR>`)
+        await cliQuickSet(driver, `set profiledir ${newProfiles[0]}`, true)
         await driver.sleep(1000)
     }
 

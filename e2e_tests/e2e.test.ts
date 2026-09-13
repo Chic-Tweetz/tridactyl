@@ -5,6 +5,7 @@ import { By } from "selenium-webdriver"
 import { Driver } from "selenium-webdriver/firefox"
 import * as Until from "selenium-webdriver/lib/until"
 import {
+    cliQuickSet,
     getDriver,
     getDriverAndProfileDirs,
     // iframeLoaded,
@@ -116,14 +117,17 @@ describe("webdriver", () => {
 
     test("`:rssexec` works", async () => {
         try {
-            await sendKeys(
+            await cliQuickSet(
                 driver,
-                ":set rsscmd js " +
-                    "const elem=document.createElement('span');" +
-                    "elem.id='rsscmdExecuted';" +
-                    "elem.innerText=`%u`;" +
-                    "document.body.appendChild(elem)<CR>",
-            )
+                "set rsscmd js " +
+                        "const elem=document.createElement('span');" +
+                        "elem.id='rsscmdExecuted';" +
+                        "elem.innerText=`%u`;" +
+                        "document.body.appendChild(elem)",
+                    true,
+                    true,
+                )
+
             await driver.executeScript(`
                 ["news/rss.xml", "views/atom.xml", "pews/rss.xml", "tews/atom.xml"].forEach(href => {
                     const link = document.createElement("a")
@@ -131,14 +135,18 @@ describe("webdriver", () => {
                     document.body.appendChild(link)
                 })`)
 
+            await cliQuickSet(
+                driver,
+                "rssexec ",
+                    false,
+                    false,
+                )
+
             // First, make sure completions are offered
-            // const iframe = await iframeLoaded(driver)
-            await sendKeys(driver, ":rssexec ")
-            // await driver.switchTo().frame(iframe)
-            await switchToIframe(driver)
             const elements = await driver.findElements(
                 By.className("RssCompletionOption"),
             )
+
             expect(elements.length).toBeGreaterThan(3)
             const url = await elements[0].getAttribute("innerText")
 
@@ -160,14 +168,16 @@ describe("webdriver", () => {
                 "There are %l lines and %c characters in this textarea."
 
             if (os.platform() == "win32") {
-                await sendKeys(
+                await cliQuickSet(
                     driver,
-                    `:set editorcmd echo | set /p text="${addedText}" >> %f<CR>`,
+                    `set editorcmd echo | set /p text="${addedText}" >> %f`,
+                    true,
                 )
             } else {
-                await sendKeys(
+                await cliQuickSet(
                     driver,
-                    `:set editorcmd /bin/echo -n '${addedText}' >> %f<CR>`,
+                    `set editorcmd /bin/echo -n '${addedText}' >> %f`,
+                    true,
                 )
             }
 
@@ -200,10 +210,7 @@ describe("webdriver", () => {
         const { driver, newProfiles } = await getDriverAndProfileDirs()
         try {
             // Then, make sure `:guiset` is offering completions
-            await sendKeys(driver, ":guiset ")
-            // const iframe = await iframeLoaded(driver)
-            // await driver.switchTo().frame(iframe)
-            await switchToIframe(driver)
+            await cliQuickSet(driver, "guiset ", false, false)
             const elements = await driver.findElements(
                 By.className("GuisetCompletionOption"),
             )
@@ -237,7 +244,7 @@ describe("webdriver", () => {
                     `return document.documentElement.className`,
                 ),
             ).toMatch("TridactylOwnNamespace TridactylThemeDefault")
-            await sendKeys(driver, ":colourscheme dark<CR>")
+            await cliQuickSet(driver, "colourscheme dark", true)
             await driver.sleep(100)
             expect(
                 await driver.executeScript(
@@ -252,7 +259,7 @@ describe("webdriver", () => {
     test("`:setpref` works", async () => {
         const { driver, newProfiles } = await getDriverAndProfileDirs()
         try {
-            await sendKeys(driver, `:setpref a.b.c "d"<CR>`)
+            await cliQuickSet(driver, `setpref a.b.c "d"`, true)
             await driver.sleep(2000)
             const file = await fs.readFile(
                 path.join(newProfiles[0], "user.js"),
@@ -271,7 +278,7 @@ describe("webdriver", () => {
             const newTab = await newTabWithoutChangingOldTabs(
                 driver,
                 async tabsBefore => {
-                    await sendKeys(driver, ":tabopen<CR>")
+                    await cliQuickSet(driver, "tabopen", true)
                 },
             )
             // The new tab is active
@@ -292,7 +299,7 @@ describe("webdriver", () => {
             const newTab = await newTabWithoutChangingOldTabs(
                 driver,
                 async () => {
-                    await sendKeys(driver, ":tabopen https://example.org<CR>")
+                    await cliQuickSet(driver, "tabopen https://example.org", true)
                 },
             )
             expect(newTab.active).toEqual(true)
@@ -307,9 +314,10 @@ describe("webdriver", () => {
             const newTab = await newTabWithoutChangingOldTabs(
                 driver,
                 async () => {
-                    await sendKeys(
+                    await cliQuickSet(
                         driver,
-                        ":tabopen duckduckgo https://example.org<CR>",
+                        "tabopen duckduckgo https://example.org",
+                        true
                     )
                 },
             )
@@ -329,7 +337,7 @@ describe("webdriver", () => {
             const newTab = await newTabWithoutChangingOldTabs(
                 driver,
                 async () => {
-                    await sendKeys(driver, ":tabopen -b about:blank<CR>")
+                    await cliQuickSet(driver, "tabopen -b about:blank", true)
                 },
             )
             expect(newTab.active).toEqual(false)
@@ -344,7 +352,7 @@ describe("webdriver", () => {
             const newTab = await newTabWithoutChangingOldTabs(
                 driver,
                 async () => {
-                    await sendKeys(driver, ":tabopen -c work about:blank<CR>")
+                    await cliQuickSet(driver, "tabopen -c work about:blank", true)
                 },
             )
             expect(newTab.active).toEqual(true)
@@ -360,9 +368,10 @@ describe("webdriver", () => {
             const newTab = await newTabWithoutChangingOldTabs(
                 driver,
                 async () => {
-                    await sendKeys(
+                    await cliQuickSet(
                         driver,
-                        ":tabopen -b -c work search qwant<CR>",
+                        "tabopen -b -c work search qwant",
+                        true,
                     )
                 },
             )
