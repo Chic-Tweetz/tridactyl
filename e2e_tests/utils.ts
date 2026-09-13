@@ -37,6 +37,7 @@ export async function getNewestFileIn(directory: string): Promise<string> {
 // export async function iframeLoaded(driver: Driver) {
 //     return driver.wait(Until.elementLocated(By.id("cmdline_iframe")))
 // }
+//
 
 /**
  * Using HUD iframe means cmdline iframe may (should) be nested in another iframe.
@@ -48,7 +49,7 @@ export async function getNewestFileIn(directory: string): Promise<string> {
  */
 export async function switchToIframe(driver: Driver, sendColon = false) {
     await driver.switchTo().defaultContent()
-    if (sendColon) await sendKeys(driver,":<Esc>")
+    if (sendColon) await sendKeys(driver, ":")
 
     const findIframe = () => {
         return driver.wait<WebElementPromise>(
@@ -109,6 +110,55 @@ export async function switchToIframe(driver: Driver, sendColon = false) {
     iframe = await findIframe()
     await driver.switchTo().frame(iframe)
     return iframe
+}
+
+/**
+ * Ensure the iframe is on the page then set its value programatically.
+ * Uses driver.switchTo() so ensure focus is set correctly after use.
+ *
+ * @param execute whether to send a <CR> after setting the cmdilne value
+ * @param switchToDefaultFrame whether driver focus will be on the default frame (true) or the cmdline iframe (false) after calling
+ */
+export async function cliQuickSet(driver: Driver, value: string, execute = false, switchToDefaultFrame = true) {
+    await driver.switchTo().defaultContent()
+    // Send "o" rather than ":" so we can wait for the cmdline value to be "open " before setting it to value
+    await sendKeys(driver, "<Esc>o")
+    await switchToIframe(driver, false)
+
+    // Avoid Tridactyl overwriting value
+    const inputReady = () => {
+        return driver.wait<Promise<boolean>>(
+        async (driver: Driver) => {
+            try {
+                return await driver.executeScript(() => {
+                    const input: HTMLInputElement | null = document.querySelector("#tridactyl-input")
+                    return input?.value === "open "
+                })
+            } catch {
+                return false
+            }
+        },
+        5_000,
+        "Failed to quickly set cli input value",
+    )}
+
+    await inputReady()
+
+    await driver.executeScript(() => {
+        const input: HTMLInputElement | null = document.querySelector("#tridactyl-input");
+        if (input) input.value = arguments[0];
+    }, value.slice(0, -1))
+
+    await driver.switchTo().defaultContent()
+
+    // Send the last character as a real keypress to update the cmdline state
+    await sendKeys(driver, value.slice(-1))
+
+    if (execute)
+        await sendKeys(driver, "<CR>")
+
+    if (!switchToDefaultFrame)
+        await switchToIframe(driver, false)
 }
 
 export async function getDriver() {
