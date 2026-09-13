@@ -1646,6 +1646,8 @@ export function scrollpage(n = 1, count = 1) {
  *  `findresults`: maximum completion rows to show; `-1` is unlimited and `0` disables them.
  *  `findcontextlen`: number of context characters to show around each completion.
  *
+ *  Pass the `--private` flag to prevent the search being added to your excmd history. May be preferable if you don't want to fill history with different searches.
+ *
  *  Known bugs: find will currently happily jump to a non-visible element, and pressing n or N without having searched for anything will cause an error.
  */
 //#content
@@ -1668,6 +1670,7 @@ export function find(...args: string[]) {
             "-i": "--case-insensitive",
             "--regex": Boolean,
             "-r": "--regex",
+            "--private": Boolean,
         },
         { argv: args },
     )
