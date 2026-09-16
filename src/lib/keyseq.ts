@@ -415,11 +415,11 @@ export function stripOnlyModifiers(keyseq) {
 //     return remaining.every(k => k.optional)
 // }
 
-function getChildSeqs(node: KeyTrieNode) {
+function getChildKeyseqs(node: KeyTrieNode) {
     const unique: Set<KeyTrieNode> = new Set()
-    Array.from(node.entries())
-        .forEach(([k, m]) => {
-            if (k !== "repeats" && Object.getPrototypeOf(m) === Map.prototype && m !== node)
+    Array.from(node.values())
+        .forEach(m => {
+            if (Object.getPrototypeOf(m) === Map.prototype && m !== node)
                 unique.add(m)
         })
     return Array.from(unique)
@@ -431,20 +431,47 @@ function completionsFromNode(startNode: KeyTrieNode, mapToNodes = false): KeyMap
     while (toSearch.length) {
         const node = toSearch.pop()
         if (node.has("command")) {
-            if (mapToNodes)
-                binds.set(mapstrToKeyseq(node.get("mapstr")), node as any)
-            else
-                binds.set(mapstrToKeyseq(node.get("mapstr")), node.get("command"))
+            binds.set(mapstrToKeyseq(node.get("mapstr")), mapToNodes ? node : node.get("command"))
         }
-        toSearch = toSearch.concat(getChildSeqs(node))
+        toSearch = toSearch.concat(getChildKeyseqs(node))
     }
     return binds
 }
 
-export function completionsForKeyTrie(keyseq: MinimalKey[], keyTrie: KeyTrieNode, mapToNodes = false) {
+// Want a completions function complete with the remaining keyseqs
+function completionsFrom(start, mapToNodes = false): KeyMap {
+    const _completions = new Map()
+    const cmds2completions = new Map()
+
+    function visit(node, remaining) {
+        // if (node.has("command") /* && !commandNodes.has(node) */) {
+            // This'd be better with string keys
+            // We can either let multiple paths display for sequences with optional keys
+            // or take the longest path and assume that's correct (should include all optionals)
+            // that results in this annoying two-way mapping
+        if (node.has("command") && (!cmds2completions.has(node) || cmds2completions.get(node).length < remaining)) {
+            const remainingcopy = remaining.slice()
+            _completions.set(remainingcopy, mapToNodes ? node : node.get("command"))
+            cmds2completions.set(node, remainingcopy)
+        }
+
+        for (const [_key, child] of node) {
+            if (Object.getPrototypeOf(child) === Map.prototype && child !== node) {
+                remaining.push(child.get("keystr"))
+                visit(child, remaining)
+                remaining.pop()
+            }
+        }
+    }
+
+    visit(start, [])
+    return _completions
+}
+
+export function completionsForKeyTrie(keyseq: MinimalKey[], keyTrie: KeyTrieNode, mapToNodes = false, computeRemaining = false) {
     const { cursor, didReset } = parseTrieWalk(keyTrie, keyseq)
     if (didReset) return new Map()
-    return completionsFromNode(cursor, mapToNodes)
+    return computeRemaining ? completionsFrom(cursor, mapToNodes) : completionsFromNode(cursor, mapToNodes)
 }
 
 // For testing, expect to remove this once regression testing is all done
@@ -1026,12 +1053,21 @@ export function keyMapToKeyTrie(keyMap: KeyMap, root = new Map(), inheritsOrder?
             for (let cursor of active) {
                 if (cursor.has(enc)) {
                     const next = cursor.get(enc)
+                    // Used to check "inheritanceDepth"
+                    // I like storing where nodes came from,
+                    // But knowing the depth would be good too for sorting the display order in whichkey soo
+                    // TODO: reinstate inhertitsDepth or whatever it was called!
                     const inherits = next.get("inheritsFrom")
                     const resetNode = inherits && (inheritsOrder.indexOf(inherits) < 0)
                     if (resetNode) {
                         next.delete("properties")
-                        if (inheritsFrom) next.set("inheritsFrom", inheritsFrom)
-                        else next.delete("inheritsFrom")
+                        if (inheritsFrom) {
+                            next.set("inheritsFrom", inheritsFrom)
+                            next.set("inheritsDepth", inheritsOrder.length - 1)
+                        } else {
+                            next.delete("inheritsFrom")
+                            next.delete("inheritsDepth")
+                        }
                         cursor.delete(addFlagsToEncodedKeystr(enc, "repeat"))
                     }
                     if (!sharedNewNode) sharedNewNode = next
@@ -1039,10 +1075,14 @@ export function keyMapToKeyTrie(keyMap: KeyMap, root = new Map(), inheritsOrder?
                     let next: KeyTrieNode
                     if (sharedNewNode) next = sharedNewNode
                     else {
-                        next = new Map()
+                        // Store own key, perhaps completions can accumulate these
+                        next = new Map([["keystr", minKey.toMapstr()]])
                         sharedNewNode = next
                     }
-                    if (inheritsFrom) next.set("inheritsFrom", inheritsFrom)
+                    if (inheritsFrom) {
+                        next.set("inheritsFrom", inheritsFrom)
+                        next.set("inheritsDepth", inheritsOrder.length - 1)
+                    }
                     cursor.set(enc, next)
                     // // Repeats shouldn't break sequences - but I might stop adding equivalent repeats and do something else
                     // if (!minKey.keyup)
@@ -1151,24 +1191,23 @@ export function unwrapInherits(keyMap: KeyMap | object, configName?: string) {
         delete confs[confs.length - 2][INHERITS_KEY]
         configKeys.push(confName)
     }
-        for (let i = confs.length - 1; i > 0; --i) {
+    const filtered = confs.length > 1 ? Array(confs.length) : confs
+    if (confs.length > 1)
+        filtered[confs.length - 1] = confs[confs.length - 1]
+
+    for (let i = confs.length - 1; i > 0; --i) {
         const filtering = confs[i - 1]
         const comparing = confs[i]
-        confs[i - 1] = Object.fromEntries(
+        filtered[i - 1] = Object.fromEntries(
             Object.entries(filtering)
                 .filter(([k, v]) => comparing[k] !== v)
         )
     }
 
-    // const inheritsOrdered = []
-    // for (let i = 0; i < confs.length; ++i) {
-    //     inheritsOrdered.push({ bindings: mapstrMapToKeyMap(new Map(Object.entries(confs[i]))), configKeys: modeNames[i] })
-    // }
     return {
-        bindings: confs.map(c => mapstrMapToKeyMap(new Map(Object.entries(c)))),
+        bindings: filtered.map(c => mapstrMapToKeyMap(new Map(Object.entries(c)))),
         configKeys,
     }
-    // return inheritsOrdered
 }
 
 // repeats are keydowns
