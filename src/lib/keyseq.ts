@@ -46,10 +46,13 @@ import { ExCommand, isExProgram } from "@src/lib/excmd"
 const bracketexpr_grammar = grammar
 const bracketexpr_parser = new Parser(bracketexpr_grammar)
 
+export const INHERITS_KEY = "🕷🕷INHERITS🕷🕷"
 // unspoofable keyboard events
 // this should be ~the only place in the code that accepts KeyboardEvent
 // eslint-disable-next-line @typescript-eslint/no-restricted-types
 export type TrustedKeyboardEvent = KeyboardEvent & { readonly isTrusted: true }
+
+export type KeyTrieNode = Map<string, any>
 
 export const guarded = memoise(
     (accept: (keyevent: TrustedKeyboardEvent) => unknown) =>
@@ -69,6 +72,15 @@ export function isTrustedKeyboardEvent(ke: unknown): ke is TrustedKeyboardEvent 
     } catch {
         return false
     }
+}
+
+export enum KeyTrieProperties {
+    ignoreKeyupContextual,
+    ignoreKeyupExplicit,
+    ignoreRepeats,
+    noCancel,
+    noReset,
+    stickyRepeat,
 }
 
 let KEYCODETRANSLATEMAP = {}
@@ -162,7 +174,7 @@ function _encodedKeystrToMinimalKey(enc) {
 // 1. the same could be achieved with equivalent maths operations
 // 2. a similar system could just be to start each key string with a known length string of yes/nos for each modifier
 //      - like let's just think about the 4 modifier keys, "l" becomes "0000l" or "acmsl"
-//      - Ctrl-l => "1000l" or "Acmdsl" (caps/no caps indicating whether that modifier is active)
+//      - Ctrl-l => "1000l" or "aCmdsl" (caps/no caps indicating whether that modifier is active)
 //      - benefit of this being that it's readable... maybe underscores or something? "A___l"
 //      - could even add a nice little dividing character(s) "AC__-l" "AC..|l"
 //  yeah, basically just sayin' there are other ways of encoding key events as string literals
@@ -215,7 +227,7 @@ const bindModifiers = new Map([
     ["R", "repeat"],
 ])
 
-export class MinimalKey {
+export class MinimalKey{
     readonly code: string | undefined = undefined // Can use this to keep track of held keys, even if you press a modifier while they're held
     readonly altKey = false
     readonly ctrlKey = false
@@ -342,7 +354,7 @@ export interface ParserResponse {
     isMatch?: boolean
     numericPrefix?: number
     didReset?: boolean
-    actions?: string[]
+    actions?: KeyTrieProperties[]
 }
 
 const isDigit = (d: string) => d.length === 1 && d >= "0" && d <= "9"
@@ -403,6 +415,89 @@ export function stripOnlyModifiers(keyseq) {
 //     return remaining.every(k => k.optional)
 // }
 
+function getChildSeqs(node: KeyTrieNode) {
+    const unique: Set<KeyTrieNode> = new Set()
+    Array.from(node.entries())
+        .forEach(([k, m]) => {
+            if (k !== "repeats" && Object.getPrototypeOf(m) === Map.prototype && m !== node)
+                unique.add(m)
+        })
+    return Array.from(unique)
+}
+
+function completionsFromNode(startNode: KeyTrieNode, mapToNodes = false): KeyMap {
+    let toSearch = [startNode]
+    const binds: KeyMap = new Map()
+    while (toSearch.length) {
+        const node = toSearch.pop()
+        if (node.has("command")) {
+            if (mapToNodes)
+                binds.set(mapstrToKeyseq(node.get("mapstr")), node as any)
+            else
+                binds.set(mapstrToKeyseq(node.get("mapstr")), node.get("command"))
+        }
+        toSearch = toSearch.concat(getChildSeqs(node))
+    }
+    return binds
+}
+
+export function completionsForKeyTrie(keyseq: MinimalKey[], keyTrie: KeyTrieNode, mapToNodes = false) {
+    const { cursor, didReset } = parseTrieWalk(keyTrie, keyseq)
+    if (didReset) return new Map()
+    return completionsFromNode(cursor, mapToNodes)
+}
+
+// For testing, expect to remove this once regression testing is all done
+// Eventually switch over to all-tries
+export function completionsForKeyMap(keyseq: MinimalKey[], keyMap: KeyMap) {
+    return completionsForKeyTrie(keyseq, keyMapToKeyTrie(keyMap))
+}
+
+function parseTrieWalk(trie: KeyTrieNode, keyseq: MinimalKey[]) {
+    let cursor: KeyTrieNode = trie
+    let keys: MinimalKey[] = []
+
+    let didReset = false
+    let isMatch = false
+
+    for (const minKey of keyseq) {
+        let key = keyEventToString(minKey)
+        let next = cursor.get(key)
+
+        // Try repeats in case of "sticky repeat" binds (don't think anything else minds about repeats vs non-repeats)
+        if (key.repeat && next === undefined) {
+            key = removeFlagsFromEncodedKeystr(key, "repeat")
+            next = cursor.get(key)
+        }
+
+        if (next === undefined) {
+            didReset = true
+
+            next = trie.get(key)
+            if (next === undefined) {
+                next = trie
+                keys = []
+                isMatch = false
+            } else {
+                keys = [minKey]
+                isMatch = true
+            }
+        } else {
+            // Don't collect collect repeat keydowns when holding a key for a stickyRepeat node
+            if (cursor !== next)
+                keys.push(minKey)
+            isMatch = true
+        }
+        cursor = next
+    }
+    return {
+        cursor,
+        keys,
+        didReset,
+        isMatch,
+    }
+}
+
 /**
  * Between this and controller_content.ts I think I've got most of the logic right for:
  * <D-x> - ignore repeats
@@ -430,7 +525,7 @@ export function stripOnlyModifiers(keyseq) {
  */
 export function parse(
     keyseq: MinimalKey[],
-    trie: Map<string, any>,
+    trie: KeyTrieNode,
     allowNumericPrefixes = true
 ): ParserResponse {
     keyseq = stripOnlyModifiers(keyseq)
@@ -443,37 +538,8 @@ export function parse(
         numericPrefix = []
     }
 
-    let cursor: Map<string, any> = trie
-    let keys: MinimalKey[] = []
-
-    let didReset = false
-    let isMatch = false
-
-    for (const minKey of keyseq) {
-        const key = keyEventToString(minKey)
-        let next = cursor.get(key)
-
-        if (next === undefined) {
-            didReset = true
-            numericPrefix = []
-
-            next = trie.get(key)
-            if (next === undefined) {
-                next = trie
-                keys = []
-                isMatch = false
-            } else {
-                keys = [minKey]
-                isMatch = true
-            }
-        } else {
-            // Don't collect collect repeat keydowns when holding a key for a stickyRepeat node
-            if (cursor !== next)
-                keys.push(minKey)
-            isMatch = true
-        }
-        cursor = next
-    }
+    const { cursor, keys, didReset, isMatch } = parseTrieWalk(trie, keyseq)
+    if (didReset) numericPrefix = []
 
     const numericPrefixStr = numericPrefixToExstrSuffix(numericPrefix)
     if (cursor.has("command")) {
@@ -489,15 +555,20 @@ export function parse(
             numericPrefix: numericPrefix.length ? Number(numericPrefixStr) : undefined,
             keys: cursor.has("noReset") ? keys : numericPrefix.concat(keys),
             didReset,
-            actions: isMatch ? (cursor.get("properties") || []) : []
+            actions: isMatch ? (cursor.get("properties") || []) : [],
         }
     }
     return {
         isMatch,
         keys: numericPrefix.concat(keys),
         didReset,
-        actions: isMatch ? (cursor.get("properties") || []) : []
+        actions: isMatch ? (cursor.get("properties") || []) : [],
     }
+}
+
+// For regression testing really
+export function parseMapAsTrie(keyseq: MinimalKey[], keyMap: KeyMap, allowNumericPrefixes = true) {
+    return parse(keyseq, keyMapToKeyTrie(keyMap), allowNumericPrefixes)
 }
 
 /** True if seq1 is a prefix or equal to seq2 */
@@ -755,12 +826,12 @@ export function canonicaliseMapstr(mapstr: string): string {
         .join("")
 }
 
-export function walkKeyTrie(mapstr: string, conf = "nmaps") {
+export function walkKeyTrieForShadowingNodes(mapstr: string, keytrie = keyTrie("nmaps")) {
     const keys = mapstrToKeyseq(
         canonicaliseMapstr(mapstr))
         .map(trieKey => removeFlagsFromEncodedKeystr(keyEventToString(trieKey), "stickyRepeat"))
     const matches: any = []
-    let node = keyTrie(conf)
+    let node = keytrie
     for (const key of keys) {
         if (node.has(key)) {
             node = node.get(key)
@@ -773,25 +844,30 @@ export function walkKeyTrie(mapstr: string, conf = "nmaps") {
                     }
                 )
                 if (!matches[matches.length - 1].properties.includes("noShadow")) {
-                    node = keyTrie(conf)
+                    node = keytrie
                 }
             }
         } else {
-            node = keyTrie(conf)
+            node = keytrie
         }
     }
     return matches
 }
 
-export function checkForShadowedBinds(mapstr: string, conf = "nmaps") {
-    const clash = walkKeyTrie(mapstr, conf)
+export function checkForShadowedBinds(mapstr: string, trie = keyTrie("nmaps")) {
+    return walkKeyTrieForShadowingNodes(mapstr, trie)
         .find(
-            match => !match.properties.includes("noShadow") ||
-                match.properties.includes("stickyRepeat")
-        )?.mapstr || null
+            match => (!match.properties.includes("noShadow") ||
+                match.properties.includes("stickyRepeat")) &&
+                match.mapstr !== mapstr // overwriting is not shadowing
+        )?.mapstr
+}
 
-    // Overwriting is not the same as being shadowed
-    return clash !== mapstr ? clash : null
+// Temporary(?), for making keyseq tests work
+export function findShadowingMapstr(mapstr: string, existingMapStrs: Iterable<string>) {
+    const keymap: KeyMap = new Map(Array.from(existingMapStrs).map(ks => [mapstrToKeyseq(ks), "nop"]))
+    const keytrie = keyMapToKeyTrie(keymap)
+    return checkForShadowedBinds(mapstr, keytrie)
 }
 
 export const commandKey2jsKey = {
@@ -874,7 +950,8 @@ export function keyMap(conf): KeyMap {
 
 // TODO: consider whether property order is important
 // TODO: should we make properties a Set? Sets are iterable and properties should be unique.
-function addPropertyToNode(node: Map<string, any>, ...addProperties: string[]) {
+// TODO: also make properties an enum perhaps?
+function addPropertyToNode(node: KeyTrieNode, ...addProperties: KeyTrieProperties[]) {
     const props = node.get("properties") || []
     for (const property of addProperties)
         if (!props.includes(property))
@@ -882,15 +959,220 @@ function addPropertyToNode(node: Map<string, any>, ...addProperties: string[]) {
     node.set("properties", props)
 }
 
-function removePropertyFromNode(node: Map<string, any>, ...removeProperties: string[]) {
+function removePropertyFromNode(node: KeyTrieNode, ...removeProperties: KeyTrieProperties[]) {
     const props = (node.get("properties") || []).filter(p => !removeProperties.includes(p))
     node.set("properties", props)
 }
 
-function nodeHasProperty(node: Map<string, any>, property: string) {
+function nodeHasProperty(node: KeyTrieNode, property: KeyTrieProperties) {
     const props = node.get("properties")
     return props && props.includes(property)
 }
+
+// best way to figure out matches for a node?
+// - dfs or bfs through child nodes (simplest, probably best too)
+//
+// - add some key to nodes that points to the next node with diverging keys
+// -- I think that just means more than one encoded key child, but you'd have to sort out the other node keys we use too
+// -- you could have child encoded keys as a map like node.get("keys")
+// -- still annoying having keys mean multiple things in this file isn't it, should settle on some vocab
+// gg -> scrollto
+// gh -> home
+// gx0 -> close
+// g.leadsTo() -> [gg, gh, gx0]
+// leadsTo(node) { node.get("command") concat node.forks().flatMap(fork => fork.leadsTo()) }
+//
+// all commands in an array in the root node
+// - subsequent nodes have commands "start" & "end" index properties which correspond to the slice of the array they lead to
+// -- quite like that idea actually
+
+// I don't like this one, why should inheritance be sorted seperately from this?
+// export function keyMapToKeyTrie(keyMap: KeyMap, root = new Map(), inheritDepth = 0, inheritedFrom?: string) {
+export function keyMapToKeyTrie(keyMap: KeyMap, root = new Map(), inheritsOrder?: string[]) {
+    const inheritsFrom = inheritsOrder && inheritsOrder.length > 1 ? inheritsOrder[inheritsOrder.length - 1] : undefined
+    // const commandNodes = []
+    // root.set("commands", commandNodes)
+    for (const [keyseq, excmd] of keyMap) {
+        // TODO: sort out conflicts (:bind <D-x> ... shouldn't be allowed to coexist with :bind d ...)
+        //   and nonsensical <?-x> or <N-x> positions (<N-x> should only appear at the end)
+        // - <N-x> only for the last key is enforced here but not in the config itself
+        // - optional key at the end of a sequence should show a warning/prevent the bind from being set
+        // - noReset on a key NOT at the end of a sequence should be stripped/ignored
+        // - different but incompatible binds should overwrite
+        //   eg a<ND-b> should overwrite a<D-b> which should overwrite ab
+        // priority shouldn't really matter, conflicting binds should just overwrite with the newest one
+
+        // Set of active node "cursors", lets us add properties to optional nodes if needed
+        let active = new Set([root])
+
+        for (const minKey of keyseq as Iterable<TrieKey>) {
+            const nextActive: Set<Map<any, any>> = new Set()
+
+            // merge optional sequences when possible to stop runs of optionals creating quite so many nodes
+            let sharedNewNode = null
+
+            let enc = keyEventToString(minKey)
+
+            // <R-x> binds create MinimalKeys with the repeat property
+            // Can either change that or remove the repeat flag here (which is easier!)
+            enc = removeFlagsFromEncodedKeystr(enc, "repeat")
+
+            // "Reset" inherited nodes on conflicting keydown binds
+            // child nodes are NOT removed
+            // This was added due to this specific scenario:
+            // :bind <D-j> smoothscrollstart
+            // :bind --mode=visual j extendline # not a real command but you get the gist
+            // (visual mode's j wasn't allowed to repeat)
+            for (let cursor of active) {
+                if (cursor.has(enc)) {
+                    const next = cursor.get(enc)
+                    const inherits = next.get("inheritsFrom")
+                    const resetNode = inherits && (inheritsOrder.indexOf(inherits) < 0)
+                    if (resetNode) {
+                        next.delete("properties")
+                        if (inheritsFrom) next.set("inheritsFrom", inheritsFrom)
+                        else next.delete("inheritsFrom")
+                        cursor.delete(addFlagsToEncodedKeystr(enc, "repeat"))
+                    }
+                    if (!sharedNewNode) sharedNewNode = next
+                } else {
+                    let next: KeyTrieNode
+                    if (sharedNewNode) next = sharedNewNode
+                    else {
+                        next = new Map()
+                        sharedNewNode = next
+                    }
+                    if (inheritsFrom) next.set("inheritsFrom", inheritsFrom)
+                    cursor.set(enc, next)
+                    // // Repeats shouldn't break sequences - but I might stop adding equivalent repeats and do something else
+                    // if (!minKey.keyup)
+                    //     next.set(addFlagsToEncodedKeystr(enc, "repeat"), next)
+                }
+
+                // Add equivalent repeat keys for keydowns
+                // This makes me think any repeat logic should be handled through "actions" rather than having so many duplicate keys
+                // But I can't remember how I use repeats so I'd better leave it for now
+                // if (!minKey.keyup)
+                //     cursor.set(addFlagsToEncodedKeystr(enc, "repeat"), cursor.get(enc))
+
+                // Multiple active cursors means we're handling optional nodes
+                if (minKey.optional) nextActive.add(cursor)
+
+                cursor = cursor.get(enc)
+                nextActive.add(cursor)
+
+                // "noReset" property lets otherwise shadowed binds work: ":bind <N-x> one", ":bind xx two"
+                if (cursor.has("command") && !nodeHasProperty(cursor, KeyTrieProperties.noReset)) continue
+
+                // stickyRepeat nodes mustn't prevent keyups, we can get stuck in them otherwise
+                if (!nodeHasProperty(cursor, KeyTrieProperties.stickyRepeat)) {
+                    if (minKey.press) {
+                        addPropertyToNode(cursor, KeyTrieProperties.ignoreRepeats, KeyTrieProperties.ignoreKeyupExplicit)
+                        removePropertyFromNode(cursor, KeyTrieProperties.ignoreKeyupContextual)
+                    } else if (minKey.keydown) {
+                        // keydown is another misnomer, it represents "use the keydown and ignore repeats"
+                        addPropertyToNode(cursor, KeyTrieProperties.ignoreRepeats)
+                    } else if (!minKey.keyup && !nodeHasProperty(cursor, KeyTrieProperties.ignoreKeyupExplicit)) {
+                        addPropertyToNode(cursor, KeyTrieProperties.ignoreKeyupContextual)
+                    }
+
+                    // <R-x> means stickyRepeat but is misleadingly represented by the repeat property
+                    if (minKey.repeat && minKey === keyseq[keyseq.length - 1] && keyseq.length > 1) {
+                        // Repeats -> trigger command, keyup -> exit node
+                        cursor.set(addFlagsToEncodedKeystr(enc, "repeat"), cursor)
+                        removePropertyFromNode(cursor, KeyTrieProperties.ignoreRepeats, KeyTrieProperties.ignoreKeyupExplicit, KeyTrieProperties.ignoreKeyupContextual)
+                        addPropertyToNode(cursor, KeyTrieProperties.stickyRepeat, KeyTrieProperties.noReset)
+                    }
+                }
+                // Key event passthrough (page receives event, suggest careful use with :bindurl)
+                if (minKey.noCancel) {
+                    addPropertyToNode(cursor, KeyTrieProperties.noCancel)
+                }
+            }
+            active = nextActive
+        }
+
+        // Surely we can
+        for (const cursor of active) {
+            cursor.set("command", excmd)
+            cursor.set("mapstr", keyseq.reduce((acc, minkey) => acc + minkey.toMapstr(), ""))
+            // commandNodes.push(cursor)
+
+            // noReset binds, eg :bind <N-g> ...
+            // will trigger without blocking gg
+            if ((keyseq[keyseq.length - 1] as TrieKey).noReset) {
+                addPropertyToNode(cursor, KeyTrieProperties.noReset)
+            }
+        }
+    }
+    return root
+}
+
+// export function getChildCommandsForNode(node: KeyTrieNode, keyTrie: KeyTrieNode) {
+//     const commandNodes: KeyTrieNode[] = keyTrie.get("commands") || []
+
+//     return new Map(
+//         commandNodes.filter(cn => {
+//             if (cn === node) return true
+//             let parent = cn
+//             while (parent.has("parent")) {
+//                 parent = parent.get("parent")
+//                 if (parent === node)
+//                     return true
+//             }
+//             return false
+//         })
+//         .map(commandNode => [commandNode.get("mapstr"), commandNode.get("command")])
+//     )
+// }
+
+export function unwrapInherits(keyMap: KeyMap | object, configName?: string) {
+    // Make a copy to avoid deleting the "🕷🕷INHERITS🕷🕷" key from the passed object
+    const keyMapObj = {}
+    ;(Object.getPrototypeOf(keyMap) === Map.prototype
+        ? Array.from((keyMap as KeyMap).entries())
+        : Object.entries(keyMap))
+        .forEach(([mapstr, cmd]) => keyMapObj[mapstr] = cmd)
+
+    // Prevent infinite inherit loops (just in case)
+    const mapNames = configName ? new Set([configName]) : new Set()
+
+    const confs = [keyMapObj]
+    const configKeys = [configName]
+    if (confs[0] === undefined) confs[0] = {}
+
+    while (
+        confs[confs.length - 1][INHERITS_KEY] &&
+        !mapNames.has(confs[confs.length - 1][INHERITS_KEY])
+    ) {
+        const confName = confs[confs.length - 1][INHERITS_KEY]
+        mapNames.add(confName)
+        confs.push(config.get(confName) || {})
+        delete confs[confs.length - 2][INHERITS_KEY]
+        configKeys.push(confName)
+    }
+        for (let i = confs.length - 1; i > 0; --i) {
+        const filtering = confs[i - 1]
+        const comparing = confs[i]
+        confs[i - 1] = Object.fromEntries(
+            Object.entries(filtering)
+                .filter(([k, v]) => comparing[k] !== v)
+        )
+    }
+
+    // const inheritsOrdered = []
+    // for (let i = 0; i < confs.length; ++i) {
+    //     inheritsOrdered.push({ bindings: mapstrMapToKeyMap(new Map(Object.entries(confs[i]))), configKeys: modeNames[i] })
+    // }
+    return {
+        bindings: confs.map(c => mapstrMapToKeyMap(new Map(Object.entries(c)))),
+        configKeys,
+    }
+    // return inheritsOrdered
+}
+
+// repeats are keydowns
+// keydowns aren't repeats
 
 let KEYTRIE_CACHE = {}
 /**
@@ -908,134 +1190,15 @@ let KEYTRIE_CACHE = {}
 export function keyTrie(conf) {
     if (KEYTRIE_CACHE[conf]) return KEYTRIE_CACHE[conf]
 
-    // Get only the binds unique to each keymap (filter out inherited binds)
-    const unwrapInherits = (conf) => {
-        // Prevent infinite inherit loops (just in case)
-        const mapNames = new Set([conf])
+    const { bindings, configKeys } = unwrapInherits(config.get(conf) || {}, conf)
 
-        const confs = [config.get(conf)]
-        if (confs[0] === undefined) confs[0] = {}
-
-        while (
-            confs[confs.length - 1]["🕷🕷INHERITS🕷🕷"] &&
-            !mapNames.has(confs[confs.length - 1]["🕷🕷INHERITS🕷🕷"])
-        ) {
-            mapNames.add(confs[confs.length - 1]["🕷🕷INHERITS🕷🕷"])
-            confs.push(config.get(confs[confs.length - 1]["🕷🕷INHERITS🕷🕷"]))
-            delete confs[confs.length - 2]["🕷🕷INHERITS🕷🕷"]
-        }
-            for (let i = confs.length - 1; i > 0; --i) {
-            const filtering = confs[i - 1]
-            const comparing = confs[i]
-            confs[i - 1] = Object.fromEntries(
-                Object.entries(filtering)
-                    .filter(([k, v]) => comparing[k] !== v)
-            )
-        }
-
-        return confs.map(c => mapstrMapToKeyMap(new Map(Object.entries(c))))
-    }
-
-    const keymaps = unwrapInherits(conf)
-    const root = new Map()
-
-    while (keymaps.length) {
-        const keymap = keymaps.pop()
-        const inheritDepth = keymaps.length
-
-        for (const [keyseq, excmd] of keymap) {
-
-            // TODO: sort out conflicts (:bind <D-x> ... shouldn't be allowed to coexist with :bind d ...)
-            //   and nonsensical <?-x> or <N-x> positions (<N-x> should only appear at the end)
-            // - <N-x> only for the last key is enforced here but not in the config itself
-            // - optional key at the end of a sequence should show a warning/prevent the bind from being set
-            // - noReset on a key NOT at the end of a sequence should be stripped/ignored
-            // - different but incompatible binds should overwrite
-            //   eg a<ND-b> should overwrite a<D-b> which should overwrite ab
-            // priority shouldn't really matter, conflicting binds should just overwrite with the newest one
-
-            // Set of active node "cursors", lets us add properties to optional nodes if needed
-            let active = new Set([root])
-
-            for (const minKey of keyseq as Iterable<TrieKey>) {
-                const nextActive: Set<Map<any, any>> = new Set()
-
-                let enc = keyEventToString(minKey)
-
-                // <R-x> binds create MinimalKeys with the repeat property
-                // Can either change that or remove the repeat flag here (which is easier!)
-                enc = removeFlagsFromEncodedKeystr(enc, "repeat")
-
-                // "Reset" inherited nodes on conflicting keydown binds
-                // child nodes are NOT removed
-                // This was added due to this specific scenario:
-                // :bind <D-j> smoothscrollstart
-                // :bind --mode=visual j extendline # not a real command but you get the gist
-                // (visual mode's j wasn't allowed to repeat)
-                for (let cursor of active) {
-                    if (cursor.has(enc)) {
-                        if (cursor.get(enc).get("inheritDepth") > inheritDepth) {
-                            // Are there any instances where we wouldn't want to remove the repeat node?
-                            cursor.delete(addFlagsToEncodedKeystr(enc, "repeat"))
-                            cursor.get(enc).delete("properties")
-                            cursor.get(enc).set("inheritDepth", inheritDepth)
-                        }
-                    } else {
-                        cursor.set(enc, new Map([["inheritDepth", inheritDepth]]))
-                    }
-
-                    // Add equivalent repeat keys for keydowns
-                    if (!minKey.keyup)
-                        cursor.set(addFlagsToEncodedKeystr(enc, "repeat"), cursor.get(enc))
-
-                    // Multiple active cursors means we're handling optional nodes
-                    if (minKey.optional) nextActive.add(cursor)
-
-                    cursor = cursor.get(enc)
-                    nextActive.add(cursor)
-
-                    // "noReset" property lets otherwise shadowed binds work: ":bind <N-x> one", ":bind xx two"
-                    if (cursor.has("command") && !nodeHasProperty(cursor, "noReset")) continue
-
-                    // stickyRepeat nodes mustn't prevent keyups, we can get stuck in them otherwise
-                    if (!nodeHasProperty(cursor, "stickyRepeat")) {
-                        if (minKey.press) {
-                            addPropertyToNode(cursor, "ignoreRepeats", "ignoreKeyupExplicit")
-                            removePropertyFromNode(cursor, "ignoreKeyupContextual")
-                        } else if (minKey.keydown) {
-                            // keydown is another misnomer, it represents "use the keydown and ignore repeats"
-                            addPropertyToNode(cursor, "ignoreRepeats")
-                        } else if (!minKey.keyup && !nodeHasProperty(cursor, "ignoreKeyupExplicit")) {
-                            addPropertyToNode(cursor, "ignoreKeyupContextual")
-                        }
-
-                        // <R-x> means stickyRepeat but is misleadingly represented by the repeat property
-                        if (minKey.repeat && minKey === keyseq[keyseq.length - 1] && keyseq.length > 1) {
-                            // Repeats -> trigger command, keyup -> exit node
-                            cursor.set(addFlagsToEncodedKeystr(enc, "repeat", cursor), cursor)
-                            removePropertyFromNode(cursor, "ignoreRepeats", "ignoreKeyupExplicit", "ignoreKeyupContextual")
-                            addPropertyToNode(cursor, "stickyRepeat", "noReset")
-                        }
-                    }
-                    // Key event passthrough (page receives event, suggest careful use with :bindurl)
-                    if (minKey.noCancel) {
-                        addPropertyToNode(cursor, "noCancel")
-                    }
-                }
-                active = nextActive
-            }
-
-            for (const cursor of active) {
-                cursor.set("command", excmd)
-                cursor.set("mapstr", keyseq.reduce((acc, minkey) => acc + minkey.toMapstr(), ""))
-
-                // noReset binds, eg :bind <N-g> ...
-                // will trigger without blocking gg
-                if ((keyseq[keyseq.length - 1] as TrieKey).noReset) {
-                    addPropertyToNode(cursor, "noReset")
-                }
-            }
-        }
+    // root is mutated within keyMapToKeyTrie
+    // I'd prefer this to be more explicit and less side-effecty
+    let root = new Map()
+    while (bindings.length) {
+        // root = keyMapToKeyTrie(bindings, root, keymaps.length, configKeys)
+        root = keyMapToKeyTrie(bindings.pop(), root, configKeys)
+        configKeys.pop()
     }
     return KEYTRIE_CACHE[conf] = root
 }
@@ -1104,7 +1267,7 @@ export function minimalKeyFromKeyboardEvent(
 /**
  * Convert a MinimalKey to a keystr.
  */
-export function PrintableKey(k) {
+export function PrintableKey(k, extraPrefixes = false) {
     let result = k.key
     if (
         result === "Control" ||
@@ -1117,6 +1280,15 @@ export function PrintableKey(k) {
     }
 
     let prefix = ""
+    // May want to display as "<?-x>" in whichkey, but "x" in the mode indicator for instance
+    if (extraPrefixes) {
+        if (k.optional)
+            prefix += "?"
+        if (k.keydown)
+            prefix += "D"
+        if (k.press)
+            prefix += "P"
+    }
     if (k.keyup) {
         prefix += "U"
     }
