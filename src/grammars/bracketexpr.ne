@@ -22,7 +22,7 @@ Modifier -> [acmsrudpnACMSRUDPN!\?]:? [acmsrudpnACMSRUDPN!\?]:? [acmsrudpnACMSRU
 
         let modifiersObj = {}
         for (let mod of mods) {
-            if (mod === null || mod === "-" || mod === "R") continue
+            if (mod === null || mod === "-" /* || mod === "R" */) continue
             let longName = longNames.get(mod.toUpperCase())
             if (longName) {
                 // Reject if the same name is used twice.
