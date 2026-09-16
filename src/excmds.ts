@@ -4898,7 +4898,7 @@ export async function bind(...args: Array<string | ExProgram>) {
     let p = Promise.resolve()
     if (args_obj.excmd !== "") {
         const trie = keyTrie(args_obj.configName)
-        const shadow = trie ? checkForShadowedBinds(trie) : undefined
+        const shadow = trie ? checkForShadowedBinds(args_obj.key, trie) : undefined
         if (shadow !== undefined) {
             fillcmdline_notrail("# Warning: bind `" + shadow + "` exists and will shadow `" + args_obj.key + "`. Try running `:unbind --mode=" + args_obj.mode + " " + shadow + "`")
         } else {

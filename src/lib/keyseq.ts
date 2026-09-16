@@ -856,7 +856,7 @@ export function canonicaliseMapstr(mapstr: string): string {
 export function walkKeyTrieForShadowingNodes(mapstr: string, keytrie = keyTrie("nmaps")) {
     const keys = mapstrToKeyseq(
         canonicaliseMapstr(mapstr))
-        .map(trieKey => removeFlagsFromEncodedKeystr(keyEventToString(trieKey), "stickyRepeat"))
+        .map(trieKey => removeFlagsFromEncodedKeystr(keyEventToString(trieKey), "repeat"))
     const matches: any = []
     let node = keytrie
     for (const key of keys) {
@@ -870,7 +870,7 @@ export function walkKeyTrieForShadowingNodes(mapstr: string, keytrie = keyTrie("
                         mapstr: node.get("mapstr"),
                     }
                 )
-                if (!matches[matches.length - 1].properties.includes("noShadow")) {
+                if (!matches[matches.length - 1].properties.includes(KeyTrieProperties.noReset)) {
                     node = keytrie
                 }
             }
@@ -884,8 +884,8 @@ export function walkKeyTrieForShadowingNodes(mapstr: string, keytrie = keyTrie("
 export function checkForShadowedBinds(mapstr: string, trie = keyTrie("nmaps")) {
     return walkKeyTrieForShadowingNodes(mapstr, trie)
         .find(
-            match => (!match.properties.includes("noShadow") ||
-                match.properties.includes("stickyRepeat")) &&
+            match => (!match.properties.includes(KeyTrieProperties.noReset) ||
+                match.properties.includes(KeyTrieProperties.stickyRepeat)) &&
                 match.mapstr !== mapstr // overwriting is not shadowing
         )?.mapstr
 }
@@ -1117,6 +1117,8 @@ export function keyMapToKeyTrie(keyMap: KeyMap, root = new Map(), inheritsOrder?
                     }
 
                     // <R-x> means stickyRepeat but is misleadingly represented by the repeat property
+                    // AFAICT stickyRepeat is equivalent to noReset + a repeat key pointing to the same node
+                    // But it's weird enough to deserve its own property name so this is fine
                     if (minKey.repeat && minKey === keyseq[keyseq.length - 1] && keyseq.length > 1) {
                         // Repeats -> trigger command, keyup -> exit node
                         cursor.set(addFlagsToEncodedKeystr(enc, "repeat"), cursor)
@@ -1132,7 +1134,6 @@ export function keyMapToKeyTrie(keyMap: KeyMap, root = new Map(), inheritsOrder?
             active = nextActive
         }
 
-        // Surely we can
         for (const cursor of active) {
             cursor.set("command", excmd)
             cursor.set("mapstr", keyseq.reduce((acc, minkey) => acc + minkey.toMapstr(), ""))

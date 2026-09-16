@@ -173,7 +173,7 @@ function* ParserController() {
         // allow gmail gi shortcut to work:
         // :bind https://mail.google.com <!N-g> noop
         // :unbindurl https://mail.goog.com gi
-        if ((response.isMatch && !response.actions?.includes?.("noCancel")) || contentState.blocking_keypresses) {
+        if ((response.isMatch && !response.actions?.includes?.(KeyTrieProperties.noCancel)) || contentState.blocking_keypresses) {
             keyevent.preventDefault()
             keyevent.stopImmediatePropagation()
 
