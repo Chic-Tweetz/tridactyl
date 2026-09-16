@@ -449,7 +449,7 @@ function completionsFrom(start, mapToNodes = false): KeyMap {
             // We can either let multiple paths display for sequences with optional keys
             // or take the longest path and assume that's correct (should include all optionals)
             // that results in this annoying two-way mapping
-        if (node.has("command") && (!cmds2completions.has(node) || cmds2completions.get(node).length < remaining)) {
+        if (node.has("command") && (!cmds2completions.has(node) || cmds2completions.get(node).length < remaining.length)) {
             const remainingcopy = remaining.slice()
             _completions.set(remainingcopy, mapToNodes ? node : node.get("command"))
             cmds2completions.set(node, remainingcopy)
