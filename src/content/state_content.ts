@@ -1,5 +1,6 @@
 import Logger from "@src/lib/logging"
 import * as config from "@src/lib/config"
+import { MinimalKey } from "@src/lib/keyseq"
 const logger = new Logger("state")
 
 export type ModeName =
@@ -26,6 +27,7 @@ class ContentState {
     cmdline_filter = ""
     pseudo_mode = ""
     blocking_keypresses = false
+    keyseq: MinimalKey[] = []
 }
 
 export type ContentStateProperty =
@@ -37,6 +39,7 @@ export type ContentStateProperty =
     | "group"
     | "pseudo_mode"
     | "blocking_keypresses"
+    | "keyseq"
 
 export type ContentStateChangedCallback = (
     property: ContentStateProperty,
