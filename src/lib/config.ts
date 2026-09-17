@@ -2729,7 +2729,16 @@ export function unsetURL(pattern, ...target) {
 export async function unset(...target) {
     if (IN_BACKGROUND && EXCLUSIVE_PENDING) await EXCLUSIVE_QUEUE
     if (IN_BACKGROUND && !INITIALISED) await getAsync()
-    const parent = getDeepProperty(USERCONFIG, target.slice(0, -1))
+
+    let parent = USERCONFIG
+    for (const key of target.slice(0, - 1)) {
+        parent = parent[key]
+        if (typeof parent !== "object" || Array.isArray(parent)) {
+            parent = undefined
+            break
+        }
+    }
+
     if (parent !== undefined) delete parent[target[target.length - 1]]
     if (!IN_BACKGROUND) return mutateInBackground("unset", target)
     return save()
