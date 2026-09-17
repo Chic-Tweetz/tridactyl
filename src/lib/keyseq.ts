@@ -871,11 +871,13 @@ export function walkKeyTrieForShadowingNodes(mapstr: string, keytrie = keyTrie("
                     }
                 )
                 if (!matches[matches.length - 1].properties.includes(KeyTrieProperties.noReset)) {
-                    node = keytrie
+                    // node = keytrie
+                    return matches
                 }
             }
         } else {
-            node = keytrie
+            // node = keytrie // why reset? if we go back to the root there were no shadows!
+            return matches
         }
     }
     return matches
@@ -1019,6 +1021,9 @@ export function keyMapToKeyTrie(keyMap: KeyMap, root = new Map(), inheritsOrder?
     const inheritsFrom = inheritsOrder && inheritsOrder.length > 1 ? inheritsOrder[inheritsOrder.length - 1] : undefined
     // const commandNodes = []
     // root.set("commands", commandNodes)
+
+    const nodesAtThisInheritanceDepth:Set<KeyTrieNode> = new Set()
+
     for (const [keyseq, excmd] of keyMap) {
         // TODO: sort out conflicts (:bind <D-x> ... shouldn't be allowed to coexist with :bind d ...)
         //   and nonsensical <?-x> or <N-x> positions (<N-x> should only appear at the end)
@@ -1050,27 +1055,39 @@ export function keyMapToKeyTrie(keyMap: KeyMap, root = new Map(), inheritsOrder?
             // :bind <D-j> smoothscrollstart
             // :bind --mode=visual j extendline # not a real command but you get the gist
             // (visual mode's j wasn't allowed to repeat)
+            // TODO: is it worth figuring out which properties should be deleted rather than deleting all of them?
             for (let cursor of active) {
                 if (cursor.has(enc)) {
                     const next = cursor.get(enc)
-                    // Used to check "inheritanceDepth"
-                    // I like storing where nodes came from,
-                    // But knowing the depth would be good too for sorting the display order in whichkey soo
-                    // TODO: reinstate inhertitsDepth or whatever it was called!
-                    const inherits = next.get("inheritsFrom")
-                    const resetNode = inherits && (inheritsOrder.indexOf(inherits) < 0)
-                    if (resetNode) {
-                        next.delete("properties")
+                    // Wondering about inheritance:
+                    // can we just add this for command nodes
+
+
+                    // const inherits = next.get("inheritsFrom")
+                    // const resetNode = inherits && (inheritsOrder.indexOf(inherits) < 0)
+                    // if (resetNode) {
+                    //     next.delete("properties")
+                    //     if (inheritsFrom) {
+                    //         next.set("inheritsFrom", inheritsFrom)
+                    //         next.set("inheritsDepth", inheritsOrder.length - 1)
+                    //     } else {
+                    //         next.delete("inheritsFrom")
+                    //         next.delete("inheritsDepth")
+                    //     }
+                    //     cursor.delete(addFlagsToEncodedKeystr(enc, "repeat"))
+                    // }
+
+                    if (!nodesAtThisInheritanceDepth.has(next)) {
                         if (inheritsFrom) {
-                            next.set("inheritsFrom", inheritsFrom)
-                            next.set("inheritsDepth", inheritsOrder.length - 1)
-                        } else {
                             next.delete("inheritsFrom")
                             next.delete("inheritsDepth")
                         }
+                        next.delete("properties")
                         cursor.delete(addFlagsToEncodedKeystr(enc, "repeat"))
+                        nodesAtThisInheritanceDepth.add(next)
                     }
-                    if (!sharedNewNode) sharedNewNode = next
+
+                    if (!sharedNewNode) sharedNewNode = next // hard to visualise if this makes sense (converging optional paths)
                 } else {
                     let next: KeyTrieNode
                     if (sharedNewNode) next = sharedNewNode
@@ -1078,22 +1095,15 @@ export function keyMapToKeyTrie(keyMap: KeyMap, root = new Map(), inheritsOrder?
                         // Store own key, perhaps completions can accumulate these
                         next = new Map([["keystr", minKey.toMapstr()]])
                         sharedNewNode = next
-                    }
-                    if (inheritsFrom) {
-                        next.set("inheritsFrom", inheritsFrom)
-                        next.set("inheritsDepth", inheritsOrder.length - 1)
-                    }
-                    cursor.set(enc, next)
-                    // // Repeats shouldn't break sequences - but I might stop adding equivalent repeats and do something else
-                    // if (!minKey.keyup)
-                    //     next.set(addFlagsToEncodedKeystr(enc, "repeat"), next)
-                }
 
-                // Add equivalent repeat keys for keydowns
-                // This makes me think any repeat logic should be handled through "actions" rather than having so many duplicate keys
-                // But I can't remember how I use repeats so I'd better leave it for now
-                // if (!minKey.keyup)
-                //     cursor.set(addFlagsToEncodedKeystr(enc, "repeat"), cursor.get(enc))
+                        nodesAtThisInheritanceDepth.add(next)
+                    }
+                    // if (inheritsFrom) {
+                    //     next.set("inheritsFrom", inheritsFrom)
+                    //     next.set("inheritsDepth", inheritsOrder.length - 1)
+                    // }
+                    cursor.set(enc, next)
+                }
 
                 // Multiple active cursors means we're handling optional nodes
                 if (minKey.optional) nextActive.add(cursor)
@@ -1143,6 +1153,14 @@ export function keyMapToKeyTrie(keyMap: KeyMap, root = new Map(), inheritsOrder?
             // will trigger without blocking gg
             if ((keyseq[keyseq.length - 1] as TrieKey).noReset) {
                 addPropertyToNode(cursor, KeyTrieProperties.noReset)
+            }
+
+            if (inheritsFrom) {
+                cursor.set("inheritsFrom", inheritsFrom)
+                cursor.set("inheritsDepth", inheritsOrder.length - 1)
+            } else {
+                cursor.delete("inheritsFrom")
+                cursor.delete("inheritsDepth")
             }
         }
     }
