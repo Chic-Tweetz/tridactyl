@@ -979,7 +979,6 @@ export function keyMap(conf): KeyMap {
 
 // TODO: consider whether property order is important
 // TODO: should we make properties a Set? Sets are iterable and properties should be unique.
-// TODO: also make properties an enum perhaps?
 function addPropertyToNode(node: KeyTrieNode, ...addProperties: KeyTrieProperties[]) {
     const props = node.get("properties") || []
     for (const property of addProperties)
@@ -1017,12 +1016,17 @@ function nodeHasProperty(node: KeyTrieNode, property: KeyTrieProperties) {
 
 // I don't like this one, why should inheritance be sorted seperately from this?
 // export function keyMapToKeyTrie(keyMap: KeyMap, root = new Map(), inheritDepth = 0, inheritedFrom?: string) {
-export function keyMapToKeyTrie(keyMap: KeyMap, root = new Map(), inheritsOrder?: string[]) {
-    const inheritsFrom = inheritsOrder && inheritsOrder.length > 1 ? inheritsOrder[inheritsOrder.length - 1] : undefined
-    // const commandNodes = []
-    // root.set("commands", commandNodes)
-
+export function keyMapToKeyTrie(keyMap: KeyMap, root = new Map(), inheritsOrder: string[] = []) {
+    const inheritsFrom = inheritsOrder.length > 1 ? inheritsOrder[inheritsOrder.length - 1] : undefined
     const nodesAtThisInheritanceDepth:Set<KeyTrieNode> = new Set()
+
+    const URLSourcesFinder = inheritsOrder[inheritsOrder.length - 1]
+        ? config.getURLWithSources(null, [inheritsOrder[inheritsOrder.length - 1]])
+        : undefined
+
+    const getURLSource = URLSourcesFinder
+        ? (mapstr => URLSourcesFinder.get(mapstr)?.[0] || undefined)
+        : (_) => undefined
 
     for (const [keyseq, excmd] of keyMap) {
         // TODO: sort out conflicts (:bind <D-x> ... shouldn't be allowed to coexist with :bind d ...)
@@ -1059,24 +1063,6 @@ export function keyMapToKeyTrie(keyMap: KeyMap, root = new Map(), inheritsOrder?
             for (let cursor of active) {
                 if (cursor.has(enc)) {
                     const next = cursor.get(enc)
-                    // Wondering about inheritance:
-                    // can we just add this for command nodes
-
-
-                    // const inherits = next.get("inheritsFrom")
-                    // const resetNode = inherits && (inheritsOrder.indexOf(inherits) < 0)
-                    // if (resetNode) {
-                    //     next.delete("properties")
-                    //     if (inheritsFrom) {
-                    //         next.set("inheritsFrom", inheritsFrom)
-                    //         next.set("inheritsDepth", inheritsOrder.length - 1)
-                    //     } else {
-                    //         next.delete("inheritsFrom")
-                    //         next.delete("inheritsDepth")
-                    //     }
-                    //     cursor.delete(addFlagsToEncodedKeystr(enc, "repeat"))
-                    // }
-
                     if (!nodesAtThisInheritanceDepth.has(next)) {
                         if (inheritsFrom) {
                             next.delete("inheritsFrom")
@@ -1098,10 +1084,6 @@ export function keyMapToKeyTrie(keyMap: KeyMap, root = new Map(), inheritsOrder?
 
                         nodesAtThisInheritanceDepth.add(next)
                     }
-                    // if (inheritsFrom) {
-                    //     next.set("inheritsFrom", inheritsFrom)
-                    //     next.set("inheritsDepth", inheritsOrder.length - 1)
-                    // }
                     cursor.set(enc, next)
                 }
 
@@ -1146,9 +1128,8 @@ export function keyMapToKeyTrie(keyMap: KeyMap, root = new Map(), inheritsOrder?
 
         for (const cursor of active) {
             cursor.set("command", excmd)
-            cursor.set("mapstr", keyseq.reduce((acc, minkey) => acc + minkey.toMapstr(), ""))
-            // commandNodes.push(cursor)
-
+            const mapstr = keyseq.reduce((acc, minkey) => acc + minkey.toMapstr(), "")
+            cursor.set("mapstr", mapstr)
             // noReset binds, eg :bind <N-g> ...
             // will trigger without blocking gg
             if ((keyseq[keyseq.length - 1] as TrieKey).noReset) {
@@ -1161,6 +1142,12 @@ export function keyMapToKeyTrie(keyMap: KeyMap, root = new Map(), inheritsOrder?
             } else {
                 cursor.delete("inheritsFrom")
                 cursor.delete("inheritsDepth")
+            }
+
+            const fromSubconf = getURLSource(mapstr)
+            if (fromSubconf) {
+                cursor.set("subconfig", fromSubconf.source)
+                cursor.set("subconfigPriority", fromSubconf.priority)
             }
         }
     }
@@ -1206,6 +1193,7 @@ export function unwrapInherits(keyMap: KeyMap | object, configName?: string) {
     ) {
         const confName = confs[confs.length - 1][INHERITS_KEY]
         mapNames.add(confName)
+        // Tempted to store subconfig URL sources in the keytries... somehow
         confs.push(config.get(confName) || {})
         delete confs[confs.length - 2][INHERITS_KEY]
         configKeys.push(confName)
