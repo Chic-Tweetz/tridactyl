@@ -18,6 +18,7 @@ sed "1,/REPLACETHIS/ d" newtab.template.html >> "$newtabtemp"
 
 (
 sed "/REPLACE_ME_WITH_THE_CHANGE_LOG_USING_SED/,$ d" "$newtabtemp"
+
 # Note: If you're going to change this HTML, make sure you don't break the JS in src/newtab.ts
 cat <<EOF
 <details id="changelog-details">
@@ -25,11 +26,20 @@ cat <<EOF
 <div id="changelog" class="spoiler">
 EOF
 "$(yarn bin)/marked" ../../CHANGELOG.md
-echo """
+cat <<EOF
 </div>
 </details>
-"""
+<details id="changelog-paris-details">
+<summary>Paris Changelog</summary>
+<div id="changelog-paris" class="spoiler">
+EOF
+"$(yarn bin)/marked" ../../CHANGELOGPARIS.md
+cat <<EOF
+</div>
+</details>
+EOF
 sed "1,/REPLACE_ME_WITH_THE_CHANGE_LOG_USING_SED/ d" "$newtabtemp"
 ) > "$newtab"
 
 rm "$newtabtemp"
+

@@ -10,7 +10,7 @@ body {
 }
 
 /* Borrowed from https://codepen.io/oloman/pen/odnqy */
-#changelog-details > summary {
+#changelog-details > summary, #changelog-paris-details > summary {
     display: block;
     width: 8em;
     margin: 0 auto;
@@ -23,7 +23,16 @@ body {
     cursor: pointer;
     transition: all 0.6s;
 }
-#changelog-details[open] > summary {
+
+#changelog-paris-details > summary {
+    background: #540d96;
+}
+
+#changelog-paris-details {
+    margin-top: 8px;
+}
+
+#changelog-details[open] > summary, #changelog-paris-details[open] > summary {
     color: #333;
     background: #ccc;
 }
@@ -37,7 +46,7 @@ body {
     background: red;
     line-height: 1.4;
 }
-#changelog-details > .spoiler {
+#changelog-details > .spoiler, #changelog-paris-details > .spoiler {
     margin: 10px auto 0;
     padding: 10px;
     background: var(--tridactyl-highlight-box-bg);
