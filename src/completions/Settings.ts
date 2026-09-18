@@ -48,6 +48,7 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
     }
 
     public async filter(exstr: string) {
+        this.trailingSpace = true
         this.lastExstr = exstr
         let [prefix, query] = this.splitOnPrefix(exstr)
         let options = ""
@@ -118,6 +119,7 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
 
         let settings
         if (url) {
+            // Display completions relative to the content location (not the iframe's href)
             settings = config.getWithURL(url)
         } else {
             settings = config.get()
@@ -127,58 +129,117 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
             return
         }
 
-        // Ideally these would work with deepKeys like `:set noa.b.c` => `:set a.b.c false`
-        // Or `:set a.b.c!` or `:set inva.b.c`
-        const vimSugarPrefix = prefix.startsWith("set") ? ["no", "inv"].find(boolPrefix => query.startsWith(boolPrefix)) : undefined
+        const isSetCmd = prefix.startsWith("set")
+
+        const vimSugarPrefix = isSetCmd ? ["no", "inv"].find(boolPrefix => query.startsWith(boolPrefix)) : undefined
         const doubleSugarPrefix = vimSugarPrefix && query.startsWith(vimSugarPrefix + vimSugarPrefix)
-        // const queryNoPrefix = vimSugarPrefix ? query.slice(vimSugarPrefix.length) : undefined
 
-        // Some tweaks to show completions for nested objects
-        // would be nice to get this working for keys a "." in them like autocmd urls
         const deepQuery = query.split(/[\. ]/)
-
         if (deepQuery.length > 1 && vimSugarPrefix && !settings.hasOwnProperty(deepQuery[0]))
             deepQuery[0] = deepQuery[0].slice(vimSugarPrefix.length)
 
-        query = deepQuery.pop()
+        query = deepQuery.pop().toLowerCase()
 
         let target = settings
-        deepQuery.every(key => {
+        for (const key of deepQuery) {
             const next = target[key]
-            if (typeof next === "object") target = next
-            else target = {}
-            return next
-        })
+            if (typeof next === "object" && !Array.isArray(next))
+                target = next
+            else {
+                target = {}
+                break
+            }
+        }
 
         const deepKeys = deepQuery.length ? deepQuery.join(".") + "." : ""
-
         const vimSugarPostfix = ["!"].find(boolPostfix => query.endsWith(boolPostfix))
 
+        const boolsToTop = vimSugarPrefix || vimSugarPostfix
+        const isBoolLike = ((t, k) => t[k] === "true" || t[k] === "false" || deepQuery.length === 0 && isBoolString(defaultConfigMembers[k]?.type))
+        const sortFn = boolsToTop ? (a, b) => {
+            let score = 0
+            isBoolLike(target, a) ? --score : ++score
+            isBoolLike(target, b) ? ++score : --score
+            if (a < b) --score
+            else if (b < a) ++score
+            return score
+        } : (a, b) => {
+            if (a < b) return -1
+            if (b < a) return 1
+            return 0
+        }
+
         let matches
-        if (vimSugarPrefix && deepQuery.length === 0) {
+        if (vimSugarPrefix /* && deepQuery.length === 0 */) {
             const slicedQuery = query.slice(vimSugarPrefix.length)
-            matches = Object.keys(target)
-                .filter(x => x.startsWith(query) || (
-                    isBoolString(defaultConfigMembers[x]?.type) &&
-                    x.startsWith(slicedQuery)
-                ))
+            // matches = Object.keys(target)
+            //     .filter(x => x.toLowerCase().startsWith(query) || (
+            //         // (isBoolString(defaultConfigMembers[x]?.type) || target[x] === "true" || target[x] === "false") &&
+            //         isBoolLike(target, x) &&
+            //         x.toLowerCase().startsWith(slicedQuery)
+            //     ))
+            // Would prefer these to be added either way but sorted to below explicit bool settings
+            // if (matches.length === 0) {
+            matches = Object.keys(target).filter(x => (x.toLowerCase().startsWith(slicedQuery) &&
+                (isBoolLike(target, x) || (typeof target[x] === "object" && !Array.isArray(target[x]))) || x.toLowerCase().startsWith(query)))
+            // }
         } else if (vimSugarPostfix) {
             const slicedQuery = query.slice(0, -vimSugarPostfix.length)
             matches = Object.keys(target)
                 .filter(x => (
-                        isBoolString(defaultConfigMembers[x]?.type) &&
-                        x.startsWith(slicedQuery)
-                    ) || (x.startsWith(query)))
+                        // (isBoolString(defaultConfigMembers[x]?.type) || target[x] === "true" || target[x] === "false") &&
+                        isBoolLike(target, x) &&
+                        x.toLowerCase().startsWith(slicedQuery)
+                    ) || (x.toLowerCase().startsWith(query)))
         } else {
             matches = Object.keys(target)
-               .filter(x => x.startsWith(query))
+               .filter(x => x.toLowerCase().startsWith(query))
+        }
+
+        if (matches.length === 0) {
+            if (query !== "") {
+                matches = Object.keys(target).filter(x => x.toLowerCase().includes(query))
+            } else if (deepQuery.length && isSetCmd) {
+                query = deepQuery.pop()
+                target = settings
+                for (const key of deepQuery) {
+                    const next = target[key]
+                    if (typeof next === "object" && !Array.isArray(next))
+                        target = next
+                    else {
+                        target = {}
+                        break
+                    }
+                }
+
+                const exactMatch = target?.[query]
+
+                if (exactMatch !== undefined) {
+                    const completionValue = options + (deepQuery.length ? deepQuery.join(".") + "." : "") + query +
+                        (typeof exactMatch === "object"
+                            ? Array.isArray(exactMatch) ? " " + JSON.stringify(exactMatch) : ""
+                            : " " + exactMatch)
+
+                    const md = defaultConfigMembers[deepKeys[0] || query]
+                    this.options = [
+                        new SettingsCompletionOption(completionValue, {
+                            name: "",
+                            value: JSON.stringify(exactMatch),
+                            doc: memberDoc(md),
+                            type: md ? typeToString(memberType(md)) : ""
+                        })
+                    ]
+                    this.trailingSpace = false
+                    return this.updateChain()
+                }
+            }
         }
 
         if (matches.length === 0 && query !== "")
             matches = Object.keys(settings).filter(x => x.includes(query))
 
         this.options = matches
-            .sort()
+            .sort(sortFn)
             .map((setting) => {
                 let completionPrefix = vimSugarPrefix || ""
                 // Silly edge cases like
@@ -189,7 +250,8 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
                 if (vimSugarPrefix && !doubleSugarPrefix && setting.startsWith(vimSugarPrefix))
                     completionPrefix = ""
 
-                const md = defaultConfigMembers[setting]
+                // const md = defaultConfigMembers[setting]
+                const md = defaultConfigMembers[deepKeys[0] || setting]
                 return new SettingsCompletionOption(options + completionPrefix + deepKeys + setting + (vimSugarPostfix || ""), {
                     name: setting,
                     value: JSON.stringify(target[setting]),

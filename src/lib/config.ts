@@ -2562,10 +2562,8 @@ export function get(target_typed?: keyof default_config, ...target: string[]) {
     return getWithURL(undefined, target_typed, ...target)
 }
 
-/** Get the value of the key target.
-
-    If the user has not specified a key, use the corresponding key from
-    defaults, if one exists, else undefined.
+/** Get the value of the key target with a URL to use with getURL.
+ *  An undefined URL will be converted to the current location.
     @hidden
  */
 export function getWithURL(url?: string, target_typed?: keyof default_config, ...target: string[]) {

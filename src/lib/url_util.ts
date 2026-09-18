@@ -152,6 +152,16 @@ export function getUrlParent(url, option, count = 1) {
     return gup(parent, option, count)
 }
 
+/**
+ *  Return a URL relative to a given URL.
+ *  Only currently supports either a slash "/" or a series of dots ".", "..", "...", etc.
+ *  "/" returns the root URL
+ *  A single "." returns the URL itself
+ *  Multiple dots get parent URLs up to the root URL.
+ *
+ *  Tempting to add further functionality e.g. passing something like "../path",
+ *  but this function is used in the same place (`:seturl`) as a regexp string is expected so it's already questionable enough having dots mean something else
+ */
 export function symbolsToHref(dotsOrSlash = "", relativeTo: any = window.location) {
     if (dotsOrSlash === "/") return getUrlRoot(new URL(relativeTo)).href
     if (dotsOrSlash === ".") return relativeTo?.href || relativeTo
