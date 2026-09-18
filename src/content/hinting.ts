@@ -162,8 +162,22 @@ class HintState {
     deOverlap() {
         this.hints.sort((a, b) => a.y - b.y)
 
+        // Perform all getClientRects calls in one go
+        const hints = this.hints.filter(hint => {
+            if (!hint.hidden && hint.rect) {
+                if (hint.width !== 0) return true
+                const flagRect = hint.flag.getClientRects()[0]
+                if (flagRect) {
+                    hint.width = flagRect.width
+                    hint.height = flagRect.height
+                    return true
+                }
+            }
+            return false
+        })
+
         const visited: Hint[] = []
-        for (const h of this.hints.filter(hint => !hint.hidden && hint.rect)) {
+        for (const h of hints) {
             for (const vh of visited) {
                 if (h.overlapsWith(vh)) {
                     if (vh.x + vh.width < h.rect.right) h.x = vh.x + vh.width
@@ -1122,12 +1136,18 @@ class Hint {
     }
 
     public overlapsWith(h: Hint) {
-        const otherRect = h.flag.getClientRects()[0]
-        if (!otherRect) return false
-        if (h.width == 0) h.width = otherRect.width
-        if (h.height == 0) h.height = otherRect.height
-        if (this.width == 0) this.width = this.flag.getClientRects()[0].width
-        if (this.height == 0) this.height = this.flag.getClientRects()[0].height
+        if (h.width == 0) {
+            const r = h.flag.getClientRects()[0]
+            if (!r) return false
+            h.width = r.width
+            h.height = r.height
+        }
+        if (this.width == 0) {
+            const r = this.flag.getClientRects()[0]
+            if (!r) return false
+            this.width = r.width
+            this.height = r.height
+        }
         return (
             this.x < h.x + h.width &&
             this.x + this.width > h.x &&
