@@ -177,6 +177,7 @@ import {
     MinimalKey,
     // findShadowingMapstr,
     // parseMapstr,
+    keyTrie,
     checkForShadowedBinds,
 } from "@src/lib/keyseq"
 
@@ -4896,8 +4897,9 @@ export async function bind(...args: Array<string | ExProgram>) {
     if (args_obj.isRecursive || args_obj.mode === "*") throw new Error("`--recursive` and `--mode=*` can only be called on unbind.")
     let p = Promise.resolve()
     if (args_obj.excmd !== "") {
-        const shadow = checkForShadowedBinds(args_obj.key, args_obj.configName)
-        if (shadow !== null) {
+        const trie = keyTrie(args_obj.configName)
+        const shadow = trie ? checkForShadowedBinds(args_obj.key, trie) : undefined
+        if (shadow !== undefined) {
             fillcmdline_notrail("# Warning: bind `" + shadow + "` exists and will shadow `" + args_obj.key + "`. Try running `:unbind --mode=" + args_obj.mode + " " + shadow + "`")
         } else {
             for (let i = 0; i < args_obj.key.length; i++) {

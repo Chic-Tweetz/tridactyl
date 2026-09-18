@@ -11,6 +11,7 @@ import {
     // formatKeysForModeIndicator,
     isTrustedKeyboardEvent,
     TrustedKeyboardEvent,
+    KeyTrieProperties,
 } from "@src/lib/keyseq"
 import { ExCommand } from "@src/lib/excmd"
 
@@ -89,6 +90,7 @@ function* ParserController() {
     const ignoreRepeats = new Set()
     let keyEvents: MinimalKey[] = []
     let previousSuffix = ""
+    let previousKeyEvents: MinimalKey[] = []
 
     // If we lose focus we have no idea whether keys are held
     // Though we could try to listen in the top window for iframes that receive focus
@@ -106,23 +108,23 @@ function* ParserController() {
     // - also keys as in keypresses and keys as in key/value pairs in the tries!
     //   which are encoded from keys as in keypresses! Ahh!
     // :bind <D-x>, <P-x>, <R-x>, <N-x> are what set these properties
-    const parserActions = {
-        "ignoreKeyupExplicit": (keyevent: KeyEventLike) => {
+    const parserActions = new Map([
+        [KeyTrieProperties.ignoreKeyupExplicit, (keyevent: KeyEventLike) => {
             if (isTrustedKeyboardEvent(keyevent))
                 ignoreKeyupsExplicit.add(keyevent.code)
-        },
-        "ignoreKeyupContextual": (keyevent: KeyEventLike) => {
+        }],
+        [KeyTrieProperties.ignoreKeyupContextual, (keyevent: KeyEventLike) => {
             if (isTrustedKeyboardEvent(keyevent))
                 ignoreKeyupsContextual.add(keyevent.code)
-        },
-        "ignoreRepeats": (keyevent: KeyEventLike) => {
+        }],
+        [KeyTrieProperties.ignoreRepeats, (keyevent: KeyEventLike) => {
             if (isTrustedKeyboardEvent(keyevent))
                 ignoreRepeats.add(keyevent.code)
-        },
-        "noReset": (_keyevent: KeyEventLike, response: ParserResponse) => {
+        }],
+        [KeyTrieProperties.noReset, (_keyevent: KeyEventLike, response: ParserResponse) => {
             keyEvents = response.keys || []
-        },
-    }
+        }],
+    ])
 
     function preParseUpdateStateAndShouldSkip(keyevent: KeyEventLike) {
         if (!(isTrustedKeyboardEvent(keyevent))) return false
@@ -153,13 +155,25 @@ function* ParserController() {
 
     function postParseUpdateStateAndShouldSkip(keyevent: KeyEventLike, response: ParserResponse) {
         if (!(isTrustedKeyboardEvent(keyevent))) return false
-        // Added a "noCancel" property which lets keys through to the page
+
+        // Repeats don't break sequences
+        if (
+            keyevent.repeat &&
+            response.didReset
+        ) {
+            // I believe we should still cancel the event in this case
+            keyevent.preventDefault()
+            keyevent.stopImmediatePropagation()
+            keyEvents.pop()
+            return true
+        }
+
+        // The "noCancel" property lets keys through to the page even if they match a Tridactyl keyseq
         // Suggest only careful use with :bindurl, for instance,
         // allow gmail gi shortcut to work:
         // :bind https://mail.google.com <!N-g> noop
         // :unbindurl https://mail.goog.com gi
-        // (noop doesn't exist btw, I might add it now!)
-        if ((response.isMatch && !response.actions?.includes?.("noCancel")) || contentState.blocking_keypresses) {
+        if ((response.isMatch && !response.actions?.includes?.(KeyTrieProperties.noCancel)) || contentState.blocking_keypresses) {
             keyevent.preventDefault()
             keyevent.stopImmediatePropagation()
 
@@ -169,6 +183,7 @@ function* ParserController() {
         }
 
         // Here's where "contextual" cancellation/ignoring happens
+        // ignoreKeyupsConextual is the usual behaviour to the point I think a "dontIgnoreKeyup" action would make more sense
         if (
             keyevent.type === "keyup" &&
             ignoreKeyupsContextual.has(keyevent.code)
@@ -181,6 +196,7 @@ function* ParserController() {
                 return true
             }
         }
+
         return false
     }
 
@@ -249,7 +265,7 @@ function* ParserController() {
                 keyEvents = []
 
                 response.actions?.forEach?.(
-                    action => parserActions[action]?.(keyevent, response)
+                    action => parserActions.get(action)?.(keyevent, response)
                 )
 
                 if (!response.exstr || !response.isMatch)
@@ -260,6 +276,13 @@ function* ParserController() {
                     contentState.suffix = suffix
                     previousSuffix = suffix
                 }
+                if (previousKeyEvents.length !== keyEvents.length ||
+                    !previousKeyEvents.every((k, i) => k === keyEvents[i]
+                )) {
+                    contentState.keyseq = keyEvents
+                    previousKeyEvents = keyEvents
+                }
+
                 logger.debug("suffix: ", suffix)
 
                 if (response.exstr && response.isMatch) {

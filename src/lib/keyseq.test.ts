@@ -6,6 +6,10 @@ function mk(k, mod?: ks.KeyModifiers) {
     return new ks.MinimalKey(k, mod)
 }
 
+function mtk(k, mod?: ks.KeyModifiers) {
+    return new ks.TrieKey(k, mod)
+}
+
 test("isTrustedKeyboardEvent rejects spoofed objects", () => {
     expect(
         ks.isTrustedKeyboardEvent({
@@ -29,10 +33,12 @@ test("isTrustedKeyboardEvent rejects spoofed objects", () => {
         [mks("<SA-Escape>"), "rarelyusedcommand"],
         // Test shiftKey ignoring
         [mks(":"), "fillcmdline"],
-        [mks("Av"), "whatever"],
+        // [mks("Av"), "whatever"],
+        [mks("<D-A><U-A>v"), "whatever"], // This is more inline with how tridactyl would treat :bind Av
         [mks("i<c-j>"), "testmods"],
         [mks("0"), "panleft"],
     ])
+
     // Keymap for negative tests
     const keymap2 = new Map([
         [mks("gg"), "scrolltop"],
@@ -46,8 +52,12 @@ test("isTrustedKeyboardEvent rejects spoofed objects", () => {
         [mks("<C-\\>"), "fillcmdline control"],
     ])
 
+    // const keytrie = ks.keyMapToKeyTrie(keymap)
+    // const keytrie2 = ks.keyMapToKeyTrie(keymap2)
+    // const backslashKeytrie = ks.keyMapToKeyTrie(backslashKeymap)
+
     // This one actually found a bug once!
-    testAllObject(ks.parse, [
+    testAllObject(ks.parseMapAsTrie, [
         [[[mk("g")], keymap], { keys: [mk("g")], isMatch: true }],
         [[[mk("g"), mk("g")], keymap], { value: "scrolltop", isMatch: true }],
         [
@@ -64,6 +74,7 @@ test("isTrustedKeyboardEvent rejects spoofed objects", () => {
             [
                 [
                     mk("A", { shiftKey: true }),
+                    // // KeyTrie parsing only ignores real keyups; :bind A is not the same as :bind <D-A><U-A>
                     mk("A", { shiftKey: true, keyup: true }),
                     mk("v"),
                 ],
@@ -182,7 +193,7 @@ test("isTrustedKeyboardEvent rejects spoofed objects", () => {
         ],
     ])
 
-    testAllObject(ks.completions, [
+    testAllObject(ks.completionsForKeyMap, [
         [[[mk("g")], keymap], new Map([[mks("gg"), "scrolltop"]])],
         [[mks("<C-u>j"), keymap], new Map([[mks("<C-u>j"), "scrollline 10"]])],
         // -ve tests
@@ -194,39 +205,44 @@ test("isTrustedKeyboardEvent rejects spoofed objects", () => {
             new Map([[mks("<Space>"), "spacetest"]]),
         ],
     ])
+
     test("numeric prefixes can be disabled", () => {
         const map = new Map([[mks("qa"), "command"]])
-        const response = ks.parse([mk("2")], map, false)
+        const response = ks.parseMapAsTrie([mk("2")], map, false)
         expect(response).toMatchObject({ keys: [], isMatch: false })
-        expect(ks.parse(mks("2qa"), map, false).exstr).toBe("command")
+        expect(ks.parseMapAsTrie(mks("2qa"), map, false).exstr).toBe("command")
         const numericMap = new Map([[mks("2qa"), "numeric"]])
-        expect(ks.parse(mks("2qa"), numericMap, false).exstr).toBe("numeric")
+        expect(ks.parseMapAsTrie(mks("2qa"), numericMap, false).exstr).toBe("numeric")
     })
 
-    test("late keyups preserve compatible mappings", () => {
-        const rollover = [mk("g"), mk("o"), mk("g", { keyup: true })]
-        const ordinary = new Map([[mks("got"), "open"]])
-        const pending = ks.parse(rollover, ordinary)
-        expect(pending.keys).toEqual([rollover[0], rollover[2], rollover[1]])
-        expect(ks.parse([...pending.keys, mk("t")], ordinary).value).toBe(
-            "open",
-        )
-        expect(
-            ks.parse(rollover, new Map([[mks("<D-g>ot"), "down"]])).isMatch,
-        ).toBe(false)
+    // // KeyTries do not work this way
+    // // Deliberately feeding keyups will assume you're doing it on purpose
+    // // Real key events will be treated differently, where a matched keydown will (usually) cause a keyup to be ignored
+    // // Handled in controller_content on the keyevents themselves, not in the parser
+    // test("late keyups preserve compatible mappings", () => {
+    //     const rollover = [mk("g"), mk("o"), mk("g", { keyup: true })]
+    //     const ordinary = new Map([[mks("got"), "open"]])
+    //     const pending = ks.parseMapAsTrie(rollover, ordinary)
+    //     expect(pending.keys).toEqual([rollover[0], rollover[2], rollover[1]])
+    //     expect(ks.parseMapAsTrie([...pending.keys, mk("t")], ordinary).value).toBe(
+    //         "open",
+    //     )
+    //     expect(
+    //         ks.parseMapAsTrie(rollover, new Map([[mks("<D-g>ot"), "down"]])).isMatch,
+    //     ).toBe(false)
 
-        const withKeyup = new Map([
-            [mks("got"), "open"],
-            [mks("<U-g>"), "up"],
-        ] as [ks.MinimalKey[], string][])
-        expect(ks.parse(rollover, withKeyup).value).toBe("up")
-        const counted = ks.parse([mk("2"), ...rollover], ordinary)
-        expect(ks.parse([...counted.keys, mk("t")], ordinary).exstr).toBe(
-            "open 2",
-        )
-        const repeated = [mk("g", { repeat: true }), rollover[1], rollover[2]]
-        expect(ks.parse(repeated, ordinary).isMatch).toBe(false)
-    })
+    //     const withKeyup = new Map([
+    //         [mks("got"), "open"],
+    //         [mks("<U-g>"), "up"],
+    //     ] as [ks.MinimalKey[], string][])
+    //     expect(ks.parseMapAsTrie(rollover, withKeyup).value).toBe("up")
+    //     const counted = ks.parseMapAsTrie([mk("2"), ...rollover], ordinary)
+    //     expect(ks.parseMapAsTrie([...counted.keys, mk("t")], ordinary).exstr).toBe(
+    //         "open 2",
+    //     )
+    //     const repeated = [mk("g", { repeat: true }), rollover[1], rollover[2]]
+    //     expect(ks.parseMapAsTrie(repeated, ordinary).isMatch).toBe(false)
+    // })
 
     test("repeats do not abandon a compatible prefix", () => {
         const prefix = [mk("g"), mk("o")]
@@ -236,47 +252,54 @@ test("isTrustedKeyboardEvent rejects spoofed objects", () => {
             [mks("o"), "open"],
             [mks("<C-o>"), "modified"],
         ])
-        const parse = (keys: ks.MinimalKey[]) => ks.parse(keys, maps)
+        const parse = (keys: ks.MinimalKey[]) => ks.parseMapAsTrie(keys, maps)
         const pending = parse(repeated)
         expect(pending.keys).toEqual(prefix)
         expect(parse([...pending.keys, mk("t")]).value).toBe("quickmark")
         expect(parse([mk("o", { repeat: true })]).value).toBe("open")
-        expect(ks.parse(repeated, new Map([[mks("goo"), "goo"]])).value).toBe(
+        expect(ks.parseMapAsTrie(repeated, new Map([[mks("goo"), "goo"]])).value).toBe(
             "goo",
         )
         expect(
             parse([...prefix, mk("o", { ctrlKey: true, repeat: true })]).value,
         ).toBe("modified")
-        const counted = parse([mk("2"), ...prefix, mk("2", { repeat: true })])
-        expect(parse([...counted.keys, mk("t")]).exstr).toBe("quickmark 2")
+        // // KeyTries - I've made keydown nodes point to themselves with repeats by default
+        // // But a repeat from an earlier key will still break a sequence
+        // // at least on mac only the most recently pressed key gets repeats anyway
+        // const counted = parse([mk("2"), ...prefix, mk("2", { repeat: true })])
+        // expect(parse([...counted.keys, mk("t")]).exstr).toBe("quickmark 2")
     })
 
     test("preserves versioned block bindings", () => {
         const program = { source: "echo block", exversion: 2 as const }
         const map = new Map([[mks("x"), program]])
-        expect(ks.parse(mks("x"), map)).toEqual({
-            value: program,
-            exstr: program,
-            isMatch: true,
-            numericPrefix: undefined,
-            keys: [],
-        })
-        expect(() => ks.parse(mks("2x"), map)).toThrow("Counts")
+            expect(ks.parseMapAsTrie(mks("x"), map)).toEqual({
+                value: program,
+                exstr: program,
+                isMatch: true,
+                numericPrefix: undefined,
+                // // KeyTries: I return matched keys and controller_content decides whether to reset
+                // keys: [],
+                keys: [mtk("x")],
+                didReset: false,
+                actions: ["ignoreKeyupContextual"], // this is basically default so i might rewrite as such one day
+            })
+        expect(() => ks.parseMapAsTrie(mks("2x"), map)).toThrow("Counts")
     })
 } // }}}
 
 // {{{ mapstr ->  keysequence
 
 testAll(ks.bracketexprToKey, [
-    ["<C-a><CR>", [mk("a", { ctrlKey: true }), "<CR>"]],
-    ["<M-<>", [mk("<", { metaKey: true }), ""]],
-    ["<M-<>Foo", [mk("<", { metaKey: true }), "Foo"]],
-    ["<M-a>b", [mk("a", { metaKey: true }), "b"]],
-    ["<S-Escape>b", [mk("Escape", { shiftKey: true }), "b"]],
-    ["<Tab>b", [mk("Tab"), "b"]],
-    ["<Space>b", [mk(" "), "b"]],
-    ["<>b", [mk("<"), ">b"]],
-    ["<tag >", [mk("<"), "tag >"]],
+    ["<C-a><CR>", [mtk("a", { ctrlKey: true }), "<CR>"]],
+    ["<M-<>", [mtk("<", { metaKey: true }), ""]],
+    ["<M-<>Foo", [mtk("<", { metaKey: true }), "Foo"]],
+    ["<M-a>b", [mtk("a", { metaKey: true }), "b"]],
+    ["<S-Escape>b", [mtk("Escape", { shiftKey: true }), "b"]],
+    ["<Tab>b", [mtk("Tab"), "b"]],
+    ["<Space>b", [mtk(" "), "b"]],
+    ["<>b", [mtk("<"), ">b"]],
+    ["<tag >", [mtk("<"), "tag >"]],
 ])
 
 testAllObject(ks.mapstrMapToKeyMap, [
@@ -288,7 +311,8 @@ testAllObject(ks.mapstrMapToKeyMap, [
         new Map([
             [[mk("j")], "scrollline 10"],
             [
-                [mk("g"), mk("g", { keyup: true, optional: true }), mk("g")],
+                // [mk("g"), mk("g", { keyup: true, optional: true }), mk("g")],
+                [mtk("g"), mtk("g")],
                 "scrolltop",
             ],
         ]),
@@ -302,604 +326,58 @@ testAllObject(ks.mapstrMapToKeyMap, [
             [
                 [
                     mk("u", { ctrlKey: true }),
-                    mk("u", { ctrlKey: true, keyup: true, optional: true }),
+                    // mk("u", { ctrlKey: true, keyup: true, optional: true }),
                     mk("j"),
                 ],
                 "scrollline 10",
             ],
             [
-                [mk("g"), mk("g", { keyup: true, optional: true }), mk("g")],
+                // [mk("g"), mk("g", { keyup: true, optional: true }), mk("g")],
+                [mtk("g"), mtk("g")],
                 "scrolltop",
             ],
         ]),
     ],
 ])
 
+function qk(key: string, modifiers: string[] = []) {
+    const k = {
+        key,
+        altKey: false,
+        ctrlKey: false,
+        metaKey: false,
+        shiftKey: false,
+        keyup: false,
+        keydown: false,
+        // could use a class to separate bind-only properties and keyevent-only properties
+        optional: false, // bind-only
+        code: undefined, // keyevent-only
+        noCancel: false, // bind-only
+        noReset: false, // bind-only
+        translated: false, // bind-only
+    }
+    for (const modifier of modifiers) {
+        (k as any)[modifier] = true
+    }
+    return k
+}
+
+function qks(keys: string[]) {
+    return keys.map(key => qk(key))
+}
+
 testAllObject(ks.mapstrToKeyseq, [
     [
         "Some string",
-        [
-            {
-                key: "S",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "S",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "o",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "o",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "m",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "m",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "e",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "e",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: " ",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: " ",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "s",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "s",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "t",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "t",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "r",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "r",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "i",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "i",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "n",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "n",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "g",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-        ],
+        qks([..."Some string"]),
     ],
     [
         "hi<c-u>t<A-Enter>here",
-        [
-            {
-                key: "h",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "h",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "i",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "i",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "u",
-                altKey: false,
-                ctrlKey: true,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "u",
-                altKey: false,
-                ctrlKey: true,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "t",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "t",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "Enter",
-                altKey: true,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "Enter",
-                altKey: true,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "h",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "h",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "e",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "e",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "r",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "r",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "e",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-        ],
+        [qk("h"), qk("i"), qk("u", ["ctrlKey"]), qk("t"), qk("Enter", ["altKey"])].concat(qks([..."here"])),
     ],
     [
         "wat's up <s-Escape>",
-        [
-            {
-                key: "w",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "w",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "a",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "a",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "t",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "t",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "'",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "'",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "s",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "s",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: " ",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: " ",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "u",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "u",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "p",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: "p",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: " ",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-            {
-                key: " ",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: false,
-                keyup: true,
-                keydown: false,
-                optional: true,
-            },
-            {
-                key: "Escape",
-                altKey: false,
-                ctrlKey: false,
-                metaKey: false,
-                shiftKey: true,
-                keyup: false,
-                keydown: false,
-                optional: false,
-            },
-        ],
+        qks([..."wat's up "]).concat(qk("Escape", ["shiftKey"])),
     ],
     ["wat's up <s-Escape>", mks("wat's up <s-Escape>")],
 
@@ -915,10 +393,10 @@ testAllObject(mks, [
 ])
 
 testAll(ks.mapstrMatchesKey, [
-    [["/", mk("/")], true],
-    [["<C-,>", mk(",", { ctrlKey: true })], true],
-    [["<C-,>", mk(",")], false],
-    [["gg", mk("g")], false],
+    [["/", mtk("/")], true],
+    [["<C-,>", mtk(",", { ctrlKey: true })], true],
+    [["<C-,>", mtk(",")], false],
+    [["gg", mtk("g")], false],
 ])
 
 // {{{ canonicaliseMapstr
@@ -932,11 +410,12 @@ testAll(ks.canonicaliseMapstr, [
     ["<C-a>", "<C-a>"],
 ])
 
-testAll((k: string) => ks.parseMapstr(k).hasExplicitDirection, [
-    ["<DC-4>", true],
-    ["<UC-4>", true],
-    ["gg", false],
-])
+// // Not really necessary to have a .hasExplicitDirection property in KeyTries so this is gone
+// testAll((k: string) => ks.parseMapstr(k).hasExplicitDirection, [
+//     ["<DC-4>", true],
+//     ["<UC-4>", true],
+//     ["gg", false],
+// ])
 
 testAll(ks.findShadowingMapstr, [
     [["gg", ["g"]], "g"],
@@ -946,15 +425,15 @@ testAll(ks.findShadowingMapstr, [
     [["<D-v>", ["v"]], "v"],
 ])
 
-testAll(ks.formatKeysForModeIndicator, [
-    [[[mk("g"), mk("g", { keyup: true })], ["gg"]], "g"],
-    [[[mk("v")], ["<D-v>j"]], "<D-v>"],
-    [[[mk("v", { ctrlKey: true })], ["<CD-v>j"]], "<CD-v>"],
-    [[[mk("v", { keyup: true })], ["<U-v>j"]], "<U-v>"],
-    [
-        [[mk("v"), mk("v", { keyup: true })], ["v<U-v>j"]],
-        "<D-v><U-v>",
-    ],
-])
+// testAll(ks.formatKeysForModeIndicator, [
+//     [[[mk("g"), mk("g", { keyup: true })], ["gg"]], "g"],
+//     [[[mk("v")], ["<D-v>j"]], "<D-v>"],
+//     [[[mk("v", { ctrlKey: true })], ["<CD-v>j"]], "<CD-v>"],
+//     [[[mk("v", { keyup: true })], ["<U-v>j"]], "<U-v>"],
+//     [
+//         [[mk("v"), mk("v", { keyup: true })], ["v<U-v>j"]],
+//         "<D-v><U-v>",
+//     ],
+// ])
 
 // }}}

@@ -2528,10 +2528,17 @@ export function getURL(url: string, target: string[]) {
                             undefined,
                 )
                 // Sort them from lowest to highest priority, default to a priority of 10
+                // I feel there should be a deterministic order for matching priorities
+                // length of match seems intuitive, then alphabetical just so order is guaranteed
                 .sort(
-                    (k1, k2) =>
-                        (conf.subconfigs[k1].priority || 10) -
-                        (conf.subconfigs[k2].priority || 10),
+                    (k1, k2) => {
+                        const prio = (conf.subconfigs[k1].priority || 10) -
+                            (conf.subconfigs[k2].priority || 10)
+                        if (prio !== 0) return prio
+                        const length = k1.length - k2.length
+                        if (length !== 0) return length
+                        return k1 < k2 ? -1 : k2 < k1 ? 1 : 0
+                    }
                 )
                 // Merge their corresponding value if they're objects, otherwise return the last value
                 .reduce((acc, curKey) => {
@@ -2552,37 +2559,100 @@ export function getURL(url: string, target: string[]) {
     return mergeDeep(deflt, user)
 }
 
-/** Get the value of the key target.
-
-    If the user has not specified a key, use the corresponding key from
-    defaults, if one exists, else undefined.
-    @hidden
+/**
+ * Like getURL, but returns an object including array of all results from all matching URLS in order of priority.
+ *
+ * The returned object also includes a get(...target) function.
+ *
+ * This getter can be used to further filter the results for deeper keys.
+ *
+ * Both the results key in the returned object and the results of the getter are arrays of objects with a source and value key.
+ *
+ * The source is the subconfig URL the value originates from.
+ *
+ * The first result in an array is the highest priority. Arrays will be empty for non-matching config keys.
  */
-export function get(target_typed?: keyof default_config, ...target: string[]) {
-    return getWithURL(undefined, target_typed, ...target)
+export function getURLWithSources(url: string | null, target: string[]) {
+    if (url === null) {
+        let loc = window.location
+        if ((window as any).tri && (window as any).tri.contentLocation)
+        loc = (window as any).tri.contentLocation
+        url = loc.href
+    }
+    const userSubconfs = USERCONFIG.subconfigs || {}
+    const defaultSubconfs = DEFAULTS.subconfigs || {}
+    const urlArr = Object.keys(userSubconfs)
+        .concat(Object.keys(defaultSubconfs)
+        .filter(c => !userSubconfs[c]))
+        .reduce((acc, k) => {
+            if (!url.match(k)) return acc
+            const user = getDeepProperty(userSubconfs[k], target)
+            const deflt = getDeepProperty(defaultSubconfs[k], target)
+            let merged
+
+            if (user === undefined || user === null) merged = deflt
+            else if (typeof user !== "object" || typeof deflt !== "object") merged = user
+            else merged = mergeDeep(deflt, user)
+            if (merged !== undefined) {
+                acc.push({ priority: userSubconfs[k]?.priority || defaultSubconfs[k]?.priority || 10, source: k, value: merged })
+            }
+            return acc
+        }, [])
+        // Sort them from highest to lowest priority
+        .sort(({ source: k2, priority: p2 }, { source: k1, priority: p1 }) => {
+            if (p1 - p2 !== 0) return p1 - p2
+            if (k1.length - k2.length !== 0) return k1.length - k2.length
+            return k1 < k2 ? -1 : k2 < k1 ? 1 : 0
+        })
+        .map((o, i, a) => {
+            o.priority = a.length - i - 1
+            return o
+        })
+
+    return {
+        results: urlArr,
+        get: (...target) => {
+            const subresults = []
+            for (let i = urlArr.length - 1; i >= 0; --i) {
+                if (typeof urlArr[i].value === "object" && !Array.isArray(urlArr[i].value)) {
+                    const value = R.path(target, urlArr[i].value)
+                    if (value !== undefined)
+                        subresults.push({ priority: urlArr[i].priority, source: urlArr[i].source, value })
+                }
+            }
+            return subresults
+        },
+    }
 }
 
 /** Get the value of the key target with a URL to use with getURL.
  *  An undefined URL will be converted to the current location.
     @hidden
  */
-export function getWithURL(url?: string, target_typed?: keyof default_config, ...target: string[]) {
+export function get(target_typed?: keyof default_config, ...target: string[]) {
+    let loc = window.location
+    if ((window as any).tri && (window as any).tri.contentLocation)
+        loc = (window as any).tri.contentLocation
+    return getWithURL(loc.href, target_typed, ...target)
+}
+
+/** Get the value of the key target.
+
+    Pass a URL to match subconfigs with, or null to not check URL subconfigs at all.
+
+    If the user has not specified a key, use the corresponding key from
+    defaults, if one exists, else undefined.
+    @hidden
+ */
+export function getWithURL(url: string | null, target_typed?: keyof default_config, ...target: string[]) {
     if (target_typed === undefined) {
         target = []
     } else {
         target = [target_typed as string].concat(target)
     }
 
-    if (url === undefined) {
-        // Window.tri might not be defined when called from the untrusted page context
-        let loc = window.location
-        if ((window as any).tri && (window as any).tri.contentLocation)
-            loc = (window as any).tri.contentLocation
-        url = loc.href
-    }
-
     // If there's a site-specifing setting, it overrides global settings
-    const site = getURL(url, target)
+    const site = url !== null ? getURL(url, target) : undefined
     const user = getDeepProperty(USERCONFIG, target)
     const defult = getDeepProperty(DEFAULTS, target)
 

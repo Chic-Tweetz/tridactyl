@@ -132,7 +132,7 @@ function listen() {
             debounceMs,
         )
     })
-    addBindUrlListener()
+    // addBindUrlListener()
 }
 
 // Invalidate cache when a key map changes
@@ -145,48 +145,19 @@ function addKeymapConfigListener(mapName) {
     })
 }
 
-// Invalidate cache after :bindurl if it affects the current url
-function addBindUrlListener() {
-    config.addChangeListener("subconfigs", (_oldValue, newValue) => {
-        const affectsThisTab = !Object.keys(newValue).every(
-            url => !RegExp(url).test(window.location.href),
-        )
-        if (affectsThisTab) {
-            keystringsToCmdsCache = new Map()
-            if (whichkeyIframe.style.display !== "none") onStateChanged()
-        }
-    })
-}
-
-// Pass a map name ("nmaps", "imaps", "inputmaps"...) and a PrintableKey-style string
-// to filter only the binds beginning with that string
-function getFilteredBinds(mapName, pressed = "") {
-    return pressed === ""
-        ? getBindsForMapName(mapName)
-        : getBindsForMapName(mapName).map(({ name, urlBinds, binds }) => ({
-              name,
-              binds: binds.filter(([bind, _cmd]) =>
-                  bind.join("").startsWith(pressed),
-              ),
-              urlBinds: urlBinds.filter(([bind, _cmd]) =>
-                  bind.join("").startsWith(pressed),
-              ),
-          }))
-}
-
 // Returns an array of arrays of map names with PrintableKey-style keymaps,
 // where each item beyond the first is inherited
 // eg [["vmaps", {...}], ["nmaps", {...}], ["browsermaps", {...}]]
 // which is a bit convoluted and tricky to unravel so should probably neaten it up
-function getBindsForMapName(mapName) {
+function _getBindsForMapName(mapName) {
     if (keystringsToCmdsCache.has(mapName)) {
         return keystringsToCmdsCache.get(mapName)
     }
     const keystrMap = unwrapInherits(mapName).map(
         ({ name, urlBinds, binds }) => ({
             name,
-            urlBinds: keyseqsToStrings(urlBinds),
-            binds: keyseqsToStrings(binds),
+            urlBinds,
+            binds,
         }),
     )
     keystringsToCmdsCache.set(mapName, keystrMap)
@@ -205,7 +176,7 @@ function unwrapInherits(mapName, includeBrowserMaps = true) {
         maps.push({
             name: mapName,
             urlBinds: config.getURL(window.location.href, [mapName]) || {},
-            binds: config.get(mapName),
+            binds: config.getWithURL(null, mapName),
         })
         const map = maps[maps.length - 1]
         Object.keys(map.urlBinds).forEach(bind => delete map.binds[bind])
@@ -249,10 +220,10 @@ function unwrapInherits(mapName, includeBrowserMaps = true) {
 
 // Convert MinimalKey arrays to PrintableKey arrays
 // this lets us filter them by our content state suffix
-function keyseqsToStrings(keymap) {
+function _keyseqsToStrings(keymap) {
     return Array.from(keymap as Iterable<[any, any]>).map(
         ([keys, cmd]: [any, any]) => [
-            keys.map(key => keyseq.PrintableKey(key)),
+            keys.map(key => keyseq.PrintableKey(key, true)),
             cmd,
         ],
     )
@@ -463,24 +434,21 @@ function parseFlags(cmd, validFlags) {
     return { cmdName, flags, args }
 }
 
-// This could use some tidying up now
-// Reconsider how we get all the strings we want (keymaps, "docs" config, ... )
-// As well as the work we do in here - the excmd help url, strings per span...
-// I suspect a lot of that can be cached along with the keymaps
-// Then this function should just convert strings we've already built to elements
-function keystrMapsToElems(
-    keystrMap,
-    pressedLength = 0,
+// Gather metadata for commands or bindings
+// TODO: use the metadata module, not the help .html source!
+// TODO: use new @flags metadata
+function completionsToElems(
+    completions: [remaining: string[], mapstr: string, cmd: string][],
     pressedSpans = document.createDocumentFragment(),
-    mapName: "nmaps",
+    mapName = "nmaps",
 ): HTMLElement[] {
     const exaliases = config.get("exaliases")
 
     // TODO: if you keep this "docs" config stuff, cache it with the rest of the keymap stuff
     const docs = config.get("docs")
 
-    return keystrMap.map(([keystrs, cmd]) => {
-        const unpressedSpans = keystrs.slice(pressedLength).flatMap(str => [
+    return completions.map(([remaining, mapstr, cmd]) => {
+        const remainingSpans = remaining.flatMap(str => [
             createElement("span", {
                 className: "KeyUnpressed",
                 textContent: str,
@@ -490,8 +458,8 @@ function keystrMapsToElems(
 
         if (!cmd) cmd = ""
         if (isExProgram(cmd)) cmd = cmd.source
-        const cmdFirstWord = (cmd as string).split(" ", 1)[0]
-        const cmdRest = (cmd as string).slice(cmdFirstWord.length)
+        const cmdFirstWord = cmd.split(" ", 1)[0]
+        const cmdRest = cmd.slice(cmdFirstWord.length)
 
         const validFlags = Object.keys(docs.excmds[cmdFirstWord]?.flags || {})
         const parsedFlags = parseFlags(cmd, validFlags)
@@ -587,11 +555,11 @@ function keystrMapsToElems(
         }
         // would have to ensure binds and docs' binds are formatted the same
         // mainly(?) the order of modifiers in bracket expressions <AS-UpArrow> and the like
-        if (docs[mapName]?.[keystrs.join("")]) {
+        if (docs[mapName]?.[mapstr]) {
             extraEls.push(
                 createElement("span", {
                     className: "Info",
-                    textContent: " " + docs[mapName][keystrs.join("")] + " ",
+                    textContent: " " + docs[mapName][mapstr] + " ",
                 }),
             )
         }
@@ -599,7 +567,7 @@ function keystrMapsToElems(
         const cols = [
             {
                 className: "Keyseq",
-                children: [pressedSpans.cloneNode(true), ...unpressedSpans],
+                children: [pressedSpans.cloneNode(true), ...remainingSpans],
             },
         ]
 
@@ -756,102 +724,103 @@ async function onStateChanged(property?, _oldMode?, _oldValue?, _newValue?) {
         mapsKey = mode + "maps"
     }
 
-    // PrintableKey-style suffix, the key(s) that have been pressed so far
-    const pressed = contentState.suffix || ""
-
-    if (pressed === "" && level !== "all") {
-        // whichkeyIframe.style.display = "none"
+    const pressedKeys = contentState.keyseq
+    if (!pressedKeys || pressedKeys.length === 0 && level !== "all") {
         hud.hide(whichkeyIframe)
         return
     }
 
-    const keymaps = getFilteredBinds(mapsKey, pressed)
+    const completions = keyseq.completionsForKeyTrie(pressedKeys, keyseq.keyTrie(mapsKey), true, true)
+
+    const pressed = contentState.suffix || ""
 
     const frag = document.createDocumentFragment()
 
-    // const exaliases = config.get("exaliases")
-
-    const firstBind = keymaps.find(
-        km => km.binds.length > 0 || km.urlBinds.length > 0,
-    )
-
-    if (!firstBind) {
-        hud.hide(whichkeyIframe)
-        return
-    }
-
-    const firstBindKeystrs =
-        firstBind.binds.length > 0
-            ? firstBind.binds[0][0]
-            : firstBind.urlBinds[0][0]
-    let toSlice = pressed.length
-    let unpressedStart = 0
-    while (toSlice > 0) {
-        toSlice -= firstBindKeystrs[unpressedStart].length
-        ++unpressedStart
-    }
-    const pressedSpans: any = document.createDocumentFragment()
-
-    // It's nicer if we don't split multi-char over multiple lines
-    // as in for long keys/modifier combos like <AS-Backspace>
+    const pressedSpans: DocumentFragment = document.createDocumentFragment()
     pressedSpans.replaceChildren(
-        ...firstBindKeystrs.slice(0, unpressedStart).flatMap(str => [
+        ...pressedKeys.flatMap(mk => [
             createElement("span", {
                 className: "KeyPressed",
-                textContent: str,
+                textContent: keyseq.PrintableKey(mk),
             }),
-            document.createElement("wbr"),
+            document.createElement("wbr")
         ]),
     )
-
-    // I don't like the "pretty" symbols after all
-    // frag.appendChild(
-    //     createTableHeader(mode + " mode " +
-    //         Array.from(pressedSpans.children)
-    //             .map(span => prettyPrint((span as HTMLElement).textContent))
-    //             .join("")
-    //         , false
-    //     )
-    // )
 
     const header =
         config.get("docs").headings[mode]?.[pressed] ||
         mode + " mode " + pressed
+
     frag.appendChild(createTableHeader(header, false))
 
-    keymaps.forEach(({ name, urlBinds, binds }) => {
-        if (binds.length === 0 && urlBinds.length === 0) return
+    const mapSources:Map<number, {
+        confName: string, subconfs: Map<number, {
+            url: string, completions: ([remaining: string[], mapstr: string, cmd: string])[]
+        }>
+    }> = new Map()
 
-        if (urlBinds.length > 0) {
+    // Sort out keymaps inheritance order, plus subconfig priorities
+    for (const [remaining, node] of completions) {
+        const source = node.get("inheritsFrom") || mapsKey
+        const url = node.get("subconfig") || null
+        let urlPriority = node.get("subconfigPriority")
+        if (urlPriority === undefined) urlPriority = -1
+        const order = node.get("inheritsDepth") || 0
+
+        if (!mapSources.has(order)) {
+            mapSources.set(order, {
+                confName: source,
+                subconfs: new Map(),
+            })
+        }
+
+        const mapSource = mapSources.get(order)
+
+        if (!mapSource.subconfs.has(urlPriority)) {
+            mapSource.subconfs.set(urlPriority, {
+                url,
+                completions: [],
+            })
+        }
+
+        const comps = mapSource.subconfs.get(urlPriority).completions
+        comps.push([remaining, node.get("mapstr"), node.get("command")])
+
+    }
+
+    // Sort by keymap inheritance order, then by subconfig priority
+    Array.from(mapSources.entries()).sort(([a], [b]) => a - b)
+    .forEach(([_a, { confName, subconfs }]) => {
+        Array.from(subconfs.entries()).sort(([a], [b]) => b - a)
+        .forEach(([_, { url, completions }]) => {
             frag.appendChild(
                 createTableHeader(
-                    "url " + (name === mapsKey ? name : "inerited: " + name),
+                    (confName === mapsKey ? confName : "inherited: " + confName) + (url === null ? "" : " | " + url),
                     true,
                 ),
             )
             frag.append(
-                ...keystrMapsToElems(
-                    urlBinds,
-                    unpressedStart,
-                    pressedSpans,
-                    name,
-                ),
+                ...completionsToElems(completions, pressedSpans, confName),
             )
-        }
-        if (binds.length > 0) {
-            frag.appendChild(
-                createTableHeader(
-                    name === mapsKey ? name : "inerited: " + name,
-                    true,
-                ),
-            )
-            frag.append(
-                ...keystrMapsToElems(binds, unpressedStart, pressedSpans, name),
-            )
-        }
+        })
     })
 
-    // whichkeyIframe.style.display = ""
+    // const completionsForModes =  Array.from(mapSources.entries()).sort(([_k1, { order: a }], [_k2, { order: b }]) => a - b)
+
+    // for (const [mapName, { completions }] of completionsForModes) {
+    //     if (completions.length > 0) {
+    //         frag.appendChild(
+    //             createTableHeader(
+    //                 mapName === mapsKey ? mapName : "inerited: " + mapName,
+    //                 true,
+    //             )
+    //         )
+    //         frag.append(
+    //             ...completionsToElems(completions, pressedSpans, mapName),
+    //         )
+    //     }
+    // }
+
     hud.show(whichkeyIframe)
     replaceTableChildren(frag)
 }

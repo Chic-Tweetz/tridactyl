@@ -54,7 +54,7 @@ export function parser(keys: keyseq.MinimalKey[]) {
         // Luckily we already have the "noCancel" action we can reuse here
         if (!response.isMatch) {
             response.actions = response.actions || []
-            response.actions.push("noCancel")
+            response.actions.push(keyseq.KeyTrieProperties.noCancel)
             response.isMatch = true
         }
 
