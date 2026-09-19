@@ -71,6 +71,7 @@ class HintState {
     public filter = ""
     public textfilter = [""]
     public hintchars = ""
+    public uppercase = config.get("hintuppercase") === "true"
     private filteredHints: Hint[] = []
 
     constructor(
@@ -507,16 +508,9 @@ function render() {
     renderState.isRenderQueued = true
     requestAnimationFrame(() => {
         if (renderState.updateHintPositions) {
-            modeState?.highlightHost?.remove()
-            modeState?.outlineHost?.remove()
-            modeState?.highlightHost?.replaceChildren()
-            modeState?.outlineHost?.replaceChildren()
-
             for (const hint of modeState.hints.filter(h => h.active)) {
-                hint.calculateGeometry()
+                hint.updateTargetRects()
             }
-
-            if (modeState.focusedHint) modeState.focusedHint.focused = true
         }
 
         if (renderState.hintsVisibility.length) {
@@ -538,11 +532,22 @@ function render() {
         }
 
         if (renderState.updateHintPositions) {
+            modeState?.highlightHost?.remove()
+            modeState?.outlineHost?.remove()
+            modeState?.highlightHost?.replaceChildren()
+            modeState?.outlineHost?.replaceChildren()
+            for (const hint of modeState.hints.filter(h => h.active)) {
+                hint.calculateGeometry()
+            }
+
+            modeState.deOverlap()
+
+            if (modeState.focusedHint) modeState.focusedHint.focused = true
             if (modeState.outlineHost)
                 modeState.hudTranslate.prepend(modeState.outlineHost)
             if (modeState.highlightHost)
                 modeState.hudTranslate.prepend(modeState.highlightHost)
-            modeState.deOverlap()
+
             renderState.updateHintPositions = false
         }
 
@@ -684,7 +689,12 @@ export function hintPage(
         reset()
         return
     }
-    modeState.hints.forEach(hint => (hint.hidden = false))
+    // modeState.hints.forEach(hint => (hint.hidden = false))
+    modeState.hints.forEach(hint => hint.updateTargetRects())
+    modeState.hints.forEach(hint => {
+        hint.calculateGeometry()
+        hint.hidden = false
+    })
 
     // There are multiple hints. Normally we would just show all of them, but
     // we try to be clever here. Automatically select the first one if all the
@@ -747,14 +757,6 @@ export function hintPage(
         }
     })
 
-    // document.documentElement.appendChild(modeState.hud)
-    // const hud = modeState.hud as any
-    // if (typeof hud.showPopover === "function") {
-    //     hud.setAttribute("popover", "manual")
-    //     hud.showPopover()
-    // }
-
-    // modeState.deOverlap()
     window.removeEventListener("scroll", updateHudOffset)
     window.addEventListener("scroll", updateHudOffset)
     window.removeEventListener("resize", repositionDebounced)
@@ -994,6 +996,8 @@ class Hint {
     public rect: Omit<ClientRect, "x" | "y" | "toJSON"> = null
     public result: any = null
     private unfilteredName: string
+    private childRects: DOMRect[]
+    private offset = { x: 0, y: 0 }
 
     public width = 0
     public height = 0
@@ -1010,11 +1014,11 @@ class Hint {
         public readonly filterData: any,
         private readonly onSelect: HintSelectedCallback,
         classes?: string[],
-        clientRects?: DOMRectList,
     ) {
         this.target = new WeakRef(target)
         this.unfilteredName = name
-        this.calculateGeometry(clientRects)
+        // this.updateTargetRects()
+        // this.calculateGeometry()
 
         // A span for each char so typed chars can be styled differently
         for (const ch of name) {
@@ -1024,9 +1028,8 @@ class Hint {
         }
 
         this.flag.className = "TridactylHint"
-        if (config.get("hintuppercase") === "true") {
+        if (modeState.uppercase)
             this.flag.classList.add("TridactylHintUppercase")
-        }
         this.flag.classList.add("TridactylHint" + target.tagName)
         classes?.forEach(f => this.flag.classList.add(f))
 
@@ -1075,6 +1078,10 @@ class Hint {
     set noRects(noRects: boolean) {
         this._noRects = noRects
         this.updateHidden()
+    }
+
+    get noRects() {
+        return this._noRects
     }
 
     private updateHidden() {
@@ -1135,6 +1142,12 @@ class Hint {
         return this._y
     }
 
+    public setPos(x: number, y: number) {
+        this._x = x
+        this._y = y
+        this.updatePosition()
+    }
+
     public overlapsWith(h: Hint) {
         if (h.width == 0) {
             const r = h.flag.getClientRects()[0]
@@ -1156,7 +1169,7 @@ class Hint {
         )
     }
 
-    public calculateGeometry(cachedRects?: DOMRectList) {
+    public updateTargetRects() {
         const target = this.target.deref()
         if (!target) {
             this.noRects = true
@@ -1165,7 +1178,7 @@ class Hint {
         // We need to compute the offset for elements that are in an iframe
         let offsetTop = 0
         let offsetLeft = 0
-        const pad = 4
+
         if (target.ownerDocument !== document) {
             const iframe = DOM.getAllDocumentFrames(document, true).find(
                 frame => frame.contentDocument === target.ownerDocument,
@@ -1183,8 +1196,11 @@ class Hint {
             offsetLeft += rect.left
         }
 
+        this.offset.x = offsetLeft
+        this.offset.y = offsetTop
+
         // Find the first visible client rect of the target
-        const clientRects = cachedRects || target.getClientRects()
+        const clientRects = Array.from(target.getClientRects())
         let rect = clientRects[0]
         if (!rect) {
             this.noRects = true
@@ -1211,7 +1227,6 @@ class Hint {
         }
 
         this.noRects = false
-
         this.rect = {
             top: rect.top + offsetTop,
             bottom: rect.bottom + offsetTop,
@@ -1220,34 +1235,38 @@ class Hint {
             width: rect.width,
             height: rect.height,
         }
+        this.childRects = clientRects.filter(r => r !== rect)
+    }
 
-        const top = rect.top > 0 ? this.rect.top : offsetTop + pad
-        const left = rect.left > 0 ? this.rect.left : offsetLeft + pad
-        this.x = window.scrollX + left
-        this.y = window.scrollY + top
+    public calculateGeometry() {
+        if (this._noRects) return
+
+        const pad = 4
+        const top = this.rect.top > 0 ? this.rect.top : this.offset.y + pad
+        const left = this.rect.left > 0 ? this.rect.left : this.offset.x + pad
+
+        this.setPos(window.scrollX + left, window.scrollY + top)
 
         // Add optional overlays
         if (modeState.highlightHost || modeState.outlineHost) {
             const mainRect = document.createElement("div")
+            mainRect.style.cssText = `
+                inset: ${ window.scrollY + this.rect.top }px ${ window.scrollX + this.rect.left }px !important;
+                width: ${ this.rect.width }px !important;
+                height: ${ this.rect.height }px !important;
+            `
             // Add all rectangles for highlights / outlines
-            for (const recti of clientRects) {
-                let rectElem
-                let inset
-                if (recti === rect) {
-                    rectElem = mainRect
-                    inset = `${ window.scrollY + this.rect.top }px ${ window.scrollX + this.rect.left }px`
-                } else {
-                    // Position extra rects relative to the main rect
-                    rectElem = document.createElement("div")
-                    mainRect.appendChild(rectElem)
-                    inset = `${ recti.top - rect.top }px ${ recti.left - rect.left }px`
-                }
+            for (const recti of this.childRects) {
+                // Position extra rects relative to the main rect
+                const rectElem = document.createElement("div")
+                const inset = `${ recti.top - this.rect.top }px ${ recti.left - this.rect.left }px`
 
                 rectElem.style.cssText = `
                     inset: ${ inset } !important;
                     width: ${ recti.width }px !important;
                     height: ${ recti.height }px !important;
                 `
+                mainRect.appendChild(rectElem)
             }
 
             if (!this._active)
