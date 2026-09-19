@@ -122,6 +122,13 @@ class HintState {
     // move overlapping hints around
     deOverlap() {
         this.hints.sort((a, b) => a.y - b.y)
+        .forEach(hint => {
+            if (hint.width == 0) {
+                hint.width = hint.flag.getClientRects()[0].width
+                hint.height = hint.flag.getClientRects()[0].height
+            }
+        })
+
         const visited: Hint[] = []
         for (const h of this.hints) {
             for (const vh of visited) {
