@@ -315,19 +315,14 @@ export function addElement(element, options: UIElementOptions = {}) {
         elementHost.appendChild(element)
     }
 
-    switch (options.mouseable) {
-        case true: addMousableElement(element); break
-        case "hide": addMouseHidesElement(element); break
-        default: addMouselessElement(element)
+    if (options.mouseable) {
+        options.mouseable === "hide" ? addMouseHidesElement(element) : addMousableElement(element)
+        observeElement(element)
+    } else {
+        addMouselessElement(element)
     }
 
     options.afterAttachedCallback?.()
-
-    setTimeout(() => {
-        resize(element)
-    })
-
-    observeElement(element)
 }
 
 export function getHudIframe() {
@@ -623,6 +618,8 @@ function addMouseHidesElement(element: HTMLElement) {
             element.style.display = ""
         })
     })
+
+    setTimeout(() => resize(element))
 }
 
 function addMousableElement(element: HTMLElement) {
@@ -647,6 +644,8 @@ function addMousableElement(element: HTMLElement) {
             true,
         )
     })
+
+    setTimeout(() => resize(element))
 }
 
 function addMouselessElement(element: HTMLElement) {
