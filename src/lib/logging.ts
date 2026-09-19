@@ -11,7 +11,11 @@ LevelToNum.set("warning", 2)
 LevelToNum.set("info", 3)
 LevelToNum.set("debug", 4)
 
+Config.addChangeListener("logging", () => Logger.levelsOutdated = true)
+
 export class Logger {
+    public static levelsOutdated = true
+    private static modulesToLevels = new Map<string, Config.LoggingLevel>()
     /**
      * Config-aware Logger class.
      *
@@ -30,7 +34,7 @@ export class Logger {
      *                      retain the call site
      */
     private log(level: Config.LoggingLevel) {
-        const configedLevel = Config.get("logging", this.logModule)
+        const configedLevel = Logger.levelForModule(this.logModule)
 
         if (LevelToNum.get(level) <= LevelToNum.get(configedLevel)) {
             // hand over to console.log, error or debug as needed
@@ -61,6 +65,15 @@ export class Logger {
         // eslint-disable-next-line @typescript-eslint/no-empty-function
         return function () {}
     }
+
+    private static levelForModule(module) {
+        if (Logger.levelsOutdated) {
+            Logger.modulesToLevels = new Map(Object.entries(Config.get("logging")))
+            Logger.levelsOutdated = false
+        }
+        return this.modulesToLevels.get(module)
+    }
+
 
     // These are all getters so that logger.debug = console.debug and
     // logger.debug('blah') translates into console.debug('blah') with the
