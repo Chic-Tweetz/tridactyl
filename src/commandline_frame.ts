@@ -218,14 +218,6 @@ export const resizeViaMessaging = (() => {
     }
 })()
 
-function resizeInput() {
-    const input = commandline_state.clInput
-    // const previousHeight = input.style.height
-    input.style.height = "auto"
-    input.style.height = `${input.scrollHeight}px`
-    // if (resizeFrame && input.style.height !== previousHeight) resizeArea()
-}
-
 /** @hidden
  * This is a bit loosely defined at the moment.
  * Should work so long as there's only one completion source per prefix.
@@ -501,12 +493,10 @@ commandline_state.clInput.addEventListener(
 
 let refreshQueue: Promise<unknown> = Promise.resolve()
 export function refresh_completions(exstr) {
-    resizeInput()
     const session = commandSession
     const result = refreshQueue.then(() =>
         session === commandSession ? refreshCompletions(exstr) : undefined,
     )
-    // resizeInput()
     refreshQueue = result.catch(() => undefined)
     return result
 }
@@ -564,7 +554,6 @@ async function updateCompletions(exstr: string, session = commandSession) {
 
 /** @hidden **/
 function clInputValueChanged() {
-    // resizeInput()
     const exstr = commandline_state.clInput.value
     const session = commandSession
     contentState.current_cmdline = exstr
