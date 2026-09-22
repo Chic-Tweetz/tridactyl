@@ -166,11 +166,11 @@ export class default_config {
      */
     modesubconfigs: { [key: string]: DeepPartial<default_config> } = {
         normal: {},
-        insert: { countaware: "false" },
-        input: { countaware: "false" },
+        insert: { countaware: "false", insertenterauto: "false" },
+        input: { countaware: "false", insertenterauto: "false" },
         ignore: { countaware: "false" },
         ex: {},
-        hint: {},
+        hint: { consumeallkeys: "true" },
         visual: {},
     }
 
@@ -1822,32 +1822,34 @@ export class default_config {
     }
 
     /**
-     * Prevent entering insert mode when typing in a textEditable element when in these modes.
-     * Usage: :set noinsertmodes.mode-name true
+     * When focusing a text-editable element, enter this mode.
      *
-     * For example, create a custom mode by binding keys to it:
-     * :bind --mode=edit-normal l text.forward_char
-     * :bind --mode=edit-normal h text.backward_char
-     * :bind --mode=edit-normal i mode insert
+     * Default is insert mode.
      *
-     * Allow entering it from insert mode:
-     * :bind --mode=insert <C-l> enter-mode edit-normal
-     *
-     * Prevent automatically entering insert mode when typing:
-     * :set noinsertmodes.edit-normal true
-     *
-     * Modes which inherit from insert mode are automatically treated this way.
-     * Use this syntax to inherit from insert mode:
-     * :bind --mode=edit-insert 🕷🕷INHERITS🕷🕷 imaps
+     * Some default bindings (`gi`) automatically enter input mode instead.
+     * (Perhaps that could be a separate setting.)
      */
-    noinsertmodes: string[] = []
+    insertoverridemode = "insert"
 
     /**
-     * Consume all keypresses when in any of these modes.
-     * The command :blockpagekeys false
-     * can be used to allow keypresses through to the page in these modes.
+     * Need some better names for these two
+     *
+     * These are mode-specific settings, use `:setmode`
+     *
+     * insertenterauto: if a text editable element has focused and you are in this mode, switch to insert (or [[insertoverride]]) mode
+     *
      */
-    blockpagekeypressesmodes: string[] = ["hint"]
+    insertenterauto: "true" | "false" = "true"
+
+    /**
+     * If not focused on a text-editable element, leave this mode and enter normal mode.
+     */
+    insertexitauto: "true" | "false" = "false"
+
+    /**
+     * In this mode, the page will not receive any key events, regardless of whether keys match a Tridactyl binding.
+     */
+    consumeallkeys: "true" | "false" = "false"
 
     /**
      *  Override CSS selectors for all `:hint` categories that use them.
@@ -2811,6 +2813,186 @@ export async function unset(...target) {
     if (!IN_BACKGROUND) return mutateInBackground("unset", target)
     return save()
 }
+
+/**
+ * Convert an array of keys to a dotted key for `:set` or `:get`-like commands.
+ *
+ * If a key contains quotes, spaces or dots its part in the dotted key will be quoted and escaped appropriately.
+ *
+ * See pathFromDottedKey for the inverse.
+ */
+export function pathToDottedKey(path: string[]) {
+    return path.map(part => {
+        const quoted = part.search(/[`'"\s\.]/) >= 0
+        return quoted
+            ? `"${part.replace(/"\./g, '\\".')}"`
+            : part
+    }).join(".")
+}
+
+/**
+ * Take a potentially deep key and converted it into an array of config keys and an array of values.
+ *
+ * If intended for use with a getter excmd (`:get`), values can be parsed as keys.
+ *
+ * Values and keys are separated by the first occurence of a space.
+ *
+ * Deep keys are dot-separated.
+ *
+ * Keys can include dots or spaces but they must be either escaped `\.` or `"quoted."`
+ *
+ * Within a quoted key, quotes can be included as long as they themselves are escaped, `"key\"with\"quotes"`
+ *
+ * To avoid excessive escaping within quotes, only the quote character need be escaped:
+ * `"qu\ote"` becomes `qu\ote` (i.e. still contains a literal backslash)
+ * `"quo\"te"` becomes `quo"te`
+ *
+ * Multiple backslash are only needed if a key contains a backslash preceding a quote (or dot or space):
+ * `one\\ two` (escaped space) becomes `one\ two`
+ * `"one \\\" two" (escaped quote) `one \" two`
+ * `one\\\two` remains `one\\\two`
+ *
+ * Quoted and unquoted parts of a key will be combined; `before"quote"after` becomes `beforequoteafter`
+ *
+ * Double, single or backtick characters can be used to quote: " ' `
+ *
+ * @param key a :get or :set formatted dot-separated setting key
+ * @param setter whether to interpret segments after a space as keys or values
+ * @returns an object with an array of keys and an array of values
+ */
+export function pathFromDottedKey(key: string, setter = true) {
+    const escapeCharCount = (idx) => {
+        let i = idx - 1
+        while (key[i] === "\\")
+            --i
+        return idx - i - 1
+    }
+
+    const keyPath = []
+    const valuePath = []
+
+    let path = keyPath
+    let partStart = 0
+    let partialPart = ""
+    for (let i = 0; i <= key.length; ++i) {
+        const ch = key[i]
+        if (i >= key.length) {
+            if (partStart <= i) {
+                path.push(partialPart + key.slice(partStart, i))
+                partialPart = ""
+            } else if (partialPart) {
+                path.push(partialPart)
+            }
+        } else if (ch === ".") {
+            const escapes = escapeCharCount(i)
+            if (escapes) {
+                if (escapes % 2) {
+                    // Escaped "\."
+                    partialPart += key.slice(partStart, i - 1)
+                    partStart = i
+                } else {
+                    path.push(partialPart + key.slice(partStart, i - 1))
+                    partialPart = ""
+                    partStart = i + 1
+                }
+            } else {
+                if (partStart <= i) {
+                    path.push(partialPart + key.slice(partStart, i))
+                    partialPart = ""
+                }
+                partStart = i + 1
+            }
+        } else if (ch === " ") {
+            const escapes = escapeCharCount(i)
+            if (escapes) {
+                if (escapes % 2) {
+                    // Escaped "\ "
+                    partialPart += key.slice(partStart, i - 1)
+                    partStart = i
+                } else {
+                    if (partStart <= i)
+                        path.push(partialPart + key.slice(partStart,  - 1))
+                    if (setter) {
+                        valuePath.push(key.slice(i + 1))
+                        break
+                    }
+                    path = valuePath
+                    partialPart = ""
+                    partStart = i + 1
+                    break
+                }
+            } else {
+                if (partStart <= i)
+                    path.push(partialPart + key.slice(partStart, i))
+                if (setter) {
+                    valuePath.push(key.slice(i + 1))
+                    break
+                }
+                path = valuePath
+                partialPart = ""
+                partStart = i + 1
+            }
+        } else if ([`"`,`'`,"`"].includes(ch)) {
+            const quoteEscapes = escapeCharCount(i)
+            if (quoteEscapes % 2) {
+                // escaped quote, not entering quote
+                partialPart += key.slice(partStart, i - 1) + ch
+                partStart = i + 1
+                continue
+            }
+
+            partialPart += key.slice(partStart, i - +(quoteEscapes > 0))
+            let quotedPart = ""
+            partStart = i + 1
+            const quoteChar = ch
+            let inQuote = true
+
+            let endQuoteIdx = key.indexOf(quoteChar, i + 1)
+            while (endQuoteIdx >= 0 && inQuote) {
+                // Check if quote is escaped
+                // If there are an even number of backslashes, the backslash itself is escaped not the quote
+                // If odd, the quote is escaped
+                // If there are any escape chars, exactly one will be removed from the key
+                const escapeChars = escapeCharCount(endQuoteIdx)
+
+                if (escapeChars % 2 === 0) {
+                    // either no escape chars or escaped backslash
+                    inQuote = false
+                    quotedPart += key.slice(partStart, endQuoteIdx - +(escapeChars > 0))
+                    partialPart += quotedPart
+                    partStart = endQuoteIdx + 1
+                    i = endQuoteIdx
+                } else {
+                    // escaped quote, still in quote
+                    quotedPart += key.slice(partStart, endQuoteIdx - 1) + quoteChar
+                    partStart = endQuoteIdx + 1
+                    endQuoteIdx = key.indexOf(quoteChar, endQuoteIdx + 1)
+                }
+            }
+            if (inQuote) {
+                // unterminated quote
+                // may want to throw an error in some situations
+                // but this is used for `:set` completions
+                // so you don't want errors for every key you press before finishing a quote
+                // could return another key in the return object
+                // info: {
+                //     errors: [{
+                //          in: "keys",
+                //          atIndex: 3,
+                //          "unterminatedQuote",
+                //     }]
+                // }
+                // Or have another arg that decides what to do with unterminated quotes
+                // Anyway, right now I just treat it as if there's a quote at the end
+                path.push(partialPart + quotedPart + key.slice(i + 1))
+                break
+            }
+        }
+    }
+    return { keys: keyPath, values: valuePath }
+}
+
+export const modeSubconfigKeys = ["allowautofocus", "countaware", "insertenterauto", "insertexitauto", "consumeallkeys"]
 
 export async function clear(scope: "local" | "config" = "local") {
     if (!IN_BACKGROUND) {

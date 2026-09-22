@@ -37,6 +37,8 @@ function isCountAware() {
     ) === "true"
 }
 
+let defaultTextEditableMode = "insert"
+
 let mustBufferPageKeysForClInput = false
 let bufferedPageKeys: string[] = []
 let bufferingPageKeysBeginTime: number
@@ -238,7 +240,7 @@ function* ParserController() {
                 // to date (March 2018).
                 // https://github.com/tridactyl/tridactyl/issues/311
                 if (shouldEnterInsertMode(currentMode, textEditable)) {
-                    contentState.mode = "insert"
+                    contentState.mode = defaultTextEditableMode as ModeName
                 } else if (shouldExitInsertMode(currentMode, textEditable)) {
                     contentState.mode = "normal"
                 }
@@ -371,21 +373,49 @@ export function acceptKey(keyevent: TrustedKeyboardEvent) {
 }
 
 // Allow custom modes which inherit from insert mode to not exit to insert mode automatically
-let doExitInsertModes = ["insert", "input"]
-let dontEnterInsertModes = ["insert", "input", "hint", "ignore"]
-config.getAsync("noinsertmodes")
-.then((noinsert) => {
-    doExitInsertModes = insertLikeModes()
-    .concat(noinsert)
-    dontEnterInsertModes = doExitInsertModes.concat(["ignore", "hint"])
+// Could now do something like `:setmode hint insertautoenter false`
+// Then check config.get("modesubconfigs", "insertautoenter")
+let doExitInsertModes = new Set(["insert", "input"])
+let dontEnterInsertModes = new Set(["hint", "ignore", "input", "insert"])
+
+config.getAsync("modesubconfigs")
+.then(modesubs => {
+    doExitInsertModes = new Set(
+        insertLikeModes().concat(
+        Object.entries(modesubs)
+            .filter(([_mode, sub]) => sub["insertenterauto"] === "false")
+            .map(([mode]) => mode)
+        )
+    )
+
+    dontEnterInsertModes = new Set(
+        Array.from(doExitInsertModes.keys())
+        .concat(
+        Object.entries(modesubs)
+            .filter(([_mode, sub]) => sub["insertexitauto"] === "true")
+            .map(([mode]) => mode)
+        )
+        .concat(["hint", "ignore"])
+    )
 })
 
+config.getAsync("insertoverridemode")
+.then(insertmode => defaultTextEditableMode = insertmode)
+
+config.addChangeListener("insertoverridemode", (_, neww) => defaultTextEditableMode = neww)
+
 export function shouldEnterInsertMode(currentMode, textEditable) {
-    return textEditable && !dontEnterInsertModes.includes(currentMode)
+    // :setmode alternative would be something like
+    // return textEditable && config.get("modesubconfigs", currentMode, "insertautoenter")
+
+    // Except you'd probably want to cache it like you have here so...
+    // dontEnterInsertModes = Object.entries(config.getAsync("modesubconfigs"))
+    //     .filter((mode, { insertautoenter }) => insertautoenter === "false")
+    return textEditable && !dontEnterInsertModes.has(currentMode)
 }
 
 export function shouldExitInsertMode(currentMode, textEditable) {
-    return !textEditable && doExitInsertModes.includes(currentMode)
+    return !textEditable && dontEnterInsertModes.has(currentMode) && doExitInsertModes.has(currentMode)
 }
 
 function insertLikeModes() {

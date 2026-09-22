@@ -56,6 +56,13 @@ export function addContentStateChangedListener(
     onChangedListeners.push(callback)
 }
 
+let consumeAllKeysModes = ["hint"]
+config.addChangeListener("modesubconfigs", (_, neww) => {
+    consumeAllKeysModes = Object.entries(neww)
+        .filter(([_mode, { consumeallkeys }]) => consumeallkeys === "true")
+        .map(([mode]) => mode)
+})
+
 export const contentState = new Proxy(
     { mode: "normal" },
     {
@@ -76,8 +83,7 @@ export const contentState = new Proxy(
                 listener(property, mode, oldValue, newValue)
             }
             if (property === "mode" && oldValue !== newValue) {
-                const consumeKeyModes = config.get("blockpagekeypressesmodes")
-                contentState.blocking_keypresses = consumeKeyModes.includes(newValue)
+                contentState.blocking_keypresses = consumeAllKeysModes.includes(newValue)
             }
             return true
         },

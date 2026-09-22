@@ -248,3 +248,18 @@ test("groups versioned programs after legacy RC commands", () => {
         tri.config.USERCONFIG.exversion = exversion
     }
 })
+
+// Never should have started this darn quote/space/dot parsing :(
+test("quoted keys and keys with escaped spaces or dots work", () => {
+    const k2p = tri.config.pathFromDottedKey
+    expect(k2p(`"quoted"`).keys).toEqual(["quoted"])
+    expect(k2p(`"with space"`).keys).toEqual(["with space"])
+    expect(k2p(`with\\ space`).keys).toEqual(["with space"])
+    expect(k2p(`with\\.dot`).keys).toEqual(["with.dot"])
+    expect(k2p(`nested.dotted."quoted space and. dots."`).keys)
+        .toEqual(["nested", "dotted", "quoted space and. dots."])
+    expect(k2p(`escaped.dots."in\\".quote\\"."`).keys)
+        .toEqual(["escaped","dots",`in".quote".`])
+    expect(k2p(`"unterminated quote with spaces.and . do.ts`).keys)
+        .toEqual(["unterminated quote with spaces.and . do.ts"])
+})

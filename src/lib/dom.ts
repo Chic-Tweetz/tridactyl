@@ -1059,7 +1059,7 @@ export function setupFocusHandler(doc = document, onFocus?: () => void): void {
             LAST_USED_INPUT = elem
             setInput(elem)
             if (shouldEnterInsertMode(contentState.mode, true)) {
-                contentState.mode = "insert"
+                contentState.mode = config.get("insertoverridemode") || "insert"
             }
             elem.addEventListener("blur", blurOnce)
         } else if (shouldExitInsertMode(contentState.mode, false)) {

@@ -5032,12 +5032,41 @@ export function searchsetkeyword() {
     throw new Error(":searchsetkeyword has been deprecated. Use `set searchurls.KEYWORD URL` instead.")
 }
 
+function parseSettingArgs(target: string[], setter = false, subconfPath?: string[]): { key: string, values: string[] } {
+    const { keys, values } = config.pathFromDottedKey(target.join(" "), setter)
+    if (setter) {
+        return setVimBoolHelper(
+            config.pathToDottedKey(keys),
+            values,
+            subconfPath,
+        )
+    }
+    return {
+        key: config.pathToDottedKey([...keys, ...values]),
+        values: [],
+    }
+}
+
 /**
  * Validates arguments for set/seturl
  * @hidden
  */
 function validateSetArgs(key: string, values: string[]) {
-    const target: any[] = key.split(".")
+    // const target: any[] = key.split(".")
+    const { keys: target } = config.pathFromDottedKey(key, false)
+    const subconf = target[0] === "subconfigs"
+    if (subconf) {
+        if (!target[1])
+            throw new Error(`subconfigs require a URL pattern, use :seturl`)
+        try {
+            new RegExp(target[1])
+        } catch (err) {
+            if (err instanceof SyntaxError)
+                throw new SyntaxError(`invalid pattern: ${err.message}`)
+            throw err
+        }
+        target.shift()
+    }
 
     let value
     const strval = values.join(" ")
@@ -5073,6 +5102,9 @@ function validateSetArgs(key: string, values: string[]) {
         }
     }
 
+    if (subconf) {
+        return ["subconfigs", ...target, value]
+    }
     target.push(value)
     return target
 }
@@ -5179,7 +5211,13 @@ export function seturl(pattern: string, key: string, ...values: string[]) {
     }
 
     pattern = UrlUtil.symbolsToHref(pattern)
-    ;({ key, values } = setVimBoolHelper(key, values, ["subconfigs", pattern]))
+
+    ;({ key, values } =  parseSettingArgs([key, ...values], true, ["subconfigs", pattern]))
+
+    if (key.startsWith("subconfigs")) {
+        throw new Error("seturl should not alter subconfigs for a subconfig")
+    }
+    // ;({ key, values } = setVimBoolHelper(key, values, ["subconfigs", pattern]))
 
     if (!values.length) {
         throw new Error("seturl syntax: [pattern] key value")
@@ -5207,10 +5245,11 @@ export function setmode(mode: string, key: string, ...values: string[]) {
     if (!mode || !key) {
         throw new Error("seturl syntax: mode key value")
     }
-    if (!["allowautofocus", "countaware"].includes(key))
+    if (!config.modeSubconfigKeys.includes(key))
         throw new Error("Setting '" + key + "' not supported with setmode")
 
-    ;({ key, values } = setVimBoolHelper(key, values, ["modesubconfigs", mode]))
+    ;({ key, values } =  parseSettingArgs([key, ...values], true, ["modesubconfigs", mode]))
+    // ;({ key, values } = setVimBoolHelper(key, values, ["modesubconfigs", mode]))
 
     if (!values.length) {
         throw new Error("seturl syntax: mode key value")
@@ -5229,10 +5268,10 @@ export function setmode(mode: string, key: string, ...values: string[]) {
 function setVimBoolHelper(key: string, values: string[], subconfPath: string[] = []) {
     if (values[0]) return { key, values }
     let bool
-    const path = key.split(".")
+    const { keys: path } = config.pathFromDottedKey(key, false)
 
-    // Bool inversion with :set thing!
-    if (key.endsWith("!")) {
+    if (path[path.length - 1].endsWith("!")) {
+        // Bool inversion with :set thing!
         // As long as there's no key that includes the !
         let existing = config.getDynamic(...subconfPath, ...path)
         if (!existing) {
@@ -5242,7 +5281,7 @@ function setVimBoolHelper(key: string, values: string[], subconfPath: string[] =
             if (existing === "true") bool = "false"
             else if (existing === "false") bool = "true"
             if (bool) {
-                key = altPath.join(".")
+                key = config.pathToDottedKey(altPath)
             }
         }
     }
@@ -5264,7 +5303,7 @@ function setVimBoolHelper(key: string, values: string[], subconfPath: string[] =
             } else {
                 bool = "true"
             }
-            if (bool) key = path.join(".")
+            if (bool) key = config.pathToDottedKey(path)
         } else {
             // Is there any reason not to just try for a bool setter?
             bool = "true"
@@ -5307,7 +5346,8 @@ export function set(key: string, ...values: string[]) {
         throw new Error("Key must be provided!")
     }
 
-    ({ key, values } = setVimBoolHelper(key, values))
+    ;({ key, values } =  parseSettingArgs([key, ...values], true))
+    // ;({ key, values } = setVimBoolHelper(key, values))
 
     // Should now only happen if you try to invert an invalid setting
     if (!values[0])
@@ -5844,7 +5884,8 @@ export async function quickmarkremove(key: string) {
 */
 //#background
 export function get(...keys: string[]) {
-    const target = keys.join(".").split(".")
+    const { keys: target } = config.pathFromDottedKey(keys.join(" "), false)
+
     const value = config.getDynamic(...target)
     console.log(value)
     let done
@@ -5945,7 +5986,8 @@ export function unset(...keys: string[]) {
  */
 //#background
 export function setnull(...keys: string[]) {
-    const target = keys.join(".").split(".")
+    // const target = keys.join(".").split(".")
+    const { keys: target } = config.pathFromDottedKey(config.pathToDottedKey(keys), false)
     if (target === undefined) throw new Error("You must define a target!")
     return config.set(...target, null)
 }

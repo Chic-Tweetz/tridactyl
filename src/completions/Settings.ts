@@ -9,6 +9,7 @@ import {
 } from "@src/.metadata.generated"
 import * as urlUtil from "@src/lib/url_util"
 import { getLocation } from "@src/commandline_frame"
+import { getModes } from "@src/lib/binding"
 
 class SettingsCompletionOption extends Completions.CompletionOptionHTML implements Completions.CompletionOptionFuse {
     public fuseKeys = []
@@ -44,11 +45,12 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
             </table>`,
         )
 
+        this.trailingSpace = false
         this._parent.appendChild(this.node)
     }
 
     public async filter(exstr: string) {
-        this.trailingSpace = true
+        // this.trailingSpace = true
         this.lastExstr = exstr
         let [prefix, query] = this.splitOnPrefix(exstr)
         let options = ""
@@ -80,7 +82,7 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
                 .sort()
                 .map(
                     pattern =>
-                        new SettingsCompletionOption(pattern, {
+                        new SettingsCompletionOption(pattern + " ", {
                             name: pattern,
                             value: "",
                             type: "URL Pattern",
@@ -90,7 +92,7 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
 
             if (url !== query && !this.options.find(({ value }) => value === url)) {
                 this.options = [
-                    new SettingsCompletionOption(url, {
+                    new SettingsCompletionOption(url + " ", {
                             name: url,
                             value: "",
                             type: "URL Pattern",
@@ -101,12 +103,28 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
             return this.updateChain()
         }
 
+        if (prefix === "setmode" && !query.includes(" ")) {
+            this.options = getModes()
+                .sort()
+                .map(
+                    mode =>
+                        new SettingsCompletionOption(mode + " ", {
+                            name: mode,
+                            value: "",
+                            type: "Mode",
+                            doc: "",
+                        }),
+                )
+            return this.updateChain()
+        }
+
         // Ignoring command-specific arguments
         // It's terrible but it's ok because it's just a stopgap until an actual commandline-parsing API is implemented
         // copy pasting code is fun and good
         if (
             prefix === "seturl" ||
             prefix === "unseturl" ||
+            prefix === "setmode" ||
             (prefix === "viewconfig" &&
                 (query.startsWith("--user") || query.startsWith("--default")))
         ) {
@@ -131,14 +149,42 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
 
         const isSetCmd = prefix.startsWith("set")
 
-        const vimSugarPrefix = isSetCmd ? ["no", "inv"].find(boolPrefix => query.startsWith(boolPrefix)) : undefined
-        const doubleSugarPrefix = vimSugarPrefix && query.startsWith(vimSugarPrefix + vimSugarPrefix)
+        const blacklist = prefix.endsWith("url") ? ["subconfigs"] : undefined
+        const whitelist = prefix === "setmode" ?
+            config.modeSubconfigKeys :
+            undefined
 
-        const deepQuery = query.split(/[\. ]/)
-        if (deepQuery.length > 1 && vimSugarPrefix && !settings.hasOwnProperty(deepQuery[0]))
+        if (whitelist) {
+            const onlyWhitelisted = {}
+            for (const key of whitelist) {
+                if (settings[key] !== undefined) {
+                    onlyWhitelisted[key] = settings[key]
+                }
+            }
+            settings = onlyWhitelisted
+        }
+        if (blacklist) {
+            for (const key of blacklist) {
+                delete settings[key]
+            }
+        }
+
+        const { keys, values } = config.pathFromDottedKey(query, false)
+
+        const vimSugarPrefix = isSetCmd ? ["no", "inv"].find(boolPrefix => keys[0].startsWith(boolPrefix)) : undefined
+        const doubleSugarPrefix = vimSugarPrefix && keys[0].startsWith(vimSugarPrefix + vimSugarPrefix)
+
+        const deepQuery = keys.concat(values)
+
+        if (
+            deepQuery.length > 1 &&
+            vimSugarPrefix &&
+            !settings.hasOwnProperty(deepQuery[0])
+        ) {
             deepQuery[0] = deepQuery[0].slice(vimSugarPrefix.length)
+        }
 
-        query = deepQuery.pop().toLowerCase()
+        query = deepQuery.pop()?.toLowerCase() || ""
 
         let target = settings
         for (const key of deepQuery) {
@@ -151,10 +197,9 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
             }
         }
 
-        const deepKeys = deepQuery.length ? deepQuery.join(".") + "." : ""
-        const vimSugarPostfix = ["!"].find(boolPostfix => query.endsWith(boolPostfix))
+        const vimSugarSuffix = ["!"].find(boolPostfix => query.endsWith(boolPostfix))
 
-        const boolsToTop = vimSugarPrefix || vimSugarPostfix
+        const boolsToTop = vimSugarPrefix || vimSugarSuffix
         const isBoolLike = ((t, k) => t[k] === "true" || t[k] === "false" || deepQuery.length === 0 && isBoolString(defaultConfigMembers[k]?.type))
         const sortFn = boolsToTop ? (a, b) => {
             let score = 0
@@ -170,24 +215,16 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
         }
 
         let matches
-        if (vimSugarPrefix /* && deepQuery.length === 0 */) {
+        if (vimSugarPrefix) {
             const slicedQuery = query.slice(vimSugarPrefix.length)
-            // matches = Object.keys(target)
-            //     .filter(x => x.toLowerCase().startsWith(query) || (
-            //         // (isBoolString(defaultConfigMembers[x]?.type) || target[x] === "true" || target[x] === "false") &&
-            //         isBoolLike(target, x) &&
-            //         x.toLowerCase().startsWith(slicedQuery)
-            //     ))
-            // Would prefer these to be added either way but sorted to below explicit bool settings
-            // if (matches.length === 0) {
             matches = Object.keys(target).filter(x => (x.toLowerCase().startsWith(slicedQuery) &&
-                (isBoolLike(target, x) || (typeof target[x] === "object" && !Array.isArray(target[x]))) || x.toLowerCase().startsWith(query)))
-            // }
-        } else if (vimSugarPostfix) {
-            const slicedQuery = query.slice(0, -vimSugarPostfix.length)
+                (isBoolLike(target, x) ||
+                (typeof target[x] === "object" && !Array.isArray(target[x]))) ||
+                x.toLowerCase().startsWith(query)))
+        } else if (vimSugarSuffix) {
+            const slicedQuery = query.slice(0, -vimSugarSuffix.length)
             matches = Object.keys(target)
                 .filter(x => (
-                        // (isBoolString(defaultConfigMembers[x]?.type) || target[x] === "true" || target[x] === "false") &&
                         isBoolLike(target, x) &&
                         x.toLowerCase().startsWith(slicedQuery)
                     ) || (x.toLowerCase().startsWith(query)))
@@ -215,12 +252,13 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
                 const exactMatch = target?.[query]
 
                 if (exactMatch !== undefined) {
-                    const completionValue = options + (deepQuery.length ? deepQuery.join(".") + "." : "") + query +
+                    const dottedKey = deepQuery.length ? config.pathToDottedKey(deepQuery) + "." : ""
+                    const completionValue = options + dottedKey + config.pathToDottedKey([query]) +
                         (typeof exactMatch === "object"
                             ? Array.isArray(exactMatch) ? " " + JSON.stringify(exactMatch) : ""
                             : " " + exactMatch)
 
-                    const md = defaultConfigMembers[deepKeys[0] || query]
+                    const md = defaultConfigMembers[deepQuery[0] || query]
                     this.options = [
                         new SettingsCompletionOption(completionValue, {
                             name: "",
@@ -229,32 +267,43 @@ export class SettingsCompletionSource extends Completions.CompletionSourceFuse {
                             type: md ? typeToString(memberType(md)) : ""
                         })
                     ]
-                    this.trailingSpace = false
                     return this.updateChain()
                 }
             }
         }
 
         if (matches.length === 0 && query !== "")
-            matches = Object.keys(settings).filter(x => x.includes(query))
+            matches = Object.keys(target).filter(x => x.includes(query))
+
+        const dottedKey = deepQuery.length ? config.pathToDottedKey(deepQuery) + "." : ""
 
         this.options = matches
             .sort(sortFn)
             .map((setting) => {
+                const value = target[setting]
+                let trailChar
+                if (typeof value === "object" && !Array.isArray(value)) {
+                    trailChar = "."
+                } else {
+                    trailChar = " "
+                }
                 let completionPrefix = vimSugarPrefix || ""
                 // Silly edge cases like
                 // :set nonoiframe
                 // Where we want the completion to add a no sometimes but not always
                 // :set nono => :set nonoiframe
                 // :set no => :set noiframe
-                if (vimSugarPrefix && !doubleSugarPrefix && setting.startsWith(vimSugarPrefix))
+                // What about :set nothing.thing and :set nonothing.thing
+                if (vimSugarPrefix && !doubleSugarPrefix && !deepQuery.length && setting.startsWith(vimSugarPrefix))
                     completionPrefix = ""
 
-                // const md = defaultConfigMembers[setting]
-                const md = defaultConfigMembers[deepKeys[0] || setting]
-                return new SettingsCompletionOption(options + completionPrefix + deepKeys + setting + (vimSugarPostfix || ""), {
+                const compValue = options + completionPrefix + dottedKey +
+                    config.pathToDottedKey([setting]) + (vimSugarSuffix || "") + trailChar
+
+                const md = defaultConfigMembers[deepQuery[0] || setting]
+                return new SettingsCompletionOption(compValue, {
                     name: setting,
-                    value: JSON.stringify(target[setting]),
+                    value: JSON.stringify(value),
                     doc: memberDoc(md),
                     type: md ? typeToString(memberType(md)) : "",
                 })
