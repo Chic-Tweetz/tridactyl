@@ -283,12 +283,6 @@ export function addElement(element, options: UIElementOptions = {}) {
         element.setAttribute("hudautopopover", true)
     }
 
-    if (options.startHidden) {
-        hide(element)
-    } else {
-        show(element)
-    }
-
     let adjacentElement
     let adjacentPosition
     if (options.beforeElement) {
@@ -313,6 +307,12 @@ export function addElement(element, options: UIElementOptions = {}) {
         }
     } else {
         elementHost.appendChild(element)
+    }
+
+    if (options.startHidden) {
+        hide(element)
+    } else {
+        show(element)
     }
 
     if (options.mouseable) {
