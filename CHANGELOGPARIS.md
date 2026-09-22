@@ -1,5 +1,16 @@
 # Paris changelog
 
+# Release 2026-09-22
+
+- New features
+    - `:set` and `:get` commands can be passed keys with quotes or escaped spaces or dots
+    - `:set insertoverridemode [mode]` sets the mode that will be switched to automatically when focusing a text-ediable element
+    - `:setmode [mode] insertenterauto false` replaces `:set noinsertmodes [modesarray]`
+
+- Bug fixes
+    - HUD popover will work for newly added elements (hinting mainly)
+    - Commandline input should no longer be randomly big sometimes
+
 # Release 2026-09-18
 
 - WIP, should go back and remember what I've done
@@ -39,7 +50,7 @@
     - updates to key trie parsing and whichkey to pass old keyseq tests
     - repeat key events from held keys won't break key sequences
     - tokyonight theme now shows headers, putting them below completions
-    
+
 # Release 2026-08-28
 
 - New features
