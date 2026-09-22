@@ -536,9 +536,9 @@ function render() {
             modeState?.outlineHost?.remove()
             modeState?.highlightHost?.replaceChildren()
             modeState?.outlineHost?.replaceChildren()
-            for (const hint of modeState.hints.filter(h => h.active)) {
-                hint.calculateGeometry()
-            }
+
+            for (const hint of modeState.hints.filter(h => h.active))
+                hint.transformElements()
 
             modeState.deOverlap()
 
@@ -692,7 +692,7 @@ export function hintPage(
     // modeState.hints.forEach(hint => (hint.hidden = false))
     modeState.hints.forEach(hint => hint.updateTargetRects())
     modeState.hints.forEach(hint => {
-        hint.calculateGeometry()
+        hint.transformElements()
         hint.hidden = false
     })
 
@@ -1018,7 +1018,7 @@ class Hint {
         this.target = new WeakRef(target)
         this.unfilteredName = name
         // this.updateTargetRects()
-        // this.calculateGeometry()
+        // this.transformElements()
 
         // A span for each char so typed chars can be styled differently
         for (const ch of name) {
@@ -1238,7 +1238,7 @@ class Hint {
         this.childRects = clientRects.filter(r => r !== rect)
     }
 
-    public calculateGeometry() {
+    public transformElements() {
         if (this._noRects) return
 
         const pad = 4
