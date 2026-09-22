@@ -368,6 +368,10 @@ export class default_config {
         K: "tabnext",
         gt: "tabnext_gt",
         gT: "tabprev",
+        gsh: "splitnext", // c-w w is reserved for closing windows
+        gsl: "splitnext",
+        gsw: "splitnext",
+        // let's keep gss for making a split once we're allowed
         // "<c-n>": "tabnext_gt", // c-n is reserved for new window
         // "<c-p>": "tabprev",
         "g^": "tabfirst",
@@ -486,24 +490,24 @@ export class default_config {
         "#": "composite js document.location + '#:~:text=' + encodeURIComponent(tri.dom.getSelection().toString()) | clipboard yank",
         s: "composite js tri.dom.getSelection().toString() | fillcmdline open search",
         S: "composite js tri.dom.getSelection().toString() | fillcmdline tabopen search",
-        l: `js
+        l: `js -d@
             const sel = tri.dom.getSelection();
-            tri.visual.extendByCharacter(sel, "forward");
-        `,
-        h: `js
+            for (let i = 0; i < (JS_ARGS[1] || 1); i++) tri.visual.extendByCharacter(sel, "forward");
+        @`,
+        h: `js -d@
             const sel = tri.dom.getSelection();
-            tri.visual.extendByCharacter(sel, "backward");
-        `,
-        e: 'js tri.dom.getSelection().modify("extend","forward","word")',
-        w: "js tri.visual.extendByWord(tri.dom.getSelection())",
-        b: 'js let s=tri.dom.getSelection(); s.modify("extend","backward","character"); s.modify("extend","backward","word"); s.modify("extend","forward","character")',
-        j: 'js tri.dom.getSelection().modify("extend","forward","line")',
+            for (let i = 0; i < (JS_ARGS[1] || 1); i++) tri.visual.extendByCharacter(sel, "backward");
+        @`,
+        e: 'js -d@ for (let i = 0; i < (JS_ARGS[1] || 1); i++) tri.dom.getSelection().modify("extend","forward","word") @',
+        w: "js -d@ for (let i = 0; i < (JS_ARGS[1] || 1); i++) tri.visual.extendByWord(tri.dom.getSelection()) @",
+        b: 'js -d@ let s=tri.dom.getSelection(); for (let i = 0; i < (JS_ARGS[1] || 1); i++) { s.modify("extend","backward","character"); s.modify("extend","backward","word"); s.modify("extend","forward","character"); } @',
+        j: 'js -d@ for (let i = 0; i < (JS_ARGS[1] || 1); i++) tri.dom.getSelection().modify("extend","forward","line") @',
         q: "composite js tri.dom.getSelection().toString() | text2qr --timeout 5",
         // "j": 'js document.getSelection().modify("extend","forward","paragraph")', // not implemented in Firefox
-        k: 'js tri.dom.getSelection().modify("extend","backward","line")',
+        k: 'js -d@ for (let i = 0; i < (JS_ARGS[1] || 1); i++) tri.dom.getSelection().modify("extend","backward","line") @',
         $: 'js tri.dom.getSelection().modify("extend","forward","lineboundary")',
         "0": 'js tri.dom.getSelection().modify("extend","backward","lineboundary")',
-        "=": "js let s = tri.dom.getSelection(); let n = s.anchorNode.parentNode; let r = n.ownerDocument.createRange(); s.removeAllRanges(); r.selectNodeContents(n); s.addRange(r)",
+        "=": "js -d@ let s = tri.dom.getSelection(); for (let i = 0; i < (JS_ARGS[1] || 1); i++) { let n = s.anchorNode.parentNode; let r = n.ownerDocument.createRange(); s.removeAllRanges(); r.selectNodeContents(n); s.addRange(r); } @",
         o: "js tri.visual.reverseSelection(tri.dom.getSelection())",
         "🕷🕷INHERITS🕷🕷": "nmaps",
     }
@@ -2799,17 +2803,9 @@ export function unsetURL(pattern, ...target) {
 export async function unset(...target) {
     if (IN_BACKGROUND && EXCLUSIVE_PENDING) await EXCLUSIVE_QUEUE
     if (IN_BACKGROUND && !INITIALISED) await getAsync()
-
-    let parent = USERCONFIG
-    for (const key of target.slice(0, - 1)) {
-        parent = parent[key]
-        if (typeof parent !== "object" || Array.isArray(parent)) {
-            parent = undefined
-            break
-        }
-    }
-
-    if (parent !== undefined) delete parent[target[target.length - 1]]
+    // Use the stored object, not the copy returned by inheritance.
+    const parent = R.path(target.slice(0, -1), USERCONFIG)
+    if (parent != null) delete parent[target[target.length - 1]]
     if (!IN_BACKGROUND) return mutateInBackground("unset", target)
     return save()
 }

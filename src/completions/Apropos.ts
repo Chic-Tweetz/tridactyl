@@ -74,13 +74,12 @@ export class AproposCompletionSource extends Completions.CompletionSourceFuse {
                 options.concat(
                     Object.keys(exaliases)
                         .filter(alias =>
-                            (
+                            Completions.matchesAllWords(
                                 alias +
-                                aliases.expandExstr(alias) +
-                                excmdsFunctions[aliases.expandExstr(alias)]
-                            )
-                                .toLowerCase()
-                                .includes(query),
+                                    aliases.expandExstr(alias) +
+                                    excmdsFunctions[aliases.expandExstr(alias)],
+                                query,
+                            ),
                         )
                         .map(alias => {
                             const cmd = aliases.expandExstr(alias)
@@ -96,9 +95,10 @@ export class AproposCompletionSource extends Completions.CompletionSourceFuse {
                 options.concat(
                     Object.keys(bindings)
                         .filter(binding =>
-                            (binding + formatExProgram(bindings[binding]))
-                                .toLowerCase()
-                                .includes(query),
+                            Completions.matchesAllWords(
+                                (binding + formatExProgram(bindings[binding])),
+                                query,
+                            ),
                         )
                         .map(
                             binding =>
@@ -113,7 +113,10 @@ export class AproposCompletionSource extends Completions.CompletionSourceFuse {
                 options.concat(
                     fns
                         .filter(([name, fn]) =>
-                            (name + getDoc(fn)).toLowerCase().includes(query),
+                            Completions.matchesAllWords(
+                                name + getDoc(fn),
+                                query,
+                            ),
                         )
                         .map(
                             ([name, fn]) =>
@@ -128,9 +131,10 @@ export class AproposCompletionSource extends Completions.CompletionSourceFuse {
                 options.concat(
                     Object.keys(settings)
                         .filter(x =>
-                            (x + memberDoc(defaultConfigMembers[x]))
-                                .toLowerCase()
-                                .includes(query),
+                            Completions.matchesAllWords(
+                                x + memberDoc(defaultConfigMembers[x]),
+                                query,
+                            ),
                         )
                         .map(setting => {
                             const doc = memberDoc(defaultConfigMembers[setting])
