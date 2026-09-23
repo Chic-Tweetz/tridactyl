@@ -1416,9 +1416,28 @@ export function unfocus() {
 /** Scrolls the window or any scrollable child element by a pixels on the horizontal axis and b pixels on the vertical axis.
  */
 //#content
-export async function scrollpx(a: number, b: number) {
+export async function scrollpx(flag: string | number, a: number, b?: number) {
+    let target
+    if (typeof flag === "string" && flag.startsWith("--target=")) {
+        const flagTarget = flag.slice("--target=".length)
+
+        if (flagTarget === "root") {
+            target = document.documentElement
+        } else if (flagTarget === "focused") {
+            target = scrolling.getCurrentFocus()
+        }
+    } else {
+        b = a
+        a = Number(flag)
+    }
+    if (!target) {
+        target = config.get("scrolltofollowfocus") === "true"
+            ? scrolling.getCurrentFocus()
+            : document.documentElement
+    }
+
     let done = Promise.resolve(undefined as any)
-    if (!(await scrolling.scroll(a, b, document.documentElement))) {
+    if (!(await scrolling.scroll(a, b, target))) {
         done = scrolling.recursiveScroll(a, b)
     }
     return done.then(() => undefined)
@@ -1435,33 +1454,68 @@ export async function scrollpx(a: number, b: number) {
     - `scrollto 3.14c` -> scroll approximately 49.97465213% of the way down the page.
 */
 //#content
-export function scrollto(a: number | string, b: number | "x" | "y" = "y") {
+export function scrollto(flag: number | string, a?: number | string, b: number | "x" | "y" = "y") {
+    let elem
+    if (typeof flag === "string" && flag.startsWith("--target=")) {
+        const flagTarget = flag.slice("--target=".length)
+
+        if (flagTarget === "root") {
+            elem = document.documentElement
+        } else if (flagTarget === "focused") {
+            elem = scrolling.getCurrentFocus()
+        }
+    } else {
+        b = a !== undefined ? a as number | "x" | "y" : "y"
+        a = flag
+    }
+    if (!elem) {
+        elem = config.get("scrolltofollowfocus") === "true"
+            ? scrolling.getCurrentFocus()
+            : document.documentElement
+    }
+
     if (typeof a === "string" && /c$/i.exec(a)) {
         a = (Number(a.replace(/c$/, "")) * 100) / (2 * Math.PI)
     }
     a = Number(a)
-    const elem = window.document.scrollingElement || window.document.documentElement
+
     const percentage = a.clamp(0, 100)
     let done = Promise.resolve(undefined as any)
     if (b === "y") {
-        if (percentage === 0 || percentage === 100)
-            done = scrolling.recursiveScroll(
+        if (percentage === 0 || percentage === 100) {
+            done = scrolling.scroll(
                 0,
                 percentage === 0 ? -Infinity : Infinity,
-                config.get("scrolltofollowfocus") === "false" ? document.documentElement : undefined,
+                elem,
+            ).then(scrolled => scrolled ||
+                scrolling.recursiveScroll(
+                    0,
+                    percentage === 0 ? -Infinity : Infinity
+                )
             )
-        else {
+        } else {
             scrolling.stop()
             window.scrollTo(window.scrollX, (percentage * elem.scrollHeight) / 100)
         }
     } else if (b === "x") {
-        const left = elem.getClientRects()[0].left
-        scrolling.stop()
-        window.scrollTo((percentage * elem.scrollWidth) / 100, window.scrollY)
-        if (left === elem.getClientRects()[0].left && (percentage === 0 || percentage === 100)) {
-            done = scrolling.recursiveScroll(1073741824 * (percentage === 0 ? -1 : 1), window.scrollX, document.documentElement)
+        if (percentage === 0 || percentage === 100) {
+            done = scrolling.scroll(
+                percentage === 0 ? -Infinity : Infinity,
+                0,
+                elem,
+            ).then(scrolled => scrolled ||
+                scrolling.recursiveScroll(
+                    percentage === 0 ? -Infinity : Infinity,
+                    0,
+                )
+            )
+        } else {
+            //  TODO: scroll elem instead of window
+            scrolling.stop()
+            window.scrollTo((percentage * elem.scrollWidth) / 100, window.scrollY)
         }
     } else {
+        // TODO: should this also respect scrolltofollowfocus?
         scrolling.stop()
         window.scrollTo(a, Number(b)) // a,b numbers
     }

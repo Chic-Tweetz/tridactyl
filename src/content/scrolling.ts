@@ -255,6 +255,10 @@ export function setCurrentFocus(v) {
     currentFocused = v
 }
 
+export function getCurrentFocus() {
+    return currentFocused
+}
+
 document.addEventListener("mousedown", event => {
     currentFocused = event.target
 })
