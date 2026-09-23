@@ -161,7 +161,8 @@ function* ParserController() {
         // Repeats don't break sequences
         if (
             keyevent.repeat &&
-            response.didReset
+            response.didReset &&
+            keyEvents.length > 1
         ) {
             // I believe we should still cancel the event in this case
             keyevent.preventDefault()
