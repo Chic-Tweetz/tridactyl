@@ -1109,3 +1109,23 @@ export function getAbsoluteCentre(el) {
         y: pos.y + (window as any).mozInnerScreenY,
     }
 }
+
+/**
+ * Get an element's first clientRect with padding/border removed.
+ */
+export function getContentRect(el: Element) {
+    const clientRect = el.getClientRects()[0]
+
+    if (!clientRect) return null
+
+    const styles = getComputedStyle(el)
+
+    return new DOMRect(
+        clientRect.left + parseFloat(styles.paddingLeft) + parseFloat(styles.borderLeftWidth),
+        clientRect.top + parseFloat(styles.paddingTop) + parseFloat(styles.borderTopWidth),
+        clientRect.right - parseFloat(styles.paddingRight) - parseFloat(styles.borderRightWidth)
+            - clientRect.left + parseFloat(styles.paddingLeft) + parseFloat(styles.borderLeftWidth),
+        clientRect.bottom - parseFloat(styles.paddingBottom) - parseFloat(styles.borderBottomWidth)
+            - clientRect.top + parseFloat(styles.paddingTop) + parseFloat(styles.borderTopWidth)
+    )
+}

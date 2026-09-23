@@ -810,12 +810,17 @@ class Hint {
         let offsetLeft = 0
         const pad = 4
         if (target.ownerDocument !== document) {
-            const iframe = DOM.getAllDocumentFrames().find(
-                frame => frame.contentDocument === target.ownerDocument,
-            )
-            const rect = iframe.getClientRects()[0]
-            offsetTop += rect.top
-            offsetLeft += rect.left
+            let targetElem = target
+            let iframe
+            while (iframe?.ownerDocument !== document) {
+                iframe = DOM.getAllDocumentFrames().find(
+                    frame => frame.contentDocument === targetElem.ownerDocument,
+                )
+                const rect = DOM.getContentRect(iframe)
+                offsetTop += rect.top
+                offsetLeft += rect.left
+                targetElem = iframe
+            }
         }
 
         // Find the first visible client rect of the target
@@ -859,7 +864,7 @@ class Hint {
                 let inset
                 if (recti === rect) {
                     rectElem = mainRect
-                    inset = `${rect.top + window.scrollY}px ${rect.left + window.scrollX}px`
+                    inset = `${rect.top + offsetTop + window.scrollY}px ${rect.left + offsetLeft + window.scrollX}px`
                 } else {
                     // Position extra rects relative to the main rect
                     rectElem = document.createElement("div")
