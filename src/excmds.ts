@@ -1431,9 +1431,11 @@ export async function scrollpx(flag: string | number, a: number, b?: number) {
         a = Number(flag)
     }
     if (!target) {
-        target = config.get("scrolltofollowfocus") === "true"
-            ? scrolling.getCurrentFocus()
-            : document.documentElement
+        target = (
+            config.get("scrolltofollowfocus") === "true"
+                ? scrolling.getCurrentFocus()
+                : document.documentElement
+            ) || document.documentElement
     }
 
     let done = Promise.resolve(undefined as any)
