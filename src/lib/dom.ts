@@ -446,6 +446,9 @@ export async function getVisibleElemsBySelector(selector: string | null = "*", f
             .map(frame => frame.contentWindow),
     )
 
+    // Not needed after all?
+    // const { contentWins2Rects } = getFrameRects()
+
     // Create IntersectionObservers in all frames
     return Promise.all(
         frameWins.map(async win => {
@@ -457,6 +460,9 @@ export async function getVisibleElemsBySelector(selector: string | null = "*", f
             if (elems.length === 0) {
                 return []
             }
+
+            // not needed after all pt2
+            // const crop = contentWins2Rects.get(win)
 
             // Entries won't be available immediately, wait for a promise
             return new Promise(resolve => {
@@ -472,6 +478,14 @@ export async function getVisibleElemsBySelector(selector: string | null = "*", f
                                     entry.isIntersecting &&
                                     entry.boundingClientRect.width > 3 &&
                                     entry.boundingClientRect.height > 3
+
+                                    // not needed after all pt3
+                                    // && !crop || (crop &&
+                                    //     entry.boundingClientRect.bottom > crop.top &&
+                                    //     entry.boundingClientRect.top < crop.bottom &&
+                                    //     entry.boundingClientRect.right > crop.left &&
+                                    //     entry.boundingClientRect.left < crop.right
+                                    // )
                                 ) {
                                     visible.push(entry.target)
                                 }
@@ -551,12 +565,13 @@ export function isPainted(elem: HTMLElement) {
     )
 }
 
+export const frameParents = new Map()
 /** Return all frames that belong to the document (frames that belong to
  * extensions are ignored).
  *
  * @param doc   The document the frames should be fetched from
  */
-export function getAllDocumentFrames(doc = document, includeHud = false) {
+export function getAllDocumentFrames(doc = document, parentFrame?: HTMLFrameElement, includeHud = false) {
     const win = doc?.defaultView as any
     if (!win || !(doc instanceof win.HTMLDocument)) return []
     const frames = (
@@ -566,13 +581,17 @@ export function getAllDocumentFrames(doc = document, includeHud = false) {
         .concat(Array.from(doc.getElementsByTagName("frame")))
         .filter(frame => !frame.src.startsWith("moz-extension://"))
     if (includeHud) frames.push(HUD.getHudIframe())
-    return frames.concat(
-        frames.reduce((acc, f) => {
+
+        if (parentFrame)
+            frames.forEach(f => frameParents.set(f, parentFrame))
+
+        return frames.concat(
+            frames.reduce((acc, f) => {
             // Errors could be thrown because of CSP
             let newFrames = []
             try {
                 const doc = f.contentDocument || f.contentWindow.document
-                newFrames = getAllDocumentFrames(doc)
+                newFrames = getAllDocumentFrames(doc, f)
             } catch (e) {}
             return acc.concat(newFrames)
         }, []),
@@ -1362,13 +1381,103 @@ export function getContentRect(el: Element) {
     if (!clientRect) return null
 
     const styles = getComputedStyle(el)
+    const x = clientRect.left + parseFloat(styles.paddingLeft) + parseFloat(styles.borderLeftWidth)
+    const y = clientRect.top + parseFloat(styles.paddingTop) + parseFloat(styles.borderTopWidth)
 
     return new DOMRect(
-        clientRect.left + parseFloat(styles.paddingLeft) + parseFloat(styles.borderLeftWidth),
-        clientRect.top + parseFloat(styles.paddingTop) + parseFloat(styles.borderTopWidth),
-        clientRect.right - parseFloat(styles.paddingRight) - parseFloat(styles.borderRightWidth)
-            - clientRect.left + parseFloat(styles.paddingLeft) + parseFloat(styles.borderLeftWidth),
-        clientRect.bottom - parseFloat(styles.paddingBottom) - parseFloat(styles.borderBottomWidth)
-            - clientRect.top + parseFloat(styles.paddingTop) + parseFloat(styles.borderTopWidth)
+        x,
+        y,
+        clientRect.right - parseFloat(styles.paddingRight) - parseFloat(styles.borderRightWidth) - x,
+        clientRect.bottom - parseFloat(styles.paddingBottom) - parseFloat(styles.borderBottomWidth) - y,
     )
+}
+
+function rectIntersection(...rects: DOMRect[]): DOMRect {
+    const first = rects.pop()
+    const a = new DOMRect(
+        first.x,
+        first.y,
+        first.width,
+        first.height,
+    )
+
+    for (const b of rects) {
+        const x = Math.max(a.x, b.x)
+        const y = Math.max(a.y, b.y)
+        const right = Math.min(a.right, b.right)
+        const bottom = Math.min(a.bottom, b.bottom)
+        if (x >= right || y >= bottom)
+            return new DOMRect(0, 0, 0, 0)
+        a.x = x
+        a.y = y
+        a.width = right - x
+        a.height = bottom - y
+    }
+    return a
+}
+
+export function getFrameRects() {
+    const frames2Rects = new Map()
+    const frames2Offsets = new Map()
+    const contentWins2Rects = new Map()
+    const contentWins2Offsets = new Map()
+    getAllDocumentFrames().forEach(f => {
+        const { offset, crop } =  visibleFrameRect(f)
+        frames2Rects.set(f, crop)
+        frames2Offsets.set(f, offset)
+        contentWins2Rects.set(f.contentWindow, crop)
+        contentWins2Offsets.set(f.contentWindow, offset)
+    })
+    // TODO: figure out what you actually need to return
+    return {
+        contentWins2Rects,
+        contentWins2Offsets,
+        frames2Rects,
+        frames2Offsets,
+    }
+}
+
+/**
+ * Return the rectangle representing the visible portion of an iframe in that iframe's contentWindow's coordinate space.
+ *
+ * Also return the absolute top-left position of the iframe in the top window.
+ *
+ * I thought this was necessary to discard cropped elements in getVisibleElements.
+ * Looks like I was mistaken! Could this still be useful?
+ */
+export function visibleFrameRect(frame: HTMLFrameElement) {
+    getAllDocumentFrames()
+    const nest = [frame]
+    let parent = frameParents.get(frame)
+    while (parent) {
+        nest.push(parent)
+        parent = frameParents.get(parent)
+    }
+
+    let visible = new DOMRect(
+        0,
+        0,
+        frame.ownerDocument.defaultView.innerWidth,
+        frame.ownerDocument.defaultView.innerHeight
+    )
+
+    const offset = { x: 0, y: 0 }
+    for (const f of nest) {
+        const win = f.ownerDocument.defaultView
+        const r = getContentRect(f)
+        offset.x += r.x
+        offset.y += r.y
+        visible.x += r.x
+        visible.y += r.y
+        visible = rectIntersection(
+            r,
+            new DOMRect(0, 0, win.innerWidth, win.innerHeight),
+            visible,
+        )
+    }
+
+    visible.x -= offset.x
+    visible.y -= offset.y
+
+    return { crop: visible, offset }
 }
