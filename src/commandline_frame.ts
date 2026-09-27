@@ -107,6 +107,14 @@ const commandline_state = {
     custom_callback,
 }
 
+// Click a completion cell to copy its contents to the clipboard
+commandline_state.completionsDiv.addEventListener("click", e => {
+    const t = e.target as HTMLElement
+    if (t.tagName === "TD" && t.textContent) {
+        Messaging.message("excmd_background", "yank", t.textContent)
+    }
+})
+
 // TODO: Do something clever about pretending to be other tabs?
 // (or don't do it at all)
 // theme() uses webext's ownTab but we pretend to be a different tab
@@ -293,6 +301,7 @@ export function enableCompletions() {
         )
         commandline_state.completionsDiv.appendChild(fragment)
         logger.debug(commandline_state.activeCompletions)
+
     }
 }
 /* document.addEventListener("DOMContentLoaded", enableCompletions) */

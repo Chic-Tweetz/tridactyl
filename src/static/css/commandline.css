@@ -149,6 +149,11 @@ body {
     line-height: var(--option-height);
 }
 
+#completions td:hover {
+    background: color-mix(var(--tridactyl-of-bg), var(--tridactyl-cmplt-bg));
+    cursor: copy;
+}
+
 .url {
     text-decoration: var(--tridactyl-url-text-decoration);
 }
