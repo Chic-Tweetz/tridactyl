@@ -1255,13 +1255,13 @@ export function simulateClick(
     // magic 'short lived event handler' context.
     //
     // OTOH, hardly anyone uses that functionality any more.
-    let usePopupBlockerWorkaround =
-        (target as HTMLAnchorElement).target === "_blank" ||
-        (target as HTMLAnchorElement).target === "_new"
     const href =
         target instanceof SVGAElement
             ? target.href.animVal
             : (target as HTMLAnchorElement).href
+    let usePopupBlockerWorkaround = href && (
+        (target as HTMLAnchorElement).target === "_blank" ||
+        (target as HTMLAnchorElement).target === "_new")
     if (href?.startsWith("file:")) {
         // file URLS cannot be opend with browser.tabs.create
         // see https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/tabs/create#url
