@@ -1178,22 +1178,16 @@ class Hint {
         // We need to compute the offset for elements that are in an iframe
         let offsetTop = 0
         let offsetLeft = 0
-
+        const pad = 4
         if (target.ownerDocument !== document) {
-            const iframe = DOM.getAllDocumentFrames(document, true).find(
-                frame => frame.contentDocument === target.ownerDocument,
-            )
-            const rect = iframe.getClientRects()[0]
-
-            // found that rect can be undefined doing a `:hint -V *` on www.reddit.com
-            // better to say offset = 0 or just say noRects?
-            if (!rect) {
-                this.noRects = true
-                return
+            let iframe = DOM.getAllDocumentFrames(document, true)
+                .find(f => f.contentDocument === target.ownerDocument)
+            while (iframe) {
+                const rect = DOM.getContentRect(iframe)
+                offsetTop += rect.top
+                offsetLeft += rect.left
+                iframe = DOM.frameParents.get(iframe)
             }
-
-            offsetTop += rect.top
-            offsetLeft += rect.left
         }
 
         this.offset.x = offsetLeft

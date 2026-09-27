@@ -565,13 +565,13 @@ export function isPainted(elem: HTMLElement) {
     )
 }
 
-export const frameParents = new Map()
+export const frameParents: Map<HTMLFrameElement, HTMLFrameElement> = new Map()
 /** Return all frames that belong to the document (frames that belong to
  * extensions are ignored).
  *
  * @param doc   The document the frames should be fetched from
  */
-export function getAllDocumentFrames(doc = document, parentFrame?: HTMLFrameElement, includeHud = false) {
+export function getAllDocumentFrames(doc = document, includeHud = false, parentFrame?: HTMLFrameElement) {
     const win = doc?.defaultView as any
     if (!win || !(doc instanceof win.HTMLDocument)) return []
     const frames = (
@@ -581,7 +581,6 @@ export function getAllDocumentFrames(doc = document, parentFrame?: HTMLFrameElem
         .concat(Array.from(doc.getElementsByTagName("frame")))
         .filter(frame => !frame.src.startsWith("moz-extension://"))
     if (includeHud) frames.push(HUD.getHudIframe())
-
         if (parentFrame)
             frames.forEach(f => frameParents.set(f, parentFrame))
 
@@ -591,7 +590,7 @@ export function getAllDocumentFrames(doc = document, parentFrame?: HTMLFrameElem
             let newFrames = []
             try {
                 const doc = f.contentDocument || f.contentWindow.document
-                newFrames = getAllDocumentFrames(doc, f)
+                newFrames = getAllDocumentFrames(doc, false, f)
             } catch (e) {}
             return acc.concat(newFrames)
         }, []),
