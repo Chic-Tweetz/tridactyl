@@ -34,10 +34,8 @@ body {
     border: unset;
     overflow-y: hidden;
     resize: none;
-    /* reduce the padding from the colon */
-    /* margin-left: -0.25ex; */
-    /* we currently have a border from the completions */
-    /* border-top: solid 1px lightgray; */
+    overflow: auto;
+    max-height: 100vh;
 }
 
 #tridactyl-input:focus, .tridactyl-input:focus {
@@ -326,3 +324,4 @@ a.url:hover {
     text-align: right;
     padding: 0px 8pt;
 }
+
