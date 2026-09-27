@@ -624,6 +624,7 @@ function addMouseHidesElement(element: HTMLElement) {
 
 function addMousableElement(element: HTMLElement) {
     element.style.pointerEvents = "all"
+    element.classList.add("TridactylMouseable")
     if (noiframe) return
 
     const proxy = createProxyOverlay(element)

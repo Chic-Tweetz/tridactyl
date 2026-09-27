@@ -64,6 +64,10 @@
     background: var(--tridactyl-externaledit-bg);
 }
 
+.TridactylMouseable {
+    pointer-events: all !important;
+}
+
 @media print {
     span.TridactylStatusIndicator {
         display: none !important;
