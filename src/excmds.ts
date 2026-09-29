@@ -5602,6 +5602,7 @@ const KILL_STACK: Element[] = []
  *     - For example, use `bind ;jg hint -Jc .rc > .r > a` on google.com to generate hints only for clickable search results of a given query
  * - -! execute all hints without waiting for a selection
  *     - For example, `hint -!bf Comments` opens in background tabs all visible links whose text matches `Comments`
+ * - -/ type element text content to match them instead of using hint flags, also toggleable with `:hint.toggleTextFilter`
  *
  * #### Deprecated options:
  *
@@ -5838,7 +5839,7 @@ export async function hint(...args: string[]): Promise<any> {
             resolve(results)
         } else {
             // Perform hinting
-            hinting.hintPage(hintables, action, resolve, reject, config.rapid)
+            hinting.hintPage(hintables, action, resolve, reject, config.rapid, config.filterByText)
         }
     }).then(value => {
         // Fix #1374 for all types of yanks: join returned results

@@ -490,6 +490,7 @@ export function hintPage(
     resolve: (x?) => void = () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
     reject: (x?) => void = () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
     rapid = false,
+    filterByText = false,
 ) {
     reset() // Tidy up in case any previous hinting wasn't exited cleanly
     const buildHints: HintBuilder = defaultHintBuilder()
@@ -525,6 +526,10 @@ export function hintPage(
         reset()
         return
     }
+
+    if (filterByText)
+        toggleTextFilter()
+
     modeState.hints.forEach(hint => hint.hidden = false)
 
     // There are multiple hints. Normally we would just show all of them, but
@@ -800,7 +805,7 @@ class Hint {
     constructor(
         public readonly target: Element,
         public name: string,
-        public readonly filterData: any,
+        public filterData: any,
         private readonly onSelect: HintSelectedCallback,
         classes?: string[],
     ) {
@@ -1094,6 +1099,16 @@ function buildHintsVimperator(
     }
 }
 
+/**
+ * Update hints with text to match with filterHintsByText if it doesn't exist already.
+ */
+function addFilterData() {
+    if (!modeState || modeState.hints[0].filterData !== null) return
+    for (const hint of modeState.hints) {
+        hint.filterData = elementFilterableText(hint.target)
+    }
+}
+
 /** @hidden */
 function elementFilterableText(el: Element): string {
     const nodename = el.nodeName.toLowerCase()
@@ -1256,6 +1271,98 @@ function filterHintsVimperator(query: string, reflow = false) {
     // Select focused hint if it's the only match unless turned off in config
     if (active.length === 1 && config.get("hintautoselect") === "true") {
         selectFocusedHint(true)
+    }
+}
+
+/**
+ * Similar to filterHintsVimperator's text content filtering.
+ *
+ * Does not use hint flags at all.
+ *
+ * @hidden
+ */
+function filterHintsByText(query: string) {
+    let active = modeState.hints
+
+    // Shortest text = most matched proportionally
+    let leastText
+    let remaining = query
+
+    // Match longest runs one char at a time
+    while (remaining.length && active.length) {
+        let filtered = []
+        let run = remaining[0]
+        remaining = remaining.slice(1)
+
+        for (const hint of active) {
+            if (hint.filterData.includes(run)) {
+                // Equal match length to current best run
+                if (!leastText || leastText.filterData.length > hint.filterData.length)
+                    leastText = hint
+
+                let check = run + remaining[0]
+
+                while (hint.filterData.includes(check)) {
+                    // New longest run: find how long it is and discard previous matches
+                    leastText = hint
+                    filtered = []
+                    run = check
+                    remaining = remaining.slice(1)
+                    if (remaining.length)
+                        check += remaining[0]
+                    else
+                        break
+                }
+                filtered.push(hint)
+            }
+        }
+        // Prevent duplicate matches accumulating
+        // e.g. "oooo" all matching the one "o" in "oh"
+        active = active.length === filtered.length ? [] : filtered
+    }
+
+    // Update display
+    // Unfocus the focused hint - must be before hiding the hint
+    if (modeState.focusedHint) {
+        modeState.focusedHint.focused = false
+        modeState.focusedHint = undefined
+    }
+
+    // Set hidden state of the hints
+    for (const hint of modeState.hints) {
+        if (active.includes(hint)) {
+            hint.hidden = false
+        } else {
+            hint.hidden = true
+        }
+    }
+
+    // Focus the hint with the shortest text
+    if (active.length) {
+        modeState.focusedHint = leastText
+        modeState.focusedHint.focused = true
+    }
+
+    // Select focused hint if it's the only match unless turned off in config
+    if (active.length === 1 && config.get("hintautoselect") === "true") {
+        selectFocusedHint(true)
+    }
+}
+
+/**
+ * Switch between text filtering and regular flag hinting.
+ *
+ * Hint flags are hidden when filtering by text.
+ */
+function toggleTextFilter() {
+    if (!modeState) return
+    if (modeState.filterFunc === filterHintsByText) {
+        modeState.filterFunc = defaultHintFilter
+        modeState.hintHost.removeAttribute("hidden")
+    } else {
+        addFilterData()
+        modeState.filterFunc = filterHintsByText
+        modeState.hintHost.setAttribute("hidden", "")
     }
 }
 
@@ -1577,5 +1684,6 @@ export function getHintCommands() {
         pushSpace,
         pushKeyCodePoint,
         popKey,
+        toggleTextFilter,
     }
 }

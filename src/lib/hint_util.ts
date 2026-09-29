@@ -31,6 +31,7 @@ export enum OpenMode {
     YankAnchor = "-#",
     YankLink = "-y",
     YankText = "-p",
+    FilterByText = "-/",
 }
 
 /**
@@ -68,6 +69,7 @@ export class HintConfig implements HintOptions {
     public selectorsExclude = []
     public includeDefaultHintables = true
     public warnings = []
+    public filterByText = false
 
     public static parse(args: string[]): HintConfig {
         // Argument parser state
@@ -230,6 +232,9 @@ export class HintConfig implements HintOptions {
                                     break
                                 case "p":
                                     newOpenMode = OpenMode.YankText
+                                    break
+                                case "/":
+                                    result.filterByText = true
                                     break
                                 default:
                                     result.warnings.push(
