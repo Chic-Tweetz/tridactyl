@@ -353,6 +353,7 @@ export class default_config {
         b: "fillcmdline tab",
         ZZ: "qall",
         f: "hint",
+        e: "hint -/",
         F: "hint -b",
         gF: "hint -qb",
         ";i": "hint -i",
@@ -473,6 +474,7 @@ export class default_config {
         "<ArrowRight>": "hint.focusRightHint",
         "<Enter>": "hint.selectFocusedHint",
         "<Space>": "hint.selectFocusedHint",
+        "/": "hint.toggleTextFilter",
     }
 
     /**
