@@ -5937,8 +5937,17 @@ export function viewconfig(...key: string[]) {
  */
 //#background
 export async function jsonview(...json: string[]) {
+    const containerId = await activeTabContainerId()
     const blob = new Blob([json.join(" ")], { type: "application/json" })
-    return tabopen("-w", URL.createObjectURL(blob))
+    const url = URL.createObjectURL(blob)
+
+    // Seemingly can't open blobs in container/private tabs, even if the blob and URL are
+    // created in a tab of the same container.
+    // Ideally we'd display an error message or prompt before opening a non-container window
+    // but this is just for me so just fall back to a non-container window without an error
+    return containerId === "firefox-default"
+        ? tabopen("-w", url)
+        : winopen(url)
 }
 
 /**
