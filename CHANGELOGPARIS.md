@@ -1,5 +1,12 @@
 # Paris changelog
 
+# Release 2026-10-07
+
+- Bug fixes
+    - :jsonview (used by :viewconfig) will open a normal window if using a container or private tab instead of failing to open the created blob URL
+    - When HUD elements are restored after `document.write` or `document.open` calls, the HUD should now be visible if popover was used (e.g. hinting)
+    - Hints for elements inside nested iframes should be correctly positioned
+
 # Release 2026-09-22
 
 - New features
