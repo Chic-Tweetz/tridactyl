@@ -408,20 +408,12 @@ let salvagedQueue = []
 
 export function salvageElements() {
     console.warn("HUD: salvaging elements after document.write/writeln/open call")
-    // if (uiElements.length) {
-    //     salvagedQueue = salvagedQueue.concat(uiElements.map(uiEl => [uiEl.element, uiEl.options]))
-    //     uiElements = []
-    // }
     if (initQueue.length) {
         salvagedQueue = salvagedQueue.concat(initQueue)
         initQueue = []
     }
     initPromise = null
     hudIframe = null
-    // overlayHost = null
-    // elementHost = null
-
-    // elementsToProxies = new Map()
 
     elementHost.remove()
     shadow.replaceChildren()
@@ -446,6 +438,11 @@ export function reattachElements() {
                 addElement(element, options)
             }
             salvagedQueue = []
+
+            // Seems reattaching a popover makes it invisible
+            if (hud.hasAttribute("popover")) {
+                popover(true)
+            }
         })
     }, 200)
 }
