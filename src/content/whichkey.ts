@@ -594,6 +594,14 @@ function completionsToElems(
     })
 }
 
+// From controller_content.ts, should we treat numbers as counts or normal keys
+function isCountAware(mode) {
+    return (
+        config.get("modesubconfigs", mode, "countaware") ??
+        config.get("countaware")
+    ) === "true"
+}
+
 // Update the popup when keys are pressed or mode changes
 // Currently I've hardcoded several specific cases
 // The main one being displaying keybinds for the current mode
@@ -724,7 +732,11 @@ async function onStateChanged(property?, _oldMode?, _oldValue?, _newValue?) {
         mapsKey = mode + "maps"
     }
 
-    const pressedKeys = contentState.keyseq
+    // We aren't interested in numeric prefixes here, just discard them
+    let pressedKeys = contentState.keyseq
+    if (pressedKeys.length && isCountAware(mode))
+        pressedKeys = keyseq.splitNumericPrefix(pressedKeys)[1]
+
     if (!pressedKeys || pressedKeys.length === 0 && level !== "all") {
         hud.hide(whichkeyIframe)
         return
