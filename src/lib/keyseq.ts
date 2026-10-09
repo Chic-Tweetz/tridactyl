@@ -233,6 +233,7 @@ export class MinimalKey{
     readonly ctrlKey = false
     readonly metaKey = false
     readonly shiftKey = false
+    readonly shiftKeyRaw: boolean = false
 
     translated = false
 
@@ -246,14 +247,17 @@ export class MinimalKey{
                     this.key.length === 1 &&
                     this.key !== " " &&
                     mod === "shiftKey"
-                )
+                ) {
+                    this.shiftKeyRaw = modifiers[mod]
                     continue
+                }
                 this[mod] = modifiers[mod]
             }
             if (modifiers.type === "keyup" || modifiers.keyup) {
                 this.keyup = true
             }
             this.code = modifiers.code
+            this.shiftKeyRaw = this.shiftKeyRaw || this.shiftKey
         }
     }
 
@@ -263,6 +267,28 @@ export class MinimalKey{
         const result = new MinimalKey(newkey, this)
         result.translated = true
         return result
+    }
+
+    /**
+     * Attempts to return a key string with a flipped "case", including non-alpha chars.
+     * e.g. if key is "!", returns "1" and vice versa (layout dependant).
+     *
+     * Attempts to use the key translation map, regardless of `:set keyboardlayoutforce`.
+     * Failing that, if key is one char returns that char with the opposite case.
+     * Otherwise returns the original key string unchanged.
+     */
+    public flippedShiftKey() {
+        Object.keys(KEYCODETRANSLATEMAP).length === 0 && updateBaseLayout()
+        const pair = KEYCODETRANSLATEMAP[this.code]
+        if (pair?.includes(this.key))
+            return this.key === pair[0] ? pair[1] : pair[0]
+
+        if (this.key.length === 1)
+            return this.key === this.key.toUpperCase()
+                ? this.key.toLowerCase()
+                : this.key.toUpperCase()
+
+        return this.key
     }
 
     public toMapstr() {

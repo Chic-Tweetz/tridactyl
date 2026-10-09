@@ -72,6 +72,7 @@ class HintState {
     public textfilter = [""]
     public hintchars = ""
     public uppercase = config.get("hintuppercase") === "true"
+    public modifierKeys = ""
     private filteredHints: Hint[] = []
 
     constructor(
@@ -661,14 +662,14 @@ export function hintPage(
         buildHints(hintableElements, hint => {
             const state = modeState
             state.cleanUpHints()
-            hint.result = onSelect(hint.target.deref())
+            hint.result = onSelect(hint.target.deref(), state.modifierKeys)
             state.selectedHints.push(hint)
             if (modeState === state) reset()
         })
     } else {
         buildHints(hintableElements, hint => {
             const state = modeState
-            hint.result = onSelect(hint.target.deref())
+            hint.result = onSelect(hint.target.deref(), state.modifierKeys)
             state.selectedHints.push(hint)
             state.textfilter = [""]
             state.filterByText = filterByText
@@ -984,7 +985,7 @@ function* hintnames(
 }
 
 /** @hidden */
-type HintSelectedCallback = (x: any) => any
+type HintSelectedCallback = (x: any, modifiers?: string) => any
 
 /** Place a flag by each hintworthy element
 @hidden */
@@ -1017,8 +1018,6 @@ class Hint {
     ) {
         this.target = new WeakRef(target)
         this.unfilteredName = name
-        // this.updateTargetRects()
-        // this.transformElements()
 
         // A span for each char so typed chars can be styled differently
         for (const ch of name) {
@@ -1178,12 +1177,18 @@ class Hint {
         // We need to compute the offset for elements that are in an iframe
         let offsetTop = 0
         let offsetLeft = 0
-        const pad = 4
+
         if (target.ownerDocument !== document) {
-            let iframe = DOM.getAllDocumentFrames(document, true)
+            let iframe = DOM.getAllDocumentFrames()
                 .find(f => f.contentDocument === target.ownerDocument)
             while (iframe) {
                 const rect = DOM.getContentRect(iframe)
+                // found that rect can be undefined doing a `:hint -V *` on www.reddit.com
+                // better to say offset = 0 or just say noRects?
+                if (!rect) {
+                    this.noRects = true
+                    return
+                }
                 offsetTop += rect.top
                 offsetLeft += rect.left
                 iframe = DOM.frameParents.get(iframe)
@@ -2061,7 +2066,7 @@ function filterByText(match?: string[]) {
 /** Return a predicate that checks whether an element matches a given text hinting filter
  * @hidden
  */
-export function hintByTextFilter(match: string | RegExp): HintSelectedCallback {
+export function hintByTextFilter(match: string | RegExp): (hint: Element) => boolean {
     return hint => {
         let text
         if (hint instanceof HTMLInputElement) {
@@ -2174,19 +2179,35 @@ export function parser(keys: keyseq.MinimalKey[]) {
     if (parsed.isMatch === true) {
         return parsed
     }
-    // Ignore keyups & modifiers since they can't match text
-    const simplekeys = keys.filter(key => !key.keyup && !keyseq.hasModifiers(key))
-    let exstr
-    if (simplekeys.length > 1) {
-        exstr = simplekeys.reduce(
-            (acc, key) => `hint.pushKey ${key.key};`,
-            "composite ",
-        )
-    } else if (simplekeys.length === 1) {
-        exstr = `hint.pushKeyCodePoint ${simplekeys[0].key.codePointAt(0)}`
-    } else {
+    // Ignore keyups & keys of more than one char
+    const simpleKeys = keys.filter(ke => !ke.keyup && ke.key.length === 1)
+
+    if (simpleKeys.length === 0)
         return { keys: [], isMatch: false }
+
+    const lastKeyEvent = simpleKeys[simpleKeys.length - 1]
+    let key = lastKeyEvent.key
+
+    // Modifiers to "ACSM" string to pass to pushKey
+    let modstr = ["altKey", "ctrlKey", "metaKey", "shiftKeyRaw"]
+        .reduce((acc, mod) => acc + (lastKeyEvent[mod] ? mod[0].toUpperCase() : ""), "")
+
+    // Flip key case if shift is held and key is not a hint char
+    if (lastKeyEvent.shiftKeyRaw && !lastKeyEvent.shiftKey) {
+        if (defaultHintChars().includes(lastKeyEvent.key)) {
+            modstr = modstr.replace("S", "")
+        } else {
+            key = lastKeyEvent.flippedShiftKey()
+        }
     }
+
+    // Store last held modifier keys as "ACMS" string
+    modeState.modifierKeys = modstr
+
+    const exstr = simpleKeys.length === 1
+        ? `hint.pushKey ${key}`
+        : simpleKeys.reduce((acc, key) => `hint.pushKey ${key.key};`, "composite ")
+
     return { exstr, value: exstr, isMatch: true }
 }
 
