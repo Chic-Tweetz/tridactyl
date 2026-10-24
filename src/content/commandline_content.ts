@@ -205,5 +205,9 @@ export function executeWithoutCommandLine(fn) {
     return result
 }
 
+export function getIframe() {
+    return cmdline_iframe
+}
+
 import * as SELF from "@src/content/commandline_content"
 Messaging.addListener("commandline_content", Messaging.attributeCaller(SELF))

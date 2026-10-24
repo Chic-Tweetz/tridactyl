@@ -398,6 +398,7 @@ async function updateCompletions(exstr: string, session = commandSession) {
 
 /** @hidden **/
 function clInputValueChanged() {
+    clear_completions_limit()
     const exstr = commandline_state.clInput.value
     const session = commandSession
     contentState.current_cmdline = exstr
@@ -496,6 +497,9 @@ export function fillcmdline(
     else commandline_state.clInput.value = newcommand
     commandline_state.initialClInputValue = commandline_state.clInput.value
     commandline_state.isVisible = true
+
+    clear_completions_limit()
+
     const closed = wait ? waitForClose() : undefined
     let result = Promise.resolve([])
     // Focus is lost for some reason.
@@ -523,6 +527,139 @@ export function editor_function(fn_name: keyof typeof tri_editor, ...args: strin
         console.error(`No editor function named ${fn_name}!`)
     }
     return result
+}
+
+let knownCompletionHeight = 0
+/**
+ * Try to limit the number of displayed options to make the given rect visible below the iframe.
+ *
+ * Works alright except for quakelight-likes where
+ * the completions are above the input but the iframe is at the top.
+ *
+ * Could try figuring out if the iframe's position is set with top:... or bottom:...
+ * easier said than done.
+ *
+ *
+ * @param rect a clientRect in the iframe's coordinate space
+ * @returns void or a scroll value that would reveal the given rect
+ */
+export function completions_limit_to_reveal(rect, topAnchor = false) {
+    const inpRect = document.querySelector("#command-line-holder").getBoundingClientRect()
+    const compRect = document.querySelector("#completions").getBoundingClientRect()
+
+    const overlapsCliInput = !(
+        inpRect.top > rect.bottom ||
+        inpRect.bottom < rect.top ||
+        inpRect.left > rect.right ||
+        inpRect.right < rect.left
+    )
+
+    if (!compRect) {
+        return overlapsCliInput ? inpRect.height : 0
+    }
+
+    const anOpt = document.querySelector("#completions>div:not(.hidden) .option")
+    const optRect = anOpt?.getClientRects()[0]
+    const optionHeight: number = optRect?.height || knownCompletionHeight
+    knownCompletionHeight = optionHeight || knownCompletionHeight
+
+    if (!optionHeight) return
+
+    const compsAbove = compRect.top < inpRect.top
+
+    // Most themes either have iframe at the bottom
+    // or have completions below the input
+    // if a theme's iframe is top-anchored and has completions above input
+    // that needs slightly different logic
+    // figuring out whether the iframe is top-anchored is the hard part
+    if (!topAnchor || !compsAbove) {
+        // May want to also account for any gap between input and completions div
+        const allowedOpts = compsAbove
+            ? Math.floor((compRect.bottom - rect.bottom) / optionHeight)
+            : Math.floor((rect.top - compRect.top) / optionHeight)
+
+        // if allowedOpts is negative...
+        // compsAbove: rect is below the completions div
+        // comps below: rect is above completions div
+        //  - in that case, you wouldn't need to limit?
+        if (allowedOpts < 0 && !compsAbove) {
+            clear_completions_limit()
+            if (overlapsCliInput) {
+                // Try to scroll past the cli
+                // What if it makes more sense to scroll up?
+                return inpRect.height
+            } else {
+                return 0
+            }
+        }
+
+        if (allowedOpts < 2) {
+            // Show at least 1 completion & try to scroll to reveal rect
+            completions_limit(1, true)
+            return 2 * optionHeight + inpRect.height
+        }
+
+        // Subtract 1 in case a header obscures the rect
+        completions_limit(allowedOpts - 1)
+        return 0
+    }
+
+    // Top-anchored themes with completions above input (quakelight)
+    const allowedOpts = Math.floor(rect.top / optionHeight) - 1
+
+    // Negative in this case means what?
+    // rect is above the iframe... shouldn't matter?
+    if (allowedOpts < 0) {
+        return clear_completions_limit()
+    }
+
+    if (allowedOpts < 2) {
+        completions_limit(1, true)
+        return 2 * optionHeight + inpRect.height
+    }
+
+    completions_limit(allowedOpts - 1)
+    return 0
+}
+
+// Set the maximum number of visibile options up to 20
+// By default max is 20 from commandline.css
+// Themes are able to overwrite that so this could cause unexpected behaviour
+export function completions_limit(maxOptions = 20, hideHeaders = false) {
+    if (maxOptions >= 20) {
+        return clear_completions_limit()
+    }
+
+    maxOptions = Math.max(maxOptions, 0)
+    const min = Math.min(maxOptions, 10)
+
+    let style = document.querySelector("#options-limit")
+    if (!style) {
+        style = document.createElement("style")
+        style.id = "options-limit"
+        document.head.appendChild(style)
+    }
+
+    // Despite being multiples of --option-height this seems to throw the div out of alignment
+    const newRule = `:root #completions > div {
+        max-height: calc(${maxOptions} * var(--option-height)) !important;
+        min-height: calc(${min} * var(--option-height)) !important;
+    }
+    ${ hideHeaders
+        ? `:root #completions .sectionHeader {
+                display: none !important;
+            }`
+        : ""}`
+
+    // Keep highlighted option visible
+    if (style.textContent !== newRule) {
+        style.textContent = newRule
+        document.querySelector(".option.focused")?.scrollIntoView()
+    }
+}
+
+export function clear_completions_limit() {
+    document.querySelector("#options-limit")?.remove()
 }
 
 Messaging.addListener("commandline_frame", Messaging.attributeCaller(SELF))

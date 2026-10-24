@@ -4,6 +4,8 @@ import { browserBg, ownTabId } from "@src/lib/webext"
 import state from "@src/state"
 import * as State from "@src/state"
 import { compute as scrollCompute } from "compute-scroll-into-view"
+import { getIframe } from "@src/content/commandline_content"
+import { messageOwnTab } from "@src/lib/messaging"
 
 // The host is the shadow root of a span used to contain all highlighting
 // elements. This is the least disruptive way of highlighting text in a page.
@@ -25,6 +27,10 @@ function getFindHost() {
 }
 
 const NATIVE_HIGHLIGHTS = typeof Highlight === "function" && "highlights" in CSS
+
+let previousCmdlineRect = null
+let largestCmdlineRect = null
+let cmdlineIsLikelyTopAnchored = false
 
 class FindHighlight extends HTMLSpanElement {
     public top = Infinity
@@ -132,9 +138,129 @@ class FindHighlight extends HTMLSpanElement {
             element.scrollTo({ top, left, behavior: "instant" })
         }
     }
+
+    // Copied from scrollIntoView for scrollCompute node hierarchy
+    // to scroll by a given amount instead of into view
+    // returns a boolean indicating whether the full distance was scrolled
+    scrollY(amount, ...options) {
+        let option
+        if (options.length === 0 || options[0] === true) {
+            option = { block: "start", inline: "nearest" }
+        } else if (options[0] === false) {
+            option = { block: "end", inline: "nearest" }
+        } else option = options[0]
+
+        const fakeNode = {
+            nodeType: Node.ELEMENT_NODE,
+            getBoundingClientRect: () => this.getBoundingClientRect(),
+            parentElement: null,
+        }
+        let parent = this.range.commonAncestorContainer
+        if (parent.nodeType !== Node.ELEMENT_NODE) {
+            parent = parent.parentElement
+        }
+        fakeNode.parentElement = parent
+
+        const actions = scrollCompute(fakeNode as HTMLElement, option)
+
+        if (amount) {
+            for (const { el: element } of actions) {
+                if (amount) {
+                    const scrollBefore = element.scrollTop
+                    const rectBefore = this.getBoundingClientRect()
+
+                    element.scrollTo({ top: scrollBefore + amount, behavior: "instant" })
+                    const after = element.scrollTop
+                    const moved = after - scrollBefore
+                    if (moved !== 0) {
+                        const rectAfter = this.getBoundingClientRect()
+                        const actualMove = rectAfter.y - rectBefore.y
+                        // Undo scrolls which don't move our actual target
+                        if (actualMove === 0) {
+                            element.scrollTo({ top: scrollBefore, behavior: "instant" })
+                        } else {
+                            amount -= actualMove
+                        }
+                    }
+                } else {
+                    return true
+                }
+            }
+            return amount === 0
+        }
+        return false
+    }
+
     focusMatch(focusElement = true, scroll = true) {
         if (scroll && !isHighlightVisible(this)) {
             this.scrollIntoView({ block: "center", inline: "center" })
+        }
+
+        const getIframeRect = () => {
+            const iframeRect = getIframe()?.getBoundingClientRect()
+            if (!iframeRect) return null
+
+            // If we store previous iframe rect results...
+            // May be able to figure out if iframe is top-anchored
+            // And the largest rect would be the iframe with most completions(?)
+            if (previousCmdlineRect) {
+                if (
+                    previousCmdlineRect.top === iframeRect.top &&
+                    previousCmdlineRect.bottom !== iframeRect.bottom
+                ) {
+                    cmdlineIsLikelyTopAnchored = true
+                } else if (
+                    previousCmdlineRect.bottom === iframeRect.bottom &&
+                    previousCmdlineRect.top !== iframeRect.top
+                ) {
+                    cmdlineIsLikelyTopAnchored = false
+                }
+            }
+            previousCmdlineRect = iframeRect
+
+            // This may be useful to know but is not used yet
+            if (!largestCmdlineRect || (iframeRect.height > largestCmdlineRect.height))
+                largestCmdlineRect = iframeRect
+            return iframeRect
+        }
+
+        const iframeRect = getIframeRect()
+        if (iframeRect) {
+            // Limit number of displayed completions if they obscure the highlight
+            const limitCompletions = (iframeRect) => {
+                const thisRect = this.getBoundingClientRect()
+                const iframeTop = getComputedStyle(getIframe()).top
+                thisRect.x -= iframeRect.x
+                thisRect.y -= iframeRect.y
+
+                return messageOwnTab("commandline_frame", "completions_limit_to_reveal", [
+                    thisRect,
+                    cmdlineIsLikelyTopAnchored || iframeTop === "0px",
+                ])
+            }
+
+            limitCompletions(iframeRect)
+                // Resolves to a distance to scroll if hiding completions isn't enough
+                // e.g. if the cmdline input is obscuring the highlight
+                .then(maybeScroll => {
+                    if (maybeScroll) {
+                        const didScroll = this.scrollY(maybeScroll, { block: "center", inline: "center" })
+                        if (didScroll) {
+                            // After scrolling away from iframe, we may be able to show more completions again
+                            // Would it be more sensible to first try to scroll then limit completions?
+                            const iframeRect = getIframeRect()
+                            if (iframeRect) {
+                                limitCompletions(iframeRect)
+                            }
+                        }
+                        // Try moving the iframe itself at this point?
+                        // - direction/distance?
+                        // - position must be reset afterwards
+                        //   - reset on cmdline hide, prev/next completion, cli input?
+                        // else
+                        //     getIframe().style.setProperty("translate", "0 100px", "!important")
+                    }
+                })
         }
         const focusable = this.queryInRange("a,input,button,details")
         if (focusElement && focusable) focusable.focus()

@@ -9,13 +9,13 @@ class FindCompletionOption
     public fuseKeys
     public initiallySelected: boolean
 
-    constructor(index: number, match, args: string) {
+    constructor(index: number, totalMatches: number, match, args: string) {
         super()
         this.initiallySelected = match.selected
         this.value = [`--jump-to ${index}`, args].filter(Boolean).join(" ")
         this.fuseKeys = [match.text, match.precontext, match.postcontext, match.breadcrumbs]
         this.html = html`<tr class="FindCompletionOption option">
-            <td class="breadcrumbs">${match.breadcrumbs}</td>
+            <td class="breadcrumbs">${index + 1}/${totalMatches} ${match.breadcrumbs}</td>
             <td class="content">
                 ${match.precontext}<span class="match">${match.text}</span
                 >${match.postcontext}
@@ -74,6 +74,7 @@ export class FindCompletionSource extends Completions.CompletionSourceFuse {
                           match =>
                               new FindCompletionOption(
                                   match.index,
+                                  matches.length,
                                   match,
                                   this.findArgs,
                               ),
