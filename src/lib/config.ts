@@ -1562,6 +1562,13 @@ export class default_config {
         overlay: "none",
         overlayoutline: "none",
     }
+
+    /**
+     * Wait for the page to be fully loaded before running Tridactyl's content script.
+     *
+     * May allow problematic websites to load. If not, [[superignore]] can disable Tridactyl entirely.
+     */
+    lateinjection: "true" | "false" = "false"
 }
 
 const platform_defaults: Partial<Record<browser.runtime.PlatformOs, DeepPartial<default_config>>> = {

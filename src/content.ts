@@ -42,6 +42,25 @@ config.getAsync("superignore").then(async TRI_DISABLE => {
 
 if (TRI_DISABLE === "true") return
 
+const lateInjection = await config.getAsync("lateinjection")
+if (
+    lateInjection === "true" &&
+    document.readyState !== "complete"
+) {
+    await new Promise(resolve => {
+        const listener = () => {
+            if (document.readyState === "complete") {
+                document.removeEventListener(
+                    "readystatechange",
+                    listener
+                )
+                resolve(true)
+            }
+        }
+        document.addEventListener("readystatechange", listener)
+    })
+}
+
 const controller = await import("@src/lib/controller")
 const { omniscient_controller } = await import("@src/lib/omniscient_controller")
 const excmds_content = await import("@src/.excmds_content.generated")
